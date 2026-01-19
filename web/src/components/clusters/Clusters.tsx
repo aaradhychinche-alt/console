@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Pencil, X, Check, Loader2, Globe, User, Hourglass, ShieldAlert, WifiOff, Star, ChevronRight, CheckCircle, AlertTriangle, ChevronDown, HardDrive, Network, FolderOpen, Plus, Trash2, Box, Layers, Server, List, GitBranch, Eye, Terminal, FileText, Info, SortAsc, SortDesc, Activity, Briefcase, Lock, Settings, LayoutGrid, Wrench } from 'lucide-react'
+import { Pencil, X, Check, Loader2, Hourglass, WifiOff, ChevronRight, CheckCircle, AlertTriangle, ChevronDown, HardDrive, Network, FolderOpen, Plus, Trash2, Box, Layers, Server, List, GitBranch, Eye, Terminal, FileText, Info, Activity, Briefcase, Lock, Settings, LayoutGrid, Wrench } from 'lucide-react'
 import { useClusters, useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes, useNamespaceStats, useNodes, usePods, useDeployments, useServices, useJobs, useHPAs, useConfigMaps, useSecrets, usePodLogs, ClusterInfo } from '../../hooks/useMCP'
 import { AddCardModal } from '../dashboard/AddCardModal'
 import { TemplatesModal } from '../dashboard/TemplatesModal'
@@ -20,6 +20,13 @@ import { ClusterCosts } from '../cards/ClusterCosts'
 import { UpgradeStatus } from '../cards/UpgradeStatus'
 import { EventStream } from '../cards/EventStream'
 import { ClusterDetailModal } from './ClusterDetailModal'
+import {
+  RenameModal,
+  StatsOverview,
+  FilterTabs,
+  ClusterGrid,
+} from './components'
+import { isClusterUnreachable, isClusterLoading } from './utils'
 
 // Card components mapping for clusters page
 const CLUSTER_CARD_COMPONENTS: Record<string, React.ComponentType<{ config?: Record<string, unknown> }>> = {
@@ -65,125 +72,8 @@ import { useLocalAgent } from '../../hooks/useLocalAgent'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useMissions } from '../../hooks/useMissions'
-import { StatusIndicator } from '../charts/StatusIndicator'
 import { Gauge } from '../charts/Gauge'
 import { ClusterCardSkeleton, StatsOverviewSkeleton } from '../ui/ClusterCardSkeleton'
-
-// Helper to determine if cluster is unreachable vs just unhealthy
-// A reachable cluster always has at least 1 node - 0 nodes means we couldn't connect
-const isClusterUnreachable = (c: ClusterInfo) => {
-  if (c.reachable === false) return true
-  if (c.errorType && ['timeout', 'network', 'certificate'].includes(c.errorType)) return true
-  // nodeCount === 0 means unreachable (health check completed but no nodes)
-  // nodeCount === undefined means still checking - treat as loading, not unreachable
-  if (c.nodeCount === 0) return true
-  return false
-}
-
-// Helper to determine if cluster health is still loading
-const isClusterLoading = (c: ClusterInfo) => {
-  return c.nodeCount === undefined && c.reachable === undefined
-}
-
-interface RenameModalProps {
-  clusterName: string
-  currentDisplayName: string
-  onClose: () => void
-  onRename: (oldName: string, newName: string) => Promise<void>
-}
-
-function RenameModal({ clusterName, currentDisplayName, onClose, onRename }: RenameModalProps) {
-  const [newName, setNewName] = useState(currentDisplayName)
-  const [isRenaming, setIsRenaming] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // ESC to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  const handleRename = async () => {
-    if (!newName.trim()) {
-      setError('Name cannot be empty')
-      return
-    }
-    if (newName.includes(' ')) {
-      setError('Name cannot contain spaces')
-      return
-    }
-    if (newName.trim() === currentDisplayName) {
-      setError('Name is unchanged')
-      return
-    }
-
-    setIsRenaming(true)
-    setError(null)
-
-    try {
-      await onRename(clusterName, newName.trim())
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename context')
-    } finally {
-      setIsRenaming(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="glass p-6 rounded-lg w-[400px]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-foreground">Rename Context</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <p className="text-sm text-muted-foreground mb-4">
-          Current: <span className="text-foreground font-mono text-xs break-all">{currentDisplayName}</span>
-        </p>
-
-        <div className="mb-4">
-          <label htmlFor="new-context-name" className="block text-sm text-muted-foreground mb-1">New name</label>
-          <input
-            id="new-context-name"
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm font-mono"
-            autoFocus
-            onFocus={(e) => e.target.select()}
-            onKeyDown={(e) => e.key === 'Enter' && handleRename()}
-          />
-        </div>
-
-        {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
-
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50">
-            Cancel
-          </button>
-          <button
-            onClick={handleRename}
-            disabled={isRenaming || !newName.trim()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/80 disabled:opacity-50"
-          >
-            {isRenaming ? <><Loader2 className="w-4 h-4 animate-spin" />Renaming...</> : <><Check className="w-4 h-4" />Rename</>}
-          </button>
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-4">This updates your kubeconfig via the local agent.</p>
-      </div>
-    </div>
-  )
-}
 
 // Helper to format labels/annotations for tooltip
 function formatMetadata(labels?: Record<string, string>, annotations?: Record<string, string>): string {
@@ -1500,6 +1390,8 @@ export function Clusters() {
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [showCards, setShowCards] = useState(false) // Collapsed by default so cluster cards are visible first
+  const [showStats, setShowStats] = useState(true) // Stats overview visible by default
+  const [showClusterGrid, setShowClusterGrid] = useState(true) // Cluster cards visible by default
   const [configuringCard, setConfiguringCard] = useState<ClusterCard | null>(null)
 
   // Save cards to localStorage when they change
@@ -1766,248 +1658,54 @@ export function Clusters() {
         <p className="text-muted-foreground">Manage your Kubernetes clusters</p>
       </div>
 
-      {/* Stats Overview - at the top */}
-      <div className="grid grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-foreground">{stats.total}</div>
-          <div className="text-sm text-muted-foreground">Total</div>
-        </div>
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-green-400">{stats.healthy}</div>
-          <div className="text-sm text-muted-foreground">Healthy</div>
-        </div>
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-orange-400">{stats.unhealthy}</div>
-          <div className="text-sm text-muted-foreground">Unhealthy</div>
-        </div>
-        <div className="glass p-4 rounded-lg" title="Unreachable - check network connection">
-          <div className="flex items-center gap-1.5">
-            <div className="text-3xl font-bold text-yellow-400">{stats.unreachable}</div>
-            {stats.unreachable > 0 && <WifiOff className="w-4 h-4 text-yellow-400" />}
-          </div>
-          <div className="text-sm text-muted-foreground">Unreachable</div>
-        </div>
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-foreground">{stats.totalNodes}</div>
-          <div className="text-sm text-muted-foreground">Nodes</div>
-        </div>
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-foreground">{stats.totalCPUs}</div>
-          <div className="text-sm text-muted-foreground">CPUs</div>
-        </div>
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-foreground">{stats.totalGPUs}</div>
-          <div className="text-sm text-muted-foreground">GPUs</div>
-          {stats.allocatedGPUs > 0 && (
-            <div className="text-xs text-yellow-400">{stats.allocatedGPUs} allocated</div>
-          )}
-        </div>
-        <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-foreground">{stats.totalPods}</div>
-          <div className="text-sm text-muted-foreground">Pods</div>
-        </div>
+      {/* Stats Overview - collapsible */}
+      <div className="mb-6">
+        <button
+          onClick={() => setShowStats(!showStats)}
+          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-3"
+        >
+          <Activity className="w-4 h-4" />
+          <span>Stats Overview</span>
+          {showStats ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </button>
+
+        {showStats && <StatsOverview stats={stats} />}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      {/* Cluster Cards - collapsible */}
+      <div className="mb-6">
         <button
-          onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            filter === 'all'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-card/50 text-muted-foreground hover:text-foreground'
-          }`}
+          onClick={() => setShowClusterGrid(!showClusterGrid)}
+          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
-          All ({stats.total})
-        </button>
-        <button
-          onClick={() => setFilter('healthy')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            filter === 'healthy'
-              ? 'bg-green-500 text-foreground'
-              : 'bg-card/50 text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Healthy ({stats.healthy})
-        </button>
-        <button
-          onClick={() => setFilter('unhealthy')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            filter === 'unhealthy'
-              ? 'bg-orange-500 text-foreground'
-              : 'bg-card/50 text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Unhealthy ({stats.unhealthy})
-        </button>
-        <button
-          onClick={() => setFilter('unreachable')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            filter === 'unreachable'
-              ? 'bg-yellow-500 text-foreground'
-              : 'bg-card/50 text-muted-foreground hover:text-foreground'
-          }`}
-          title="Clusters that cannot be contacted - check network connection"
-        >
-          <WifiOff className="w-3.5 h-3.5" />
-          Unreachable ({stats.unreachable})
+          <Server className="w-4 h-4" />
+          <span>Cluster Cards ({filteredClusters.length})</span>
+          {showClusterGrid ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
 
-        {/* Sort selector */}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Sort:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'name' | 'nodes' | 'pods' | 'health')}
-            className="px-2 py-1.5 rounded-lg text-sm bg-card/50 border border-border text-foreground"
-          >
-            <option value="name">Name</option>
-            <option value="nodes">Nodes</option>
-            <option value="pods">Pods</option>
-            <option value="health">Health</option>
-          </select>
-          <button
-            onClick={() => setSortAsc(!sortAsc)}
-            className="p-1.5 rounded-lg bg-card/50 border border-border text-muted-foreground hover:text-foreground"
-            title={sortAsc ? 'Ascending' : 'Descending'}
-          >
-            {sortAsc ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
-          </button>
-        </div>
+        {showClusterGrid && (
+          <>
+            <FilterTabs
+              stats={stats}
+              filter={filter}
+              onFilterChange={setFilter}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+              sortAsc={sortAsc}
+              onSortAscChange={setSortAsc}
+            />
+            <ClusterGrid
+              clusters={filteredClusters}
+              gpuByCluster={gpuByCluster}
+              isConnected={isConnected}
+              permissionsLoading={permissionsLoading}
+              isClusterAdmin={isClusterAdmin}
+              onSelectCluster={setSelectedCluster}
+              onRenameCluster={setRenamingCluster}
+            />
+          </>
+        )}
       </div>
-
-      {/* Cluster Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {filteredClusters.map((cluster) => {
-          const clusterKey = cluster.name.split('/')[0]
-          const gpuInfo = gpuByCluster[clusterKey] || gpuByCluster[cluster.name]
-          const loading = isClusterLoading(cluster)
-          const unreachable = isClusterUnreachable(cluster)
-
-          // Determine status: loading > unreachable > healthy
-          const status = loading ? 'loading' : unreachable ? 'warning' : 'healthy'
-
-          return (
-            <div
-              key={cluster.name}
-              onClick={() => setSelectedCluster(cluster.name)}
-              className={`glass p-5 rounded-lg cursor-pointer transition-all hover:scale-[1.02] hover:border-primary/50 border ${
-                unreachable ? 'border-yellow-500/30' : 'border-transparent'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <StatusIndicator status={status} size="lg" showLabel={false} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground truncate">
-                        {cluster.context || cluster.name.split('/').pop()}
-                      </h3>
-                      {isConnected && (cluster.source === 'kubeconfig' || !cluster.source) && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setRenamingCluster(cluster.name) }}
-                          className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground flex-shrink-0"
-                          title="Rename context"
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                    {/* Server and User with icons */}
-                    <div className="flex flex-col gap-1 mt-1">
-                      {cluster.server && (
-                        <span
-                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default truncate max-w-[220px]"
-                          title={`Server: ${cluster.server}`}
-                        >
-                          <Globe className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{cluster.server.replace(/^https?:\/\//, '')}</span>
-                        </span>
-                      )}
-                      {cluster.user && (
-                        <span
-                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default truncate max-w-[220px]"
-                          title={`User: ${cluster.user}`}
-                        >
-                          <User className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{cluster.user}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-start justify-end gap-1 flex-shrink-0">
-                  {cluster.isCurrent && (
-                    <span
-                      className="flex items-center px-1.5 py-0.5 rounded bg-primary/20 text-primary"
-                      title="Current kubectl context"
-                    >
-                      <Star className="w-3.5 h-3.5 fill-current" />
-                    </span>
-                  )}
-                  {unreachable && (
-                    <span
-                      className="flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400"
-                      title="Unreachable - check network connection"
-                    >
-                      <WifiOff className="w-3.5 h-3.5" />
-                    </span>
-                  )}
-                  {!permissionsLoading && !isClusterAdmin(cluster.name) && !unreachable && (
-                    <span
-                      className="flex items-center px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400"
-                      title="You have limited permissions on this cluster"
-                      data-testid="permission-badge"
-                    >
-                      <ShieldAlert className="w-3.5 h-3.5" />
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-4 gap-4 text-center">
-                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : `${cluster.nodeCount || 0} worker nodes`}>
-                  <div className="text-lg font-bold text-foreground">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (cluster.nodeCount || 0)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Nodes</div>
-                </div>
-                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : `${cluster.cpuCores || 0} CPU cores`}>
-                  <div className="text-lg font-bold text-foreground">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (cluster.cpuCores || 0)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">CPUs</div>
-                </div>
-                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : `${cluster.podCount || 0} running pods`}>
-                  <div className="text-lg font-bold text-foreground">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (cluster.podCount || 0)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Pods</div>
-                </div>
-                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : gpuInfo ? `${gpuInfo.allocated} allocated / ${gpuInfo.total} total GPUs` : 'No GPUs'}>
-                  <div className="text-lg font-bold text-foreground">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (gpuInfo ? `${gpuInfo.allocated}/${gpuInfo.total}` : '0')}
-                  </div>
-                  <div className="text-xs text-muted-foreground">GPUs</div>
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-border">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Source: {cluster.source || 'kubeconfig'}</span>
-                  <span title="View details"><ChevronRight className="w-4 h-4 text-primary" /></span>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {filteredClusters.length === 0 && (
-        <div className="text-center py-12 mb-6">
-          <p className="text-muted-foreground">No clusters match the current filter</p>
-        </div>
-      )}
 
       {/* Cluster Groups */}
       {(clusterGroups.length > 0 || showGroupForm) && (
