@@ -16,8 +16,7 @@ interface ClusterGridProps {
   isClusterAdmin: (clusterName: string) => boolean
   onSelectCluster: (clusterName: string) => void
   onRenameCluster: (clusterName: string) => void
-  onRefresh?: () => void
-  isRefreshing?: boolean
+  onRefreshCluster?: (clusterName: string) => void
 }
 
 export function ClusterGrid({
@@ -28,8 +27,7 @@ export function ClusterGrid({
   isClusterAdmin,
   onSelectCluster,
   onRenameCluster,
-  onRefresh,
-  isRefreshing,
+  onRefreshCluster,
 }: ClusterGridProps) {
   if (clusters.length === 0) {
     return (
@@ -116,17 +114,16 @@ export function ClusterGrid({
                     >
                       <WifiOff className="w-3.5 h-3.5" />
                     </span>
-                    {onRefresh && (
+                    {onRefreshCluster && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          onRefresh()
+                          onRefreshCluster(cluster.name)
                         }}
                         className="flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
                         title="Retry connection"
-                        disabled={isRefreshing}
                       >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        <RefreshCw className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>

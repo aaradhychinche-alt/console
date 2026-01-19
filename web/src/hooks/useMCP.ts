@@ -36,6 +36,15 @@ export interface ClusterHealth {
   errorMessage?: string
 }
 
+export interface ContainerInfo {
+  name: string
+  image: string
+  ready: boolean
+  state: 'running' | 'waiting' | 'terminated'
+  reason?: string
+  message?: string
+}
+
 export interface PodInfo {
   name: string
   namespace: string
@@ -45,6 +54,9 @@ export interface PodInfo {
   restarts: number
   age: string
   node?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+  containers?: ContainerInfo[]
 }
 
 export interface PodIssue {
@@ -91,6 +103,8 @@ export interface Deployment {
   progress: number
   image?: string
   age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
 }
 
 export interface GPUNode {
@@ -99,6 +113,106 @@ export interface GPUNode {
   gpuType: string
   gpuCount: number
   gpuAllocated: number
+}
+
+export interface NodeCondition {
+  type: string
+  status: string
+  reason?: string
+  message?: string
+}
+
+export interface NodeInfo {
+  name: string
+  cluster?: string
+  status: string // Ready, NotReady, Unknown
+  roles: string[]
+  internalIP?: string
+  externalIP?: string
+  kubeletVersion: string
+  containerRuntime?: string
+  os?: string
+  architecture?: string
+  cpuCapacity: string
+  memoryCapacity: string
+  podCapacity: string
+  conditions: NodeCondition[]
+  labels?: Record<string, string>
+  taints?: string[]
+  age?: string
+  unschedulable: boolean
+}
+
+export interface Service {
+  name: string
+  namespace: string
+  cluster?: string
+  type: string // ClusterIP, NodePort, LoadBalancer, ExternalName
+  clusterIP?: string
+  externalIP?: string
+  ports?: string[]
+  age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+}
+
+export interface Job {
+  name: string
+  namespace: string
+  cluster?: string
+  status: string // Running, Complete, Failed
+  completions: string
+  duration?: string
+  age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+}
+
+export interface HPA {
+  name: string
+  namespace: string
+  cluster?: string
+  reference: string
+  minReplicas: number
+  maxReplicas: number
+  currentReplicas: number
+  targetCPU?: string
+  currentCPU?: string
+  age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+}
+
+export interface ConfigMap {
+  name: string
+  namespace: string
+  cluster?: string
+  dataCount: number
+  age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+}
+
+export interface Secret {
+  name: string
+  namespace: string
+  cluster?: string
+  type: string
+  dataCount: number
+  age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+}
+
+export interface ServiceAccount {
+  name: string
+  namespace: string
+  cluster?: string
+  secrets?: string[]
+  imagePullSecrets?: string[]
+  age?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
 }
 
 export interface MCPStatus {
@@ -144,64 +258,91 @@ export function useMCPStatus() {
 // Local agent URL for direct cluster access
 const LOCAL_AGENT_URL = 'http://127.0.0.1:8585'
 
-// Try to fetch from local agent first, then fall back to backend API
-async function fetchClustersFromAgent(): Promise<ClusterInfo[] | null> {
+// ============================================================================
+// Shared Cluster State - ensures all useClusters() consumers see the same data
+// ============================================================================
+interface ClusterCache {
+  clusters: ClusterInfo[]
+  lastUpdated: Date | null
+  isLoading: boolean
+  error: string | null
+}
+
+// Module-level shared state
+let clusterCache: ClusterCache = {
+  clusters: [],
+  lastUpdated: null,
+  isLoading: true,
+  error: null,
+}
+
+// Subscribers that get notified when cluster data changes
+type ClusterSubscriber = (cache: ClusterCache) => void
+const clusterSubscribers = new Set<ClusterSubscriber>()
+
+// Notify all subscribers of state change
+function notifyClusterSubscribers() {
+  clusterSubscribers.forEach(subscriber => subscriber(clusterCache))
+}
+
+// Update shared cluster cache
+function updateClusterCache(updates: Partial<ClusterCache>) {
+  clusterCache = { ...clusterCache, ...updates }
+  notifyClusterSubscribers()
+}
+
+// Update a single cluster in the shared cache
+function updateSingleClusterInCache(clusterName: string, updates: Partial<ClusterInfo>) {
+  clusterCache = {
+    ...clusterCache,
+    clusters: clusterCache.clusters.map(c =>
+      c.name === clusterName ? { ...c, ...updates } : c
+    ),
+  }
+  notifyClusterSubscribers()
+}
+
+// Track if initial fetch has been triggered (to avoid duplicate fetches)
+let initialFetchStarted = false
+
+// Reset shared state on HMR (hot module reload) in development
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    initialFetchStarted = false
+    clusterCache = {
+      clusters: [],
+      lastUpdated: null,
+      isLoading: true,
+      error: null,
+    }
+    clusterSubscribers.clear()
+  })
+}
+
+// Fetch basic cluster list from local agent (fast, no health check)
+async function fetchClusterListFromAgent(): Promise<ClusterInfo[] | null> {
   try {
     const controller = new AbortController()
-    // 5 second timeout - agent may be slow to respond
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
     const response = await fetch(`${LOCAL_AGENT_URL}/clusters`, {
       signal: controller.signal,
     })
     clearTimeout(timeoutId)
     if (response.ok) {
       const data = await response.json()
-      // Transform agent response to ClusterInfo format
-      const clusters = (data.clusters || []).map((c: any) => ({
+      // Transform agent response to ClusterInfo format - mark as "checking" initially
+      return (data.clusters || []).map((c: any) => ({
         name: c.name,
         context: c.context || c.name,
         server: c.server,
         user: c.user,
-        healthy: true, // Default to healthy, will be updated with real health data
+        healthy: true, // Will be updated by health check
+        reachable: undefined, // Unknown until health check completes
         source: 'kubeconfig',
-        nodeCount: 0, // Will be updated with health data
-        podCount: 0, // Will be updated with health data
+        nodeCount: undefined, // undefined = still checking, 0 = unreachable
+        podCount: undefined,
         isCurrent: c.isCurrent,
       }))
-
-      // Try to fetch health data from backend to enrich clusters
-      try {
-        const token = localStorage.getItem('token')
-        const healthResponse = await fetch('http://localhost:8080/api/mcp/clusters/health', {
-          signal: AbortSignal.timeout(10000),
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        })
-        if (healthResponse.ok) {
-          const healthData = await healthResponse.json()
-          const healthMap = new Map<string, ClusterHealth>()
-          for (const h of healthData.health || []) {
-            healthMap.set(h.cluster, h)
-          }
-          // Merge health data into clusters
-          return clusters.map((c: ClusterInfo) => {
-            const health = healthMap.get(c.name)
-            if (health) {
-              return {
-                ...c,
-                healthy: health.healthy,
-                nodeCount: health.nodeCount,
-                podCount: health.podCount,
-                cpuCores: health.cpuCores,
-              }
-            }
-            return c
-          })
-        }
-      } catch {
-        // Health fetch failed, return clusters without health data
-        console.log('[useClusters] Health fetch failed, using basic cluster info')
-      }
-      return clusters
     }
   } catch {
     // Local agent not available
@@ -209,127 +350,246 @@ async function fetchClustersFromAgent(): Promise<ClusterInfo[] | null> {
   return null
 }
 
-// Hook to list clusters with WebSocket support for real-time updates
-export function useClusters() {
-  const [clusters, setClusters] = useState<ClusterInfo[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isUpdating, setIsUpdating] = useState(false) // True when change detected, pending refresh
-  const [isRefreshing, setIsRefreshing] = useState(false) // True during background refresh
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  // Silent fetch - updates data without showing loading state (for WebSocket updates)
-  const silentFetch = useCallback(async () => {
-    setIsUpdating(true)
-    setIsRefreshing(true)
-    try {
-      // Try local agent first
-      const agentClusters = await fetchClustersFromAgent()
-      if (agentClusters) {
-        setClusters(agentClusters)
-        setError(null)
-        setLastUpdated(new Date())
-        setIsUpdating(false)
-        setIsRefreshing(false)
-        return
+// Fetch health for a single cluster from backend (with short timeout for progressive loading)
+async function fetchSingleClusterHealth(clusterName: string): Promise<ClusterHealth | null> {
+  try {
+    const token = localStorage.getItem('token')
+    const response = await fetch(
+      `/api/mcp/clusters/${encodeURIComponent(clusterName)}/health`,
+      {
+        signal: AbortSignal.timeout(5000), // 5 second timeout per cluster
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       }
-      // Fall back to backend API
-      const { data } = await api.get<{ clusters: ClusterInfo[] }>('/api/mcp/clusters')
-      setClusters(data.clusters || [])
-      setError(null)
-      setLastUpdated(new Date())
-    } catch (err) {
-      // On silent fetch, don't replace with demo data - keep existing
-      console.error('Silent fetch failed:', err)
-    } finally {
-      setIsUpdating(false)
-      setIsRefreshing(false)
+    )
+    if (response.ok) {
+      return await response.json()
     }
-  }, [])
+  } catch {
+    // Timeout or error - cluster is likely unreachable
+  }
+  return null
+}
 
-  // Full refetch - shows loading state (for initial load or manual refresh)
-  const refetch = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      // Try local agent first
-      const agentClusters = await fetchClustersFromAgent()
-      if (agentClusters) {
-        setClusters(agentClusters)
-        setError(null)
-        setLastUpdated(new Date())
-        setIsLoading(false)
-        return
-      }
-      // Fall back to backend API
-      const { data } = await api.get<{ clusters: ClusterInfo[] }>('/api/mcp/clusters')
-      setClusters(data.clusters || [])
-      setError(null)
-      setLastUpdated(new Date())
-    } catch (err) {
-      setError('Failed to fetch clusters')
-      // Return demo data if MCP not available
-      setClusters(getDemoClusters())
-    } finally {
-      setIsLoading(false)
+// Progressive health check - fetches health for each cluster individually
+// Updates shared cache so all consumers see the same data
+async function checkHealthProgressively(clusterList: ClusterInfo[]) {
+  // Fire off all health checks in parallel - each updates shared cache when done
+  clusterList.forEach(async (cluster) => {
+    const health = await fetchSingleClusterHealth(cluster.name)
+
+    if (health) {
+      // Health data available - use it to determine reachability
+      const isReachable = health.reachable !== false && health.nodeCount > 0
+      updateSingleClusterInCache(cluster.name, {
+        healthy: health.healthy,
+        reachable: isReachable,
+        nodeCount: health.nodeCount,
+        podCount: health.podCount,
+        cpuCores: health.cpuCores,
+        errorType: health.errorType,
+        errorMessage: health.errorMessage,
+      })
+    } else {
+      // No health data or timeout - cluster is unreachable
+      updateSingleClusterInCache(cluster.name, {
+        healthy: false,
+        reachable: false,
+        nodeCount: 0,
+        podCount: 0,
+        errorType: 'timeout',
+      })
     }
-  }, [])
+  })
+}
 
-  useEffect(() => {
-    refetch()
-
-    // Connect to WebSocket for real-time kubeconfig change notifications
-    // Only attempt WebSocket on localhost (dev mode) - deployed versions don't have a backend
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    if (!isLocalhost) {
-      // On deployed versions, just poll without WebSocket
+// Silent fetch - updates shared cache without showing loading state
+async function silentFetchClusters() {
+  try {
+    // Try local agent first - get cluster list quickly
+    const agentClusters = await fetchClusterListFromAgent()
+    if (agentClusters) {
+      updateClusterCache({
+        clusters: agentClusters,
+        error: null,
+        lastUpdated: new Date(),
+      })
+      // Check health progressively (non-blocking)
+      checkHealthProgressively(agentClusters)
       return
     }
+    // Fall back to backend API
+    const { data } = await api.get<{ clusters: ClusterInfo[] }>('/api/mcp/clusters')
+    updateClusterCache({
+      clusters: data.clusters || [],
+      error: null,
+      lastUpdated: new Date(),
+    })
+  } catch (err) {
+    // On silent fetch, don't replace with demo data - keep existing
+    console.error('Silent fetch failed:', err)
+  }
+}
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//localhost:8080/ws`
-    let ws: WebSocket | null = null
-    let reconnectTimeout: ReturnType<typeof setTimeout>
+// Full refetch - updates shared cache with loading state
+async function fullFetchClusters() {
+  updateClusterCache({ isLoading: true })
+  try {
+    // Try local agent first - get cluster list quickly
+    const agentClusters = await fetchClusterListFromAgent()
+    if (agentClusters) {
+      // Show clusters immediately with "checking" state
+      updateClusterCache({
+        clusters: agentClusters,
+        error: null,
+        lastUpdated: new Date(),
+        isLoading: false,
+      })
+      // Check health progressively (non-blocking)
+      checkHealthProgressively(agentClusters)
+      return
+    }
+    // Fall back to backend API
+    const { data } = await api.get<{ clusters: ClusterInfo[] }>('/api/mcp/clusters')
+    updateClusterCache({
+      clusters: data.clusters || [],
+      error: null,
+      lastUpdated: new Date(),
+      isLoading: false,
+    })
+  } catch (err) {
+    updateClusterCache({
+      error: 'Failed to fetch clusters',
+      clusters: getDemoClusters(),
+      isLoading: false,
+    })
+  }
+}
 
-    const connect = () => {
-      ws = new WebSocket(wsUrl)
+// Refresh health for a single cluster (exported for use in components)
+export async function refreshSingleCluster(clusterName: string): Promise<void> {
+  // Mark the cluster as loading (set nodeCount to undefined)
+  updateSingleClusterInCache(clusterName, {
+    nodeCount: undefined,
+    reachable: undefined,
+  })
 
-      ws.onopen = () => {
-        console.log('WebSocket connected for cluster updates')
+  const health = await fetchSingleClusterHealth(clusterName)
+
+  if (health) {
+    // Health data available - use it to determine reachability
+    const isReachable = health.reachable !== false && health.nodeCount > 0
+    updateSingleClusterInCache(clusterName, {
+      healthy: health.healthy,
+      reachable: isReachable,
+      nodeCount: health.nodeCount,
+      podCount: health.podCount,
+      cpuCores: health.cpuCores,
+      errorType: health.errorType,
+      errorMessage: health.errorMessage,
+    })
+  } else {
+    // No health data or timeout - cluster is unreachable
+    updateSingleClusterInCache(clusterName, {
+      healthy: false,
+      reachable: false,
+      nodeCount: 0,
+      podCount: 0,
+      errorType: 'timeout',
+    })
+  }
+}
+
+// Hook to list clusters with WebSocket support for real-time updates
+// Uses shared state so all consumers see the same data
+// Uses progressive loading - shows clusters immediately, then updates health individually
+export function useClusters() {
+  // Local state that syncs with shared cache
+  const [localState, setLocalState] = useState<ClusterCache>(clusterCache)
+
+  // Subscribe to shared cache updates
+  useEffect(() => {
+    // Set initial state from cache
+    setLocalState(clusterCache)
+
+    // Subscribe to updates
+    const handleUpdate = (cache: ClusterCache) => {
+      setLocalState(cache)
+    }
+    clusterSubscribers.add(handleUpdate)
+
+    return () => {
+      clusterSubscribers.delete(handleUpdate)
+    }
+  }, [])
+
+  // Trigger initial fetch only once (shared across all hook instances)
+  useEffect(() => {
+    if (!initialFetchStarted) {
+      initialFetchStarted = true
+      fullFetchClusters()
+
+      // Connect to WebSocket for real-time kubeconfig change notifications
+      // Only attempt WebSocket on localhost (dev mode) - deployed versions don't have a backend
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      if (!isLocalhost) {
+        return
       }
 
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data)
-          if (message.type === 'kubeconfig_changed') {
-            console.log('Kubeconfig changed, updating clusters...')
-            // Use silent fetch to update without loading flash
-            silentFetch()
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//localhost:8080/ws`
+      let ws: WebSocket | null = null
+
+      const connect = () => {
+        ws = new WebSocket(wsUrl)
+
+        ws.onopen = () => {
+          console.log('WebSocket connected for cluster updates')
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            if (message.type === 'kubeconfig_changed') {
+              console.log('Kubeconfig changed, updating clusters...')
+              silentFetchClusters()
+            }
+          } catch (e) {
+            // Ignore non-JSON messages
           }
-        } catch (e) {
-          // Ignore non-JSON messages
+        }
+
+        ws.onclose = () => {
+          console.log('WebSocket disconnected, reconnecting in 5s...')
+          setTimeout(connect, 5000)
+        }
+
+        ws.onerror = (err) => {
+          console.error('WebSocket error:', err)
+          ws?.close()
         }
       }
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected, reconnecting in 5s...')
-        reconnectTimeout = setTimeout(connect, 5000)
-      }
+      connect()
 
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err)
-        ws?.close()
-      }
+      // Note: We intentionally don't clean up WebSocket here
+      // because we want to keep the connection alive for the entire app session
     }
+  }, [])
 
-    connect()
+  // Refetch function that consumers can call
+  const refetch = useCallback(() => {
+    fullFetchClusters()
+  }, [])
 
-    return () => {
-      clearTimeout(reconnectTimeout)
-      ws?.close()
-    }
-  }, [refetch, silentFetch])
-
-  return { clusters, isLoading, isUpdating, isRefreshing, lastUpdated, error, refetch }
+  return {
+    clusters: localState.clusters,
+    isLoading: localState.isLoading,
+    isUpdating: false, // Not tracked in shared cache for simplicity
+    isRefreshing: false, // Not tracked in shared cache for simplicity
+    lastUpdated: localState.lastUpdated,
+    error: localState.error,
+    refetch,
+  }
 }
 
 // Hook to get cluster health
@@ -564,6 +824,220 @@ export function useDeployments(cluster?: string, namespace?: string) {
   return { deployments, isLoading, isRefreshing, lastUpdated, error, refetch: () => refetch(false) }
 }
 
+// Hook to get services
+export function useServices(cluster?: string, namespace?: string) {
+  const [services, setServices] = useState<Service[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      if (namespace) params.append('namespace', namespace)
+      const { data } = await api.get<{ services: Service[] }>(`/api/mcp/services?${params}`)
+      setServices(data.services || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch services')
+      setServices([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { services, isLoading, error, refetch }
+}
+
+// Hook to get jobs
+export function useJobs(cluster?: string, namespace?: string) {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      if (namespace) params.append('namespace', namespace)
+      const { data } = await api.get<{ jobs: Job[] }>(`/api/mcp/jobs?${params}`)
+      setJobs(data.jobs || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch jobs')
+      setJobs([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { jobs, isLoading, error, refetch }
+}
+
+// Hook to get HPAs
+export function useHPAs(cluster?: string, namespace?: string) {
+  const [hpas, setHPAs] = useState<HPA[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      if (namespace) params.append('namespace', namespace)
+      const { data } = await api.get<{ hpas: HPA[] }>(`/api/mcp/hpas?${params}`)
+      setHPAs(data.hpas || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch HPAs')
+      setHPAs([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { hpas, isLoading, error, refetch }
+}
+
+// Hook to get ConfigMaps
+export function useConfigMaps(cluster?: string, namespace?: string) {
+  const [configmaps, setConfigMaps] = useState<ConfigMap[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      if (namespace) params.append('namespace', namespace)
+      const { data } = await api.get<{ configmaps: ConfigMap[] }>(`/api/mcp/configmaps?${params}`)
+      setConfigMaps(data.configmaps || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch ConfigMaps')
+      setConfigMaps([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { configmaps, isLoading, error, refetch }
+}
+
+// Hook to get Secrets
+export function useSecrets(cluster?: string, namespace?: string) {
+  const [secrets, setSecrets] = useState<Secret[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      if (namespace) params.append('namespace', namespace)
+      const { data } = await api.get<{ secrets: Secret[] }>(`/api/mcp/secrets?${params}`)
+      setSecrets(data.secrets || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch Secrets')
+      setSecrets([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { secrets, isLoading, error, refetch }
+}
+
+// Hook to get service accounts
+export function useServiceAccounts(cluster?: string, namespace?: string) {
+  const [serviceAccounts, setServiceAccounts] = useState<ServiceAccount[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      if (namespace) params.append('namespace', namespace)
+      const { data } = await api.get<{ serviceAccounts: ServiceAccount[] }>(`/api/mcp/serviceaccounts?${params}`)
+      setServiceAccounts(data.serviceAccounts || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch ServiceAccounts')
+      setServiceAccounts([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { serviceAccounts, isLoading, error, refetch }
+}
+
+// Hook to get pod logs
+export function usePodLogs(cluster: string, namespace: string, pod: string, container?: string, tail = 100) {
+  const [logs, setLogs] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    if (!cluster || !namespace || !pod) return
+    setIsLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams()
+      params.append('cluster', cluster)
+      params.append('namespace', namespace)
+      params.append('pod', pod)
+      if (container) params.append('container', container)
+      params.append('tail', tail.toString())
+      const { data } = await api.get<{ logs: string }>(`/api/mcp/pods/logs?${params}`)
+      setLogs(data.logs || '')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch logs')
+      setLogs('')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster, namespace, pod, container, tail])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { logs, isLoading, error, refetch }
+}
+
 // Hook to get warning events
 export function useWarningEvents(cluster?: string, namespace?: string, limit = 20) {
   const [events, setEvents] = useState<ClusterEvent[]>([])
@@ -625,6 +1099,35 @@ export function useGPUNodes(cluster?: string) {
       setError('Failed to fetch GPU nodes')
       // Return demo GPU data
       setNodes(getDemoGPUNodes())
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { nodes, isLoading, error, refetch }
+}
+
+// Hook to get detailed node information
+export function useNodes(cluster?: string) {
+  const [nodes, setNodes] = useState<NodeInfo[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      const { data } = await api.get<{ nodes: NodeInfo[] }>(`/api/mcp/nodes?${params}`)
+      setNodes(data.nodes || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch nodes')
+      setNodes([])
     } finally {
       setIsLoading(false)
     }
@@ -1015,6 +1518,80 @@ export function useNamespaces(cluster?: string) {
 
 function getDemoNamespaces(): string[] {
   return ['default', 'kube-system', 'kube-public', 'monitoring', 'production', 'staging', 'batch', 'data', 'web', 'ingress']
+}
+
+// Namespace stats interface
+export interface NamespaceStats {
+  name: string
+  podCount: number
+  runningPods: number
+  pendingPods: number
+  failedPods: number
+}
+
+// Hook to get namespace statistics for a cluster
+export function useNamespaceStats(cluster?: string) {
+  const [stats, setStats] = useState<NamespaceStats[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    if (!cluster) {
+      setStats([])
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      // Fetch all pods for the cluster (no limit)
+      const { data } = await api.get<{ pods: PodInfo[] }>(`/api/mcp/pods?cluster=${encodeURIComponent(cluster)}&limit=1000`)
+
+      // Group pods by namespace and calculate stats
+      const nsMap: Record<string, NamespaceStats> = {}
+      data.pods?.forEach(pod => {
+        const ns = pod.namespace || 'default'
+        if (!nsMap[ns]) {
+          nsMap[ns] = { name: ns, podCount: 0, runningPods: 0, pendingPods: 0, failedPods: 0 }
+        }
+        nsMap[ns].podCount++
+        if (pod.status === 'Running') {
+          nsMap[ns].runningPods++
+        } else if (pod.status === 'Pending') {
+          nsMap[ns].pendingPods++
+        } else if (pod.status === 'Failed' || pod.status === 'CrashLoopBackOff' || pod.status === 'Error') {
+          nsMap[ns].failedPods++
+        }
+      })
+
+      // Sort by pod count (descending)
+      const sortedStats = Object.values(nsMap).sort((a, b) => b.podCount - a.podCount)
+      setStats(sortedStats)
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch namespace stats')
+      // Fallback to demo data
+      setStats(getDemoNamespaceStats())
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { stats, isLoading, error, refetch }
+}
+
+function getDemoNamespaceStats(): NamespaceStats[] {
+  return [
+    { name: 'production', podCount: 45, runningPods: 42, pendingPods: 2, failedPods: 1 },
+    { name: 'kube-system', podCount: 28, runningPods: 28, pendingPods: 0, failedPods: 0 },
+    { name: 'monitoring', podCount: 15, runningPods: 14, pendingPods: 1, failedPods: 0 },
+    { name: 'staging', podCount: 12, runningPods: 10, pendingPods: 1, failedPods: 1 },
+    { name: 'batch', podCount: 8, runningPods: 5, pendingPods: 3, failedPods: 0 },
+    { name: 'default', podCount: 5, runningPods: 5, pendingPods: 0, failedPods: 0 },
+  ]
 }
 
 // Operator types
