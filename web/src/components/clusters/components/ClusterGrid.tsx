@@ -1,4 +1,4 @@
-import { Pencil, Loader2, Globe, User, ShieldAlert, ChevronRight, Star, WifiOff } from 'lucide-react'
+import { Pencil, Loader2, Globe, User, ShieldAlert, ChevronRight, Star, WifiOff, RefreshCw } from 'lucide-react'
 import { ClusterInfo } from '../../../hooks/useMCP'
 import { StatusIndicator } from '../../charts/StatusIndicator'
 import { isClusterUnreachable, isClusterLoading } from '../utils'
@@ -16,6 +16,8 @@ interface ClusterGridProps {
   isClusterAdmin: (clusterName: string) => boolean
   onSelectCluster: (clusterName: string) => void
   onRenameCluster: (clusterName: string) => void
+  onRefresh?: () => void
+  isRefreshing?: boolean
 }
 
 export function ClusterGrid({
@@ -26,6 +28,8 @@ export function ClusterGrid({
   isClusterAdmin,
   onSelectCluster,
   onRenameCluster,
+  onRefresh,
+  isRefreshing,
 }: ClusterGridProps) {
   if (clusters.length === 0) {
     return (
@@ -105,12 +109,27 @@ export function ClusterGrid({
                   </span>
                 )}
                 {unreachable && (
-                  <span
-                    className="flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400"
-                    title="Unreachable - check network connection"
-                  >
-                    <WifiOff className="w-3.5 h-3.5" />
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span
+                      className="flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400"
+                      title="Unreachable - check network connection"
+                    >
+                      <WifiOff className="w-3.5 h-3.5" />
+                    </span>
+                    {onRefresh && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onRefresh()
+                        }}
+                        className="flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
+                        title="Retry connection"
+                        disabled={isRefreshing}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      </button>
+                    )}
+                  </div>
                 )}
                 {!permissionsLoading && !isClusterAdmin(cluster.name) && !unreachable && (
                   <span

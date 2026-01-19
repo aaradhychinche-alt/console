@@ -1702,6 +1702,8 @@ export function Clusters() {
               isClusterAdmin={isClusterAdmin}
               onSelectCluster={setSelectedCluster}
               onRenameCluster={setRenamingCluster}
+              onRefresh={refetch}
+              isRefreshing={isUpdating}
             />
           </>
         )}
