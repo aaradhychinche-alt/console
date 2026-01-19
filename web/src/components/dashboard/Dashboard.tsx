@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, GripVertical, Layout } from 'lucide-react'
+import { Plus, GripVertical, Layout, AlertTriangle, X } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -163,6 +163,7 @@ export function Dashboard() {
   const [isConfigureCardOpen, setIsConfigureCardOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
   const [localCards, setLocalCards] = useState<Card[]>([])
+  const [demoBannerDismissed, setDemoBannerDismissed] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [_dragOverDashboard, setDragOverDashboard] = useState<string | null>(null)
@@ -491,6 +492,10 @@ export function Dashboard() {
 
   const currentCardTypes = localCards.map(c => c.card_type)
 
+  // Check if any cards are using demo data
+  const hasDemoDataCards = localCards.some(c => DEMO_DATA_CARDS.has(c.card_type))
+  const demoDataCardCount = localCards.filter(c => DEMO_DATA_CARDS.has(c.card_type)).length
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
@@ -539,6 +544,27 @@ export function Dashboard() {
           onAddCard={handleAddRecommendedCard}
         />
       </div>
+
+      {/* Demo Data Banner */}
+      {hasDemoDataCards && !demoBannerDismissed && (
+        <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+          <div className="flex-1">
+            <span className="text-sm text-yellow-300 font-medium">Demo Data in Use</span>
+            <span className="text-sm text-yellow-400/80 ml-2">
+              {demoDataCardCount} card{demoDataCardCount !== 1 ? 's are' : ' is'} displaying simulated data.
+              Cards with demo data have a dashed yellow border.
+            </span>
+          </div>
+          <button
+            onClick={() => setDemoBannerDismissed(true)}
+            className="p-1 rounded hover:bg-yellow-500/20 text-yellow-400/70 hover:text-yellow-400 transition-colors"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Dashboard drop zone (shows when dragging) */}
       <DashboardDropZone
