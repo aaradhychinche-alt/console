@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { HardDrive, Database, FolderArchive, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useShowCards } from '../../hooks/useShowCards'
 import { Skeleton } from '../ui/Skeleton'
 import { CardWrapper } from '../cards/CardWrapper'
 import { CARD_COMPONENTS } from '../cards/cardRegistry'
@@ -42,7 +43,7 @@ export function Storage() {
   // Card state
   const [cards, setCards] = useState<StorageCard[]>(() => loadStorageCards())
   const [showStats, setShowStats] = useState(true)
-  const [showCards, setShowCards] = useState(true)
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-storage')
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<StorageCard | null>(null)
@@ -86,9 +87,9 @@ export function Storage() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
-  }, [])
+  }, [expandCards])
 
   const handleRemoveCard = useCallback((cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
@@ -114,7 +115,7 @@ export function Storage() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
   }, [])
 

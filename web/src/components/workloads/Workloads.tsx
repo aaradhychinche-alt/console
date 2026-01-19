@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Layers, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, FolderOpen, AlertTriangle, AlertCircle, ListChecks } from 'lucide-react'
 import { useDeploymentIssues, usePodIssues, useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useShowCards } from '../../hooks/useShowCards'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { StatusIndicator } from '../charts/StatusIndicator'
 import { ClusterBadge } from '../ui/ClusterBadge'
@@ -53,7 +54,7 @@ export function Workloads() {
   // Card state
   const [cards, setCards] = useState<WorkloadCard[]>(() => loadWorkloadCards())
   const [showStats, setShowStats] = useState(true)
-  const [showCards, setShowCards] = useState(true)
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-workloads')
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<WorkloadCard | null>(null)
@@ -96,9 +97,9 @@ export function Workloads() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
-  }, [])
+  }, [expandCards])
 
   const handleRemoveCard = useCallback((cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
@@ -124,9 +125,9 @@ export function Workloads() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
-  }, [])
+  }, [expandCards])
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,

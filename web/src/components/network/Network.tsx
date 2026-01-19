@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Globe, Network as NetworkIcon, Shield, Workflow, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity } from 'lucide-react'
 import { useServices } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useShowCards } from '../../hooks/useShowCards'
 import { Skeleton } from '../ui/Skeleton'
 import { CardWrapper } from '../cards/CardWrapper'
 import { CARD_COMPONENTS } from '../cards/cardRegistry'
@@ -42,7 +43,7 @@ export function Network() {
   // Card state
   const [cards, setCards] = useState<NetworkCard[]>(() => loadNetworkCards())
   const [showStats, setShowStats] = useState(true)
-  const [showCards, setShowCards] = useState(true)
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-network')
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<NetworkCard | null>(null)
@@ -81,7 +82,7 @@ export function Network() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
   }, [])
 
@@ -109,7 +110,7 @@ export function Network() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
   }, [])
 

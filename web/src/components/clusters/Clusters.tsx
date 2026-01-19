@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useShowCards } from '../../hooks/useShowCards'
 import { Pencil, X, Check, Loader2, Hourglass, WifiOff, ChevronRight, CheckCircle, AlertTriangle, ChevronDown, HardDrive, Network, FolderOpen, Plus, Trash2, Box, Layers, Server, List, GitBranch, Eye, Terminal, FileText, Info, Activity, Briefcase, Lock, Settings, LayoutGrid, Wrench, Layout, RefreshCw } from 'lucide-react'
 import { useClusters, useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes, useNamespaceStats, useNodes, usePods, useDeployments, useServices, useJobs, useHPAs, useConfigMaps, useSecrets, usePodLogs, ClusterInfo, refreshSingleCluster } from '../../hooks/useMCP'
 import { AddCardModal } from '../dashboard/AddCardModal'
@@ -1384,7 +1385,7 @@ export function Clusters() {
   const [cards, setCards] = useState<ClusterCard[]>(loadClusterCards)
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [showCards, setShowCards] = useState(false) // Collapsed by default so cluster cards are visible first
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-clusters', false) // Collapsed by default so cluster cards are visible first
   const [showStats, setShowStats] = useState(true) // Stats overview visible by default
   const [showClusterGrid, setShowClusterGrid] = useState(true) // Cluster cards visible by default
   const [configuringCard, setConfiguringCard] = useState<ClusterCard | null>(null)
@@ -1419,9 +1420,9 @@ export function Clusters() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
-  }, [])
+  }, [expandCards])
 
   const handleRemoveCard = useCallback((cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
@@ -1447,9 +1448,9 @@ export function Clusters() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
-  }, [])
+  }, [expandCards])
 
   const handleRenameContext = async (oldName: string, newName: string) => {
     if (!isConnected) throw new Error('Local agent not connected')

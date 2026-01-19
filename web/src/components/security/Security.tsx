@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Users, Key, Lock, Eye, Clock, AlertTriangle, CheckCircle2, XCircle, ChevronRight, Plus, Layout, LayoutGrid, ChevronDown, RefreshCw, Activity } from 'lucide-react'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useShowCards } from '../../hooks/useShowCards'
 import { StatusIndicator } from '../charts/StatusIndicator'
 import { DonutChart } from '../charts/PieChart'
 import { ProgressBar } from '../charts/ProgressBar'
@@ -186,7 +187,7 @@ export function Security() {
   // Card state
   const [cards, setCards] = useState<SecurityCard[]>(() => loadSecurityCards())
   const [showStats, setShowStats] = useState(true)
-  const [showCards, setShowCards] = useState(true)
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-security')
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<SecurityCard | null>(null)
@@ -242,9 +243,9 @@ export function Security() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
-  }, [])
+  }, [expandCards])
 
   const handleRemoveCard = useCallback((cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
@@ -270,9 +271,9 @@ export function Security() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
-  }, [])
+  }, [expandCards])
 
   // In production, fetch from API
   const securityIssues = useMemo(() => getMockSecurityData(), [])

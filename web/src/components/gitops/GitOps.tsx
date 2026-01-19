@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useShowCards } from '../../hooks/useShowCards'
 import { StatusIndicator } from '../charts/StatusIndicator'
 import { DonutChart, BarChart } from '../charts'
 import { useToast } from '../ui/Toast'
@@ -125,7 +126,7 @@ export function GitOps() {
   // Card state
   const [cards, setCards] = useState<GitOpsCard[]>(() => loadGitOpsCards())
   const [showStats, setShowStats] = useState(true)
-  const [showCards, setShowCards] = useState(true)
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-gitops')
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<GitOpsCard | null>(null)
@@ -258,9 +259,9 @@ export function GitOps() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
-  }, [])
+  }, [expandCards])
 
   const handleRemoveCard = useCallback((cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
@@ -286,9 +287,9 @@ export function GitOps() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
-  }, [])
+  }, [expandCards])
 
   const filteredReleases = useMemo(() => {
     let result = releases

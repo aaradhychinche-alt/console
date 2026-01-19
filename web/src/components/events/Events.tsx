@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Activity, AlertTriangle, Clock, Bell, ChevronRight, CheckCircle2, Calendar, Zap, Plus, Layout, LayoutGrid, ChevronDown, RefreshCw } from 'lucide-react'
 import { useEvents, useWarningEvents } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useShowCards } from '../../hooks/useShowCards'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { DonutChart } from '../charts/PieChart'
 import { BarChart } from '../charts/BarChart'
@@ -106,7 +107,7 @@ export function Events() {
   // Card state
   const [cards, setCards] = useState<EventCard[]>(() => loadEventCards())
   const [showStats, setShowStats] = useState(true)
-  const [showCards, setShowCards] = useState(true)
+  const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-events')
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<EventCard | null>(null)
@@ -163,9 +164,9 @@ export function Events() {
       title: card.title,
     }))
     setCards(prev => [...prev, ...cardsToAdd])
-    setShowCards(true)
+    expandCards()
     setShowAddCard(false)
-  }, [])
+  }, [expandCards])
 
   const handleRemoveCard = useCallback((cardId: string) => {
     setCards(prev => prev.filter(c => c.id !== cardId))
@@ -191,9 +192,9 @@ export function Events() {
       title: card.title,
     }))
     setCards(newCards)
-    setShowCards(true)
+    expandCards()
     setShowTemplates(false)
-  }, [])
+  }, [expandCards])
 
   // Events after global filter (before local filters)
   const globalFilteredAllEvents = useMemo(() => {
