@@ -1,11 +1,89 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Pencil, X, Check, Loader2, Globe, User, Hourglass, ShieldAlert } from 'lucide-react'
-import { useClusters, useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes } from '../../hooks/useMCP'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Pencil, X, Check, Loader2, Globe, User, Hourglass, ShieldAlert, WifiOff, Star, ChevronRight, CheckCircle, AlertTriangle, ChevronDown, HardDrive, Network, FolderOpen, Plus, Trash2, Box, Layers, Server, List, GitBranch, Eye, Terminal, FileText, Info, SortAsc, SortDesc, Activity, Briefcase, Lock, Settings, LayoutGrid, Wrench } from 'lucide-react'
+import { useClusters, useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes, useNamespaceStats, useNodes, usePods, useDeployments, useServices, useJobs, useHPAs, useConfigMaps, useSecrets, usePodLogs, ClusterInfo } from '../../hooks/useMCP'
+import { AddCardModal } from '../dashboard/AddCardModal'
+import { TemplatesModal } from '../dashboard/TemplatesModal'
+import { DashboardTemplate } from '../dashboard/templates'
+import { CardWrapper } from '../cards/CardWrapper'
+import { ClusterHealth } from '../cards/ClusterHealth'
+import { PodIssues } from '../cards/PodIssues'
+import { DeploymentIssues } from '../cards/DeploymentIssues'
+import { ResourceUsage } from '../cards/ResourceUsage'
+import { ResourceCapacity } from '../cards/ResourceCapacity'
+import { GPUOverview } from '../cards/GPUOverview'
+import { GPUStatus } from '../cards/GPUStatus'
+import { GPUInventory } from '../cards/GPUInventory'
+import { ClusterFocus } from '../cards/ClusterFocus'
+import { ClusterComparison } from '../cards/ClusterComparison'
+import { ClusterNetwork } from '../cards/ClusterNetwork'
+import { ClusterCosts } from '../cards/ClusterCosts'
+import { UpgradeStatus } from '../cards/UpgradeStatus'
+import { EventStream } from '../cards/EventStream'
+import { ClusterDetailModal } from './ClusterDetailModal'
+
+// Card components mapping for clusters page
+const CLUSTER_CARD_COMPONENTS: Record<string, React.ComponentType<{ config?: Record<string, unknown> }>> = {
+  cluster_health: ClusterHealth,
+  pod_issues: PodIssues,
+  deployment_issues: DeploymentIssues,
+  resource_usage: ResourceUsage,
+  resource_capacity: ResourceCapacity,
+  gpu_overview: GPUOverview,
+  gpu_status: GPUStatus,
+  gpu_inventory: GPUInventory,
+  cluster_focus: ClusterFocus,
+  cluster_comparison: ClusterComparison,
+  cluster_network: ClusterNetwork,
+  cluster_costs: ClusterCosts,
+  upgrade_status: UpgradeStatus,
+  event_stream: EventStream,
+}
+
+interface ClusterCard {
+  id: string
+  card_type: string
+  config: Record<string, unknown>
+  title?: string
+}
+
+// Storage key for cluster page cards
+const CLUSTERS_CARDS_KEY = 'kubestellar-clusters-cards'
+
+function loadClusterCards(): ClusterCard[] {
+  try {
+    const stored = localStorage.getItem(CLUSTERS_CARDS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+function saveClusterCards(cards: ClusterCard[]) {
+  localStorage.setItem(CLUSTERS_CARDS_KEY, JSON.stringify(cards))
+}
 import { useLocalAgent } from '../../hooks/useLocalAgent'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { usePermissions } from '../../hooks/usePermissions'
+import { useMissions } from '../../hooks/useMissions'
 import { StatusIndicator } from '../charts/StatusIndicator'
 import { Gauge } from '../charts/Gauge'
+import { ClusterCardSkeleton, StatsOverviewSkeleton } from '../ui/ClusterCardSkeleton'
+
+// Helper to determine if cluster is unreachable vs just unhealthy
+// A reachable cluster always has at least 1 node - 0 nodes means we couldn't connect
+const isClusterUnreachable = (c: ClusterInfo) => {
+  if (c.reachable === false) return true
+  if (c.errorType && ['timeout', 'network', 'certificate'].includes(c.errorType)) return true
+  // nodeCount === 0 means unreachable (health check completed but no nodes)
+  // nodeCount === undefined means still checking - treat as loading, not unreachable
+  if (c.nodeCount === 0) return true
+  return false
+}
+
+// Helper to determine if cluster health is still loading
+const isClusterLoading = (c: ClusterInfo) => {
+  return c.nodeCount === undefined && c.reachable === undefined
+}
 
 interface RenameModalProps {
   clusterName: string
@@ -15,7 +93,7 @@ interface RenameModalProps {
 }
 
 function RenameModal({ clusterName, currentDisplayName, onClose, onRename }: RenameModalProps) {
-  const [newName, setNewName] = useState('')
+  const [newName, setNewName] = useState(currentDisplayName)
   const [isRenaming, setIsRenaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,6 +116,10 @@ function RenameModal({ clusterName, currentDisplayName, onClose, onRename }: Ren
     }
     if (newName.includes(' ')) {
       setError('Name cannot contain spaces')
+      return
+    }
+    if (newName.trim() === currentDisplayName) {
+      setError('Name is unchanged')
       return
     }
 
@@ -75,9 +157,9 @@ function RenameModal({ clusterName, currentDisplayName, onClose, onRename }: Ren
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="e.g., vllm-d, prod-east"
-            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm font-mono"
             autoFocus
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => e.key === 'Enter' && handleRename()}
           />
         </div>
@@ -103,16 +185,760 @@ function RenameModal({ clusterName, currentDisplayName, onClose, onRename }: Ren
   )
 }
 
-interface ClusterDetailProps {
-  clusterName: string
+// Helper to format labels/annotations for tooltip
+function formatMetadata(labels?: Record<string, string>, annotations?: Record<string, string>): string {
+  const parts: string[] = []
+  if (labels && Object.keys(labels).length > 0) {
+    parts.push('Labels:')
+    Object.entries(labels).slice(0, 5).forEach(([k, v]) => {
+      parts.push(`  ${k}=${v}`)
+    })
+    if (Object.keys(labels).length > 5) {
+      parts.push(`  ... +${Object.keys(labels).length - 5} more`)
+    }
+  }
+  if (annotations && Object.keys(annotations).length > 0) {
+    if (parts.length > 0) parts.push('')
+    parts.push('Annotations:')
+    Object.entries(annotations).slice(0, 3).forEach(([k, v]) => {
+      const truncVal = v.length > 50 ? v.substring(0, 50) + '...' : v
+      parts.push(`  ${k}=${truncVal}`)
+    })
+    if (Object.keys(annotations).length > 3) {
+      parts.push(`  ... +${Object.keys(annotations).length - 3} more`)
+    }
+  }
+  return parts.join('\n')
+}
+
+// Resource Detail Modal
+interface ResourceDetailModalProps {
+  resource: {
+    kind: 'Pod' | 'Deployment' | 'Node' | 'Service' | 'Job' | 'HPA' | 'ConfigMap' | 'Secret'
+    name: string
+    namespace?: string
+    cluster: string
+    labels?: Record<string, string>
+    annotations?: Record<string, string>
+    data?: Record<string, unknown>
+  }
   onClose: () => void
 }
 
-function ClusterDetail({ clusterName, onClose }: ClusterDetailProps) {
+function ResourceDetailModal({ resource, onClose }: ResourceDetailModalProps) {
+  const [activeTab, setActiveTab] = useState<'describe' | 'labels' | 'logs'>('describe')
+  const { startMission } = useMissions()
+
+  const handleRepairPod = () => {
+    const issues = resource.data?.issues as string[] | undefined
+    const status = resource.data?.status as string | undefined
+    const restarts = resource.data?.restarts as number | undefined
+
+    startMission({
+      title: `Repair ${resource.name}`,
+      description: `Troubleshoot and repair pod issues`,
+      type: 'troubleshoot',
+      cluster: resource.cluster,
+      initialPrompt: `I need help troubleshooting and repairing a Kubernetes pod that is having issues.
+
+**Pod Details:**
+- Name: ${resource.name}
+- Namespace: ${resource.namespace || 'default'}
+- Cluster: ${resource.cluster}
+- Status: ${status || 'Unknown'}
+- Restarts: ${restarts || 0}
+${issues && issues.length > 0 ? `- Issues: ${issues.join(', ')}` : ''}
+
+Please help me:
+1. Diagnose what's causing this pod to fail
+2. Check the pod events and logs for error messages
+3. Identify the root cause
+4. Suggest and implement a fix
+5. Verify the pod is running correctly after the fix
+
+Start by running diagnostic commands to understand what's happening.`,
+      context: {
+        podName: resource.name,
+        namespace: resource.namespace,
+        cluster: resource.cluster,
+        status,
+        restarts,
+        issues,
+      },
+    })
+    onClose()
+  }
+
+  // Fetch logs for pods
+  const { logs, isLoading: logsLoading, error: logsError, refetch: refetchLogs } = usePodLogs(
+    resource.cluster,
+    resource.namespace || '',
+    resource.kind === 'Pod' ? resource.name : '',
+    undefined,
+    200
+  )
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  const getKindColors = () => {
+    switch (resource.kind) {
+      case 'Pod': return 'bg-blue-500/20 text-blue-400'
+      case 'Deployment': return 'bg-purple-500/20 text-purple-400'
+      case 'Node': return 'bg-cyan-500/20 text-cyan-400'
+      case 'Service': return 'bg-cyan-500/20 text-cyan-400'
+      case 'Job': return 'bg-amber-500/20 text-amber-400'
+      case 'HPA': return 'bg-violet-500/20 text-violet-400'
+      case 'ConfigMap': return 'bg-orange-500/20 text-orange-400'
+      case 'Secret': return 'bg-pink-500/20 text-pink-400'
+      default: return 'bg-gray-500/20 text-gray-400'
+    }
+  }
+
+  const getKindIcon = () => {
+    switch (resource.kind) {
+      case 'Pod': return <Box className="w-4 h-4" />
+      case 'Deployment': return <Layers className="w-4 h-4" />
+      case 'Node': return <Server className="w-4 h-4" />
+      case 'Service': return <Network className="w-4 h-4" />
+      case 'Job': return <Briefcase className="w-4 h-4" />
+      case 'HPA': return <Activity className="w-4 h-4" />
+      case 'ConfigMap': return <Settings className="w-4 h-4" />
+      case 'Secret': return <Lock className="w-4 h-4" />
+      default: return null
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="glass p-6 rounded-lg w-[700px] max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className={`flex items-center gap-1 px-2 py-1 rounded text-sm font-medium ${getKindColors()}`}>
+              {getKindIcon()}
+              {resource.kind}
+            </span>
+            <span className="font-medium text-foreground">{resource.name}</span>
+            {resource.namespace && <span className="text-muted-foreground text-sm">({resource.namespace})</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {resource.kind === 'Pod' && Array.isArray(resource.data?.issues) && resource.data.issues.length > 0 && (
+              <button
+                onClick={handleRepairPod}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+                title="Launch AI repair mission"
+              >
+                <Wrench className="w-4 h-4" />
+                Repair Pod
+              </button>
+            )}
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 border-b border-border pb-2">
+          <button
+            onClick={() => setActiveTab('describe')}
+            className={`px-3 py-1.5 rounded-t text-sm flex items-center gap-1.5 ${activeTab === 'describe' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <FileText className="w-4 h-4" />Describe
+          </button>
+          <button
+            onClick={() => setActiveTab('labels')}
+            className={`px-3 py-1.5 rounded-t text-sm flex items-center gap-1.5 ${activeTab === 'labels' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <Info className="w-4 h-4" />Labels & Annotations
+          </button>
+          {resource.kind === 'Pod' && (
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`px-3 py-1.5 rounded-t text-sm flex items-center gap-1.5 ${activeTab === 'logs' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <Terminal className="w-4 h-4" />Logs
+            </button>
+          )}
+        </div>
+
+        {/* Tab Content */}
+        <div className="flex-1 overflow-auto">
+          {activeTab === 'describe' && (
+            <div className="bg-secondary/50 rounded p-4 font-mono text-xs overflow-auto max-h-[400px]">
+              <div className="text-muted-foreground mb-2"># kubectl describe {resource.kind.toLowerCase()} {resource.name} {resource.namespace ? `-n ${resource.namespace}` : ''}</div>
+              <div className="space-y-1">
+                <div><span className="text-muted-foreground">Name:</span> <span className="text-foreground">{resource.name}</span></div>
+                {resource.namespace && <div><span className="text-muted-foreground">Namespace:</span> <span className="text-foreground">{resource.namespace}</span></div>}
+                <div><span className="text-muted-foreground">Cluster:</span> <span className="text-foreground">{resource.cluster}</span></div>
+                {resource.data && Object.entries(resource.data).map(([k, v]) => (
+                  <div key={k}><span className="text-muted-foreground">{k}:</span> <span className="text-foreground">{String(v)}</span></div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'labels' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-medium text-foreground mb-2">Labels ({resource.labels ? Object.keys(resource.labels).length : 0})</h4>
+                <div className="flex flex-wrap gap-2">
+                  {resource.labels && Object.entries(resource.labels).map(([k, v]) => (
+                    <span key={k} className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-400 font-mono">
+                      {k}={v}
+                    </span>
+                  ))}
+                  {(!resource.labels || Object.keys(resource.labels).length === 0) && (
+                    <span className="text-xs text-muted-foreground">No labels</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-foreground mb-2">Annotations ({resource.annotations ? Object.keys(resource.annotations).length : 0})</h4>
+                <div className="space-y-2">
+                  {resource.annotations && Object.entries(resource.annotations).map(([k, v]) => (
+                    <div key={k} className="text-xs font-mono bg-secondary/50 rounded p-2">
+                      <div className="text-purple-400 break-all">{k}</div>
+                      <div className="text-foreground mt-1 break-all">{v}</div>
+                    </div>
+                  ))}
+                  {(!resource.annotations || Object.keys(resource.annotations).length === 0) && (
+                    <span className="text-xs text-muted-foreground">No annotations</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'logs' && resource.kind === 'Pod' && (
+            <div className="bg-secondary/50 rounded p-4 font-mono text-xs overflow-auto max-h-[400px]">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-muted-foreground"># kubectl logs {resource.name} -n {resource.namespace}</div>
+                <button
+                  onClick={() => refetchLogs()}
+                  disabled={logsLoading}
+                  className="text-xs px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-50"
+                >
+                  {logsLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+              {logsLoading && <div className="text-muted-foreground">Loading logs...</div>}
+              {logsError && <div className="text-red-400">{logsError}</div>}
+              {!logsLoading && !logsError && !logs && (
+                <div className="text-muted-foreground">No logs available</div>
+              )}
+              {!logsLoading && logs && (
+                <pre className="whitespace-pre-wrap break-all text-foreground">{logs}</pre>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Component to show resources in a namespace when drilled into
+interface NamespaceResourcesProps {
+  clusterName: string
+  namespace: string
+}
+
+type ResourceKind = 'Pod' | 'Deployment' | 'Service' | 'Job' | 'HPA' | 'ConfigMap' | 'Secret'
+
+function NamespaceResources({ clusterName, namespace }: NamespaceResourcesProps) {
+  const { pods, isLoading: podsLoading } = usePods(clusterName, namespace, 'name', 100)
+  const { deployments, isLoading: deploymentsLoading } = useDeployments(clusterName, namespace)
+  const { services, isLoading: servicesLoading } = useServices(clusterName, namespace)
+  const { jobs, isLoading: jobsLoading } = useJobs(clusterName, namespace)
+  const { hpas, isLoading: hpasLoading } = useHPAs(clusterName, namespace)
+  const { configmaps, isLoading: configmapsLoading } = useConfigMaps(clusterName, namespace)
+  const { secrets, isLoading: secretsLoading } = useSecrets(clusterName, namespace)
+  const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree')
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set(['deployments', 'pods']))
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [selectedResource, setSelectedResource] = useState<{
+    kind: ResourceKind
+    name: string
+    namespace?: string
+    cluster: string
+    labels?: Record<string, string>
+    annotations?: Record<string, string>
+    data?: Record<string, unknown>
+  } | null>(null)
+
+  const isLoading = podsLoading || deploymentsLoading || servicesLoading || jobsLoading || hpasLoading || configmapsLoading || secretsLoading
+
+  const toggleType = (type: string) => {
+    setExpandedTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      return next
+    })
+  }
+
+  const toggleItem = (item: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(item)) next.delete(item)
+      else next.add(item)
+      return next
+    })
+  }
+
+  // Map pods to their deployment owners
+  const podsByDeployment = useMemo(() => {
+    const groups: Record<string, typeof pods> = {}
+    const standalone: typeof pods = []
+
+    pods.forEach(pod => {
+      const matchingDep = deployments.find(dep => pod.name.startsWith(dep.name + '-'))
+      if (matchingDep) {
+        if (!groups[matchingDep.name]) groups[matchingDep.name] = []
+        groups[matchingDep.name].push(pod)
+      } else {
+        standalone.push(pod)
+      }
+    })
+    return { byDeployment: groups, standalone }
+  }, [pods, deployments])
+
+  // Build flat list of all resources for list view
+  const allResources = useMemo(() => {
+    const resources: Array<{
+      kind: ResourceKind
+      name: string
+      namespace?: string
+      status?: string
+      statusColor: string
+      detail?: string
+      labels?: Record<string, string>
+      annotations?: Record<string, string>
+      data?: Record<string, unknown>
+    }> = []
+
+    deployments.forEach(dep => resources.push({
+      kind: 'Deployment',
+      name: dep.name,
+      namespace: dep.namespace,
+      status: dep.status,
+      statusColor: dep.status === 'running' ? 'green' : dep.status === 'deploying' ? 'blue' : 'red',
+      detail: `${dep.readyReplicas}/${dep.replicas}`,
+      labels: dep.labels,
+      annotations: dep.annotations,
+      data: { replicas: dep.replicas, readyReplicas: dep.readyReplicas, image: dep.image, status: dep.status, age: dep.age }
+    }))
+
+    pods.forEach(pod => resources.push({
+      kind: 'Pod',
+      name: pod.name,
+      namespace: pod.namespace,
+      status: pod.status,
+      statusColor: pod.status === 'Running' ? 'green' : pod.status === 'Pending' ? 'yellow' : 'red',
+      detail: pod.ready,
+      labels: pod.labels,
+      annotations: pod.annotations,
+      data: { status: pod.status, ready: pod.ready, restarts: pod.restarts, node: pod.node, age: pod.age }
+    }))
+
+    services.forEach(svc => resources.push({
+      kind: 'Service',
+      name: svc.name,
+      namespace: svc.namespace,
+      status: svc.type,
+      statusColor: 'cyan',
+      detail: svc.ports?.slice(0, 2).join(', '),
+      labels: svc.labels,
+      annotations: svc.annotations,
+      data: { type: svc.type, clusterIP: svc.clusterIP, externalIP: svc.externalIP, ports: svc.ports, age: svc.age }
+    }))
+
+    jobs.forEach(job => resources.push({
+      kind: 'Job',
+      name: job.name,
+      namespace: job.namespace,
+      status: job.status,
+      statusColor: job.status === 'Complete' ? 'green' : job.status === 'Running' ? 'blue' : 'red',
+      detail: job.completions,
+      labels: job.labels,
+      annotations: job.annotations,
+      data: { status: job.status, completions: job.completions, duration: job.duration, age: job.age }
+    }))
+
+    hpas.forEach(hpa => resources.push({
+      kind: 'HPA',
+      name: hpa.name,
+      namespace: hpa.namespace,
+      status: `${hpa.currentReplicas}/${hpa.minReplicas}-${hpa.maxReplicas}`,
+      statusColor: 'purple',
+      detail: hpa.reference,
+      labels: hpa.labels,
+      annotations: hpa.annotations,
+      data: { reference: hpa.reference, minReplicas: hpa.minReplicas, maxReplicas: hpa.maxReplicas, currentReplicas: hpa.currentReplicas, targetCPU: hpa.targetCPU, currentCPU: hpa.currentCPU, age: hpa.age }
+    }))
+
+    configmaps.forEach(cm => resources.push({
+      kind: 'ConfigMap',
+      name: cm.name,
+      namespace: cm.namespace,
+      status: `${cm.dataCount} keys`,
+      statusColor: 'orange',
+      labels: cm.labels,
+      annotations: cm.annotations,
+      data: { dataCount: cm.dataCount, age: cm.age }
+    }))
+
+    secrets.forEach(secret => resources.push({
+      kind: 'Secret',
+      name: secret.name,
+      namespace: secret.namespace,
+      status: secret.type,
+      statusColor: 'pink',
+      detail: `${secret.dataCount} keys`,
+      labels: secret.labels,
+      annotations: secret.annotations,
+      data: { type: secret.type, dataCount: secret.dataCount, age: secret.age }
+    }))
+
+    return resources
+  }, [deployments, pods, services, jobs, hpas, configmaps, secrets])
+
+  // Resource kind icon mapping
+  const getKindIcon = (kind: ResourceKind) => {
+    switch (kind) {
+      case 'Pod': return <Box className="w-3.5 h-3.5 text-blue-400" />
+      case 'Deployment': return <Layers className="w-3.5 h-3.5 text-purple-400" />
+      case 'Service': return <Network className="w-3.5 h-3.5 text-cyan-400" />
+      case 'Job': return <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+      case 'HPA': return <Activity className="w-3.5 h-3.5 text-violet-400" />
+      case 'ConfigMap': return <Settings className="w-3.5 h-3.5 text-orange-400" />
+      case 'Secret': return <Lock className="w-3.5 h-3.5 text-pink-400" />
+    }
+  }
+
+  const getStatusBgColor = (color: string) => {
+    switch (color) {
+      case 'green': return 'bg-green-500/20 text-green-400'
+      case 'blue': return 'bg-blue-500/20 text-blue-400'
+      case 'yellow': return 'bg-yellow-500/20 text-yellow-400'
+      case 'red': return 'bg-red-500/20 text-red-400'
+      case 'cyan': return 'bg-cyan-500/20 text-cyan-400'
+      case 'purple': return 'bg-purple-500/20 text-purple-400'
+      case 'orange': return 'bg-orange-500/20 text-orange-400'
+      case 'pink': return 'bg-pink-500/20 text-pink-400'
+      default: return 'bg-gray-500/20 text-gray-400'
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="px-3 pb-3 pt-0 border-t border-border/30">
+        <div className="pl-6 py-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading namespace resources...
+        </div>
+      </div>
+    )
+  }
+
+  const hasResources = allResources.length > 0
+
+  return (
+    <div className="px-3 pb-3 pt-0 border-t border-border/30">
+      {/* View toggle */}
+      <div className="flex justify-end pt-2 pr-2">
+        <div className="flex items-center gap-1 p-0.5 rounded bg-secondary/50">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            title="List view"
+          >
+            <List className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setViewMode('tree')}
+            className={`p-1.5 rounded transition-colors ${viewMode === 'tree' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            title="Tree view"
+          >
+            <GitBranch className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'list' ? (
+        /* List View - Individual resources with icons */
+        <div className="pl-4 space-y-1 pt-2 max-h-[400px] overflow-y-auto">
+          {allResources.slice(0, 50).map((resource, idx) => {
+            const tooltip = formatMetadata(resource.labels, resource.annotations)
+            return (
+              <div key={`${resource.kind}-${resource.name}-${idx}`} className="flex items-center justify-between p-2 rounded bg-card/30 text-sm group hover:bg-card/50 transition-colors" title={tooltip || `${resource.kind}: ${resource.name}`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  {getKindIcon(resource.kind)}
+                  <span className="text-foreground truncate">{resource.name}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs shrink-0">
+                  <button
+                    onClick={() => setSelectedResource({
+                      kind: resource.kind,
+                      name: resource.name,
+                      namespace: resource.namespace,
+                      cluster: clusterName,
+                      labels: resource.labels,
+                      annotations: resource.annotations,
+                      data: resource.data
+                    })}
+                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="View details"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  {resource.detail && <span className="text-muted-foreground">{resource.detail}</span>}
+                  {resource.status && (
+                    <span className={`px-1.5 py-0.5 rounded ${getStatusBgColor(resource.statusColor)}`}>
+                      {resource.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {allResources.length > 50 && <div className="text-xs text-muted-foreground text-center py-2">+{allResources.length - 50} more resources</div>}
+        </div>
+      ) : (
+        /* Tree View */
+        <div className="pl-4 pt-2 font-mono text-xs">
+          <div className="border-l border-border/50 pl-2">
+            {deployments.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('deployments')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('deployments') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium"><Layers className="w-3 h-3" />Deploy</span>
+                  <span className="text-muted-foreground">({deployments.length})</span>
+                </button>
+                {expandedTypes.has('deployments') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {deployments.map((dep) => {
+                      const depPods = podsByDeployment.byDeployment[dep.name] || []
+                      const isExpanded = expandedItems.has(`dep-${dep.name}`)
+                      return (
+                        <div key={dep.name} className="mb-0.5">
+                          <button onClick={() => depPods.length > 0 && toggleItem(`dep-${dep.name}`)} className={`flex items-center gap-2 py-1 px-1 rounded w-full text-left ${depPods.length > 0 ? 'hover:bg-card/30 cursor-pointer' : ''}`}>
+                            {depPods.length > 0 ? (isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />) : <span className="w-3" />}
+                            <span className="text-foreground">{dep.name}</span>
+                            <span className={`text-xs ${dep.readyReplicas === dep.replicas ? 'text-green-400' : 'text-orange-400'}`}>{dep.readyReplicas}/{dep.replicas}</span>
+                            {depPods.length > 0 && <span className="text-xs text-muted-foreground">({depPods.length} pods)</span>}
+                          </button>
+                          {isExpanded && depPods.length > 0 && (
+                            <div className="ml-4 border-l border-border/30 pl-2">
+                              {depPods.slice(0, 10).map(pod => (
+                                <div key={pod.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                                  <Box className="w-3 h-3 text-blue-400" />
+                                  <span className="text-foreground truncate max-w-[200px]" title={pod.name}>{pod.name}</span>
+                                  <span className={pod.status === 'Running' ? 'text-green-400' : pod.status === 'Pending' ? 'text-yellow-400' : 'text-red-400'}>{pod.status}</span>
+                                </div>
+                              ))}
+                              {depPods.length > 10 && <div className="text-xs text-muted-foreground pl-5">+{depPods.length - 10} more</div>}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {podsByDeployment.standalone.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('pods')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('pods') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium"><Box className="w-3 h-3" />Pod</span>
+                  <span className="text-muted-foreground">Standalone ({podsByDeployment.standalone.length})</span>
+                </button>
+                {expandedTypes.has('pods') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {podsByDeployment.standalone.slice(0, 20).map(pod => (
+                      <div key={pod.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                        <Box className="w-3 h-3 text-blue-400" />
+                        <span className="text-foreground truncate max-w-[200px]" title={pod.name}>{pod.name}</span>
+                        <span className={pod.status === 'Running' ? 'text-green-400' : pod.status === 'Pending' ? 'text-yellow-400' : 'text-red-400'}>{pod.status}</span>
+                      </div>
+                    ))}
+                    {podsByDeployment.standalone.length > 20 && <div className="text-xs text-muted-foreground pl-5">+{podsByDeployment.standalone.length - 20} more</div>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {services.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('services')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('services') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-medium"><Network className="w-3 h-3" />Svc</span>
+                  <span className="text-muted-foreground">({services.length})</span>
+                </button>
+                {expandedTypes.has('services') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {services.map(svc => (
+                      <div key={svc.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                        <Network className="w-3 h-3 text-cyan-400" />
+                        <span className="text-foreground truncate max-w-[200px]" title={svc.name}>{svc.name}</span>
+                        <span className="text-cyan-400">{svc.type}</span>
+                        {svc.ports && svc.ports.length > 0 && <span className="text-muted-foreground">{svc.ports[0]}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {jobs.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('jobs')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('jobs') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium"><Briefcase className="w-3 h-3" />Job</span>
+                  <span className="text-muted-foreground">({jobs.length})</span>
+                </button>
+                {expandedTypes.has('jobs') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {jobs.map(job => (
+                      <div key={job.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                        <Briefcase className="w-3 h-3 text-amber-400" />
+                        <span className="text-foreground truncate max-w-[200px]" title={job.name}>{job.name}</span>
+                        <span className={job.status === 'Complete' ? 'text-green-400' : job.status === 'Running' ? 'text-blue-400' : 'text-red-400'}>{job.status}</span>
+                        <span className="text-muted-foreground">{job.completions}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hpas.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('hpas')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('hpas') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 font-medium"><Activity className="w-3 h-3" />HPA</span>
+                  <span className="text-muted-foreground">({hpas.length})</span>
+                </button>
+                {expandedTypes.has('hpas') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {hpas.map(hpa => (
+                      <div key={hpa.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                        <Activity className="w-3 h-3 text-violet-400" />
+                        <span className="text-foreground truncate max-w-[200px]" title={hpa.name}>{hpa.name}</span>
+                        <span className="text-violet-400">{hpa.currentReplicas}/{hpa.minReplicas}-{hpa.maxReplicas}</span>
+                        <span className="text-muted-foreground">→ {hpa.reference}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {configmaps.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('configmaps')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('configmaps') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-medium"><Settings className="w-3 h-3" />CM</span>
+                  <span className="text-muted-foreground">({configmaps.length})</span>
+                </button>
+                {expandedTypes.has('configmaps') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {configmaps.slice(0, 20).map(cm => (
+                      <div key={cm.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                        <Settings className="w-3 h-3 text-orange-400" />
+                        <span className="text-foreground truncate max-w-[200px]" title={cm.name}>{cm.name}</span>
+                        <span className="text-muted-foreground">{cm.dataCount} keys</span>
+                      </div>
+                    ))}
+                    {configmaps.length > 20 && <div className="text-xs text-muted-foreground pl-5">+{configmaps.length - 20} more</div>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {secrets.length > 0 && (
+              <div className="mb-1">
+                <button onClick={() => toggleType('secrets')} className="flex items-center gap-1.5 py-1 hover:bg-card/30 rounded px-1 w-full text-left">
+                  {expandedTypes.has('secrets') ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-400 font-medium"><Lock className="w-3 h-3" />Secret</span>
+                  <span className="text-muted-foreground">({secrets.length})</span>
+                </button>
+                {expandedTypes.has('secrets') && (
+                  <div className="ml-4 border-l border-border/30 pl-2">
+                    {secrets.slice(0, 20).map(secret => (
+                      <div key={secret.name} className="flex items-center gap-2 py-0.5 px-1 text-xs">
+                        <Lock className="w-3 h-3 text-pink-400" />
+                        <span className="text-foreground truncate max-w-[200px]" title={secret.name}>{secret.name}</span>
+                        <span className="text-pink-400">{secret.type}</span>
+                        <span className="text-muted-foreground">{secret.dataCount} keys</span>
+                      </div>
+                    ))}
+                    {secrets.length > 20 && <div className="text-xs text-muted-foreground pl-5">+{secrets.length - 20} more</div>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!hasResources && (
+        <div className="text-sm text-muted-foreground text-center py-4">
+          No resources found in this namespace
+        </div>
+      )}
+
+      {/* Resource Detail Modal */}
+      {selectedResource && (
+        <ResourceDetailModal
+          resource={selectedResource}
+          onClose={() => setSelectedResource(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Legacy ClusterDetail - kept for reference, using ClusterDetailModal instead
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface _ClusterDetailProps {
+  clusterName: string
+  onClose: () => void
+  onRename?: (clusterName: string) => void
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function _ClusterDetail({ clusterName, onClose, onRename }: _ClusterDetailProps) {
   const { health, isLoading } = useClusterHealth(clusterName)
   const { issues: podIssues } = usePodIssues(clusterName)
   const { issues: deploymentIssues } = useDeploymentIssues()
   const { nodes: gpuNodes } = useGPUNodes()
+  const { nodes: clusterNodes, isLoading: nodesLoading } = useNodes(clusterName)
+  const { stats: namespaceStats, isLoading: nsLoading } = useNamespaceStats(clusterName)
+  const { deployments: clusterDeployments } = useDeployments(clusterName)
+  const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set())
+  const [showAllNamespaces, setShowAllNamespaces] = useState(false)
+  const [showPodsByNamespace, setShowPodsByNamespace] = useState(false)
+  const [selectedIssueResource, setSelectedIssueResource] = useState<{
+    kind: ResourceKind
+    name: string
+    namespace?: string
+    cluster: string
+    labels?: Record<string, string>
+    annotations?: Record<string, string>
+    data?: Record<string, unknown>
+  } | null>(null)
+  const [showNodeDetails, setShowNodeDetails] = useState(false)
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
+  const [expandedNamespace, setExpandedNamespace] = useState<string | null>(null)
 
   // ESC to close
   useEffect(() => {
@@ -129,6 +955,37 @@ function ClusterDetail({ clusterName, onClose }: ClusterDetailProps) {
   const clusterGPUs = gpuNodes.filter(n => n.cluster === clusterName || n.cluster.includes(clusterName.split('/')[0]))
   const clusterDeploymentIssues = deploymentIssues.filter(d => d.cluster === clusterName || d.cluster?.includes(clusterName.split('/')[0]))
 
+  // Determine cluster status
+  const isUnreachable = !health?.nodeCount || health.nodeCount === 0
+  const isHealthy = !isUnreachable && health?.healthy !== false
+
+  // Group GPUs by type for summary
+  const gpuByType = useMemo(() => {
+    const map: Record<string, { total: number; allocated: number; nodes: typeof clusterGPUs }> = {}
+    clusterGPUs.forEach(node => {
+      const type = node.gpuType || 'Unknown'
+      if (!map[type]) {
+        map[type] = { total: 0, allocated: 0, nodes: [] }
+      }
+      map[type].total += node.gpuCount
+      map[type].allocated += node.gpuAllocated
+      map[type].nodes.push(node)
+    })
+    return map
+  }, [clusterGPUs])
+
+  const toggleIssue = (id: string) => {
+    setExpandedIssues(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -142,99 +999,474 @@ function ClusterDetail({ clusterName, onClose }: ClusterDetailProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="glass p-6 rounded-lg w-[800px] max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* Header with status icons */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <StatusIndicator status={health?.healthy ? 'healthy' : 'error'} />
+            {isUnreachable ? (
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-yellow-500/20 text-yellow-400" title="Unreachable - check network connection">
+                <WifiOff className="w-4 h-4" />
+              </span>
+            ) : isHealthy ? (
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-green-500/20 text-green-400" title="Healthy">
+                <CheckCircle className="w-4 h-4" />
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-orange-500/20 text-orange-400" title="Unhealthy">
+                <AlertTriangle className="w-4 h-4" />
+              </span>
+            )}
             <h2 className="text-xl font-semibold text-foreground">{clusterName.split('/').pop()}</h2>
+            {onRename && (
+              <button
+                onClick={() => onRename(clusterName)}
+                className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                title="Rename cluster"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
+          <button
+            onClick={() => !isUnreachable && setShowNodeDetails(!showNodeDetails)}
+            disabled={isUnreachable}
+            className={`p-4 rounded-lg bg-card/50 border text-left transition-colors ${
+              !isUnreachable ? 'border-border hover:border-primary/50 hover:bg-card/70 cursor-pointer' : 'border-border cursor-default'
+            } ${showNodeDetails ? 'border-primary/50 bg-card/70' : ''}`}
+            title={!isUnreachable ? 'Click to view node details' : undefined}
+          >
+            <div className="text-2xl font-bold text-foreground">{!isUnreachable ? (health?.nodeCount || 0) : '-'}</div>
+            <div className="text-sm text-muted-foreground flex items-center gap-1">
+              Nodes
+              {!isUnreachable && <ChevronDown className={`w-3 h-3 transition-transform ${showNodeDetails ? 'rotate-180' : ''}`} />}
+            </div>
+            <div className="text-xs text-green-400">{!isUnreachable ? `${health?.readyNodes || 0} ready` : 'unreachable'}</div>
+          </button>
+          <button
+            onClick={() => !isUnreachable && setShowPodsByNamespace(!showPodsByNamespace)}
+            disabled={isUnreachable}
+            className={`p-4 rounded-lg bg-card/50 border text-left transition-colors ${
+              !isUnreachable ? 'border-border hover:border-primary/50 hover:bg-card/70 cursor-pointer' : 'border-border cursor-default'
+            } ${showPodsByNamespace ? 'border-primary/50 bg-card/70' : ''}`}
+            title={!isUnreachable ? 'Click to view workloads by namespace' : undefined}
+          >
+            <div className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
+              Workloads
+              {!isUnreachable && <ChevronDown className={`w-3 h-3 transition-transform ${showPodsByNamespace ? 'rotate-180' : ''}`} />}
+            </div>
+            <div className="space-y-0.5 text-xs">
+              {!isUnreachable ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Namespaces</span>
+                    <span className="text-foreground font-medium">{namespaceStats.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Deployments</span>
+                    <span className="text-foreground font-medium">{clusterDeployments.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pods</span>
+                    <span className="text-foreground font-medium">{health?.podCount || 0}</span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-muted-foreground">-</span>
+              )}
+            </div>
+          </button>
           <div className="p-4 rounded-lg bg-card/50 border border-border">
-            <div className="text-2xl font-bold text-foreground">{health?.nodeCount || 0}</div>
-            <div className="text-sm text-muted-foreground">Nodes</div>
-            <div className="text-xs text-green-400">{health?.readyNodes || 0} ready</div>
-          </div>
-          <div className="p-4 rounded-lg bg-card/50 border border-border">
-            <div className="text-2xl font-bold text-foreground">{health?.podCount || 0}</div>
-            <div className="text-sm text-muted-foreground">Pods</div>
-          </div>
-          <div className="p-4 rounded-lg bg-card/50 border border-border">
-            <div className="text-2xl font-bold text-foreground">{clusterGPUs.reduce((sum, n) => sum + n.gpuCount, 0)}</div>
+            <div className="text-2xl font-bold text-foreground">{!isUnreachable ? clusterGPUs.reduce((sum, n) => sum + n.gpuCount, 0) : '-'}</div>
             <div className="text-sm text-muted-foreground">GPUs</div>
-            <div className="text-xs text-yellow-400">{clusterGPUs.reduce((sum, n) => sum + n.gpuAllocated, 0)} allocated</div>
+            <div className="text-xs text-yellow-400">{!isUnreachable ? `${clusterGPUs.reduce((sum, n) => sum + n.gpuAllocated, 0)} allocated` : ''}</div>
           </div>
         </div>
 
-        {/* Issues Section */}
+        {/* Pods by Namespace - Expandable with drill-down */}
+        {!isUnreachable && showPodsByNamespace && namespaceStats.length > 0 && (
+          <div className="mb-6">
+            <div className="rounded-lg bg-card/50 border border-border overflow-hidden">
+              <div className="divide-y divide-border/30">
+                {(showAllNamespaces ? namespaceStats : namespaceStats.slice(0, 5)).map((ns) => {
+                  const isExpanded = expandedNamespace === ns.name
+                  return (
+                    <div key={ns.name} className="overflow-hidden">
+                      <button
+                        onClick={() => setExpandedNamespace(isExpanded ? null : ns.name)}
+                        className="w-full p-3 flex items-center justify-between hover:bg-card/30 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                          <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-medium"><FolderOpen className="w-3 h-3" />NS</span>
+                          <span className="font-mono text-sm text-foreground">{ns.name}</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-muted-foreground">{ns.podCount} pods</span>
+                          {ns.runningPods > 0 && (
+                            <span className="text-green-400">{ns.runningPods} running</span>
+                          )}
+                          {ns.pendingPods > 0 && (
+                            <span className="text-yellow-400">{ns.pendingPods} pending</span>
+                          )}
+                          {ns.failedPods > 0 && (
+                            <span className="text-red-400">{ns.failedPods} failed</span>
+                          )}
+                        </div>
+                      </button>
+                      {isExpanded && (
+                        <NamespaceResources clusterName={clusterName} namespace={ns.name} />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {namespaceStats.length > 5 && (
+                <button
+                  onClick={() => setShowAllNamespaces(!showAllNamespaces)}
+                  className="w-full p-2 text-sm text-primary hover:bg-card/30 transition-colors border-t border-border/30"
+                >
+                  {showAllNamespaces ? 'Show less' : `Show all ${namespaceStats.length} namespaces`}
+                </button>
+              )}
+            </div>
+            {nsLoading && (
+              <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Loading namespace data...
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Issues Section - Expandable */}
         {(podIssues.length > 0 || clusterDeploymentIssues.length > 0) && (
           <div className="mb-6">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Issues</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-orange-400" />
+              Issues ({podIssues.length + clusterDeploymentIssues.length})
+            </h3>
             <div className="space-y-2">
-              {podIssues.slice(0, 5).map((issue, i) => (
-                <div key={i} className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground">{issue.name}</span>
-                    <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">{issue.status}</span>
+              {podIssues.slice(0, 5).map((issue, i) => {
+                const issueId = `pod-${i}`
+                const isExpanded = expandedIssues.has(issueId)
+                return (
+                  <div
+                    key={issueId}
+                    className="rounded-lg bg-red-500/10 border border-red-500/20 overflow-hidden"
+                  >
+                    <button
+                      onClick={() => toggleIssue(issueId)}
+                      className="w-full p-3 flex items-center justify-between text-left hover:bg-red-500/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? <ChevronDown className="w-4 h-4 text-red-400" /> : <ChevronRight className="w-4 h-4 text-red-400" />}
+                        <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium"><Box className="w-3 h-3" />Pod</span>
+                        <span className="font-medium text-foreground">{issue.name}</span>
+                        <span className="text-xs text-muted-foreground">({issue.namespace})</span>
+                      </div>
+                      <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">{issue.status}</span>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-0 border-t border-red-500/20">
+                        <div className="pl-6 space-y-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Namespace:</span>
+                            <span className="ml-2 font-mono text-foreground">{issue.namespace}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Status:</span>
+                            <span className="ml-2 text-red-400">{issue.status}</span>
+                          </div>
+                          {issue.restarts !== undefined && issue.restarts > 0 && (
+                            <div>
+                              <span className="text-muted-foreground">Restarts:</span>
+                              <span className="ml-2 text-orange-400">{issue.restarts}</span>
+                            </div>
+                          )}
+                          {issue.issues.length > 0 && (
+                            <div>
+                              <span className="text-muted-foreground">Issues:</span>
+                              <ul className="ml-4 mt-1 list-disc list-inside text-red-400">
+                                {issue.issues.map((msg, j) => (
+                                  <li key={j}>{msg}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setSelectedIssueResource({
+                              kind: 'Pod',
+                              name: issue.name,
+                              namespace: issue.namespace,
+                              cluster: clusterName,
+                              data: {
+                                status: issue.status,
+                                restarts: issue.restarts,
+                                issues: issue.issues,
+                                reason: issue.reason,
+                              }
+                            })}
+                            className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-xs"
+                          >
+                            <Eye className="w-3 h-3" />
+                            View Pod Details
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">{issue.namespace}</div>
-                  {issue.issues.length > 0 && (
-                    <div className="text-xs text-red-400 mt-1">{issue.issues.join(', ')}</div>
-                  )}
-                </div>
-              ))}
-              {clusterDeploymentIssues.slice(0, 3).map((issue, i) => (
-                <div key={`dep-${i}`} className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground">{issue.name}</span>
-                    <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">
-                      {issue.readyReplicas}/{issue.replicas} ready
-                    </span>
+                )
+              })}
+              {clusterDeploymentIssues.slice(0, 3).map((issue, i) => {
+                const issueId = `dep-${i}`
+                const isExpanded = expandedIssues.has(issueId)
+                return (
+                  <div
+                    key={issueId}
+                    className="rounded-lg bg-orange-500/10 border border-orange-500/20 overflow-hidden"
+                  >
+                    <button
+                      onClick={() => toggleIssue(issueId)}
+                      className="w-full p-3 flex items-center justify-between text-left hover:bg-orange-500/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? <ChevronDown className="w-4 h-4 text-orange-400" /> : <ChevronRight className="w-4 h-4 text-orange-400" />}
+                        <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium"><Layers className="w-3 h-3" />Deploy</span>
+                        <span className="font-medium text-foreground">{issue.name}</span>
+                        <span className="text-xs text-muted-foreground">({issue.namespace})</span>
+                      </div>
+                      <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">
+                        {issue.readyReplicas}/{issue.replicas} ready
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-0 border-t border-orange-500/20">
+                        <div className="pl-6 space-y-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Namespace:</span>
+                            <span className="ml-2 font-mono text-foreground">{issue.namespace}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Replicas:</span>
+                            <span className="ml-2 text-foreground">{issue.readyReplicas}/{issue.replicas} ready</span>
+                          </div>
+                          {issue.message && (
+                            <div>
+                              <span className="text-muted-foreground">Message:</span>
+                              <span className="ml-2 text-orange-400">{issue.message}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">{issue.namespace}</div>
-                  {issue.message && (
-                    <div className="text-xs text-orange-400 mt-1">{issue.message}</div>
-                  )}
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* GPU Section - By Type with Node Assignment */}
+        {clusterGPUs.length > 0 && (
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-purple-400" />
+              GPUs by Type
+            </h3>
+            <div className="space-y-4">
+              {Object.entries(gpuByType).map(([type, info]) => (
+                <div key={type} className="rounded-lg bg-card/50 border border-border overflow-hidden">
+                  {/* GPU Type Summary Header */}
+                  <div className="p-3 border-b border-border/50 bg-purple-500/5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{type}</span>
+                        <span className="text-xs text-muted-foreground">({info.nodes.length} node{info.nodes.length !== 1 ? 's' : ''})</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-24">
+                          <Gauge value={info.allocated} max={info.total} size="sm" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">{info.allocated}/{info.total} allocated</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Node Assignment */}
+                  <div className="divide-y divide-border/30">
+                    {info.nodes.map((node, i) => (
+                      <div key={i} className="p-3 flex items-center justify-between hover:bg-card/30 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <Network className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-sm text-foreground">{node.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-16">
+                            <Gauge value={node.gpuAllocated} max={node.gpuCount} size="sm" />
+                          </div>
+                          <span className="text-xs text-muted-foreground w-12 text-right">
+                            {node.gpuAllocated}/{node.gpuCount}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* GPU Nodes */}
-        {clusterGPUs.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">GPU Nodes</h3>
-            <div className="space-y-2">
-              {clusterGPUs.map((node, i) => (
-                <div key={i} className="p-3 rounded-lg bg-card/50 border border-border flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-foreground text-sm">{node.name}</div>
-                    <div className="text-xs text-muted-foreground">{node.gpuType}</div>
+        {/* Node Details - List View */}
+        {!isUnreachable && showNodeDetails && clusterNodes.length > 0 && (
+          <div className="mb-6">
+            {/* Node List */}
+            <div className="divide-y divide-border/30 rounded-lg border border-border/30 overflow-hidden">
+              {clusterNodes.map((node) => {
+                const hasIssues = node.conditions.some(c =>
+                  (c.type === 'DiskPressure' || c.type === 'MemoryPressure' || c.type === 'PIDPressure' || c.type === 'NetworkUnavailable') &&
+                  c.status === 'True'
+                )
+                const isReady = node.status === 'Ready'
+                const isSelected = expandedNodes.has(node.name)
+
+                return (
+                  <button
+                    key={node.name}
+                    onClick={() => {
+                      setExpandedNodes(prev => {
+                        const next = new Set(prev)
+                        if (next.has(node.name)) next.delete(node.name)
+                        else next.add(node.name)
+                        return next
+                      })
+                    }}
+                    className={`w-full p-3 flex items-center gap-3 text-left transition-colors ${
+                      isSelected ? 'bg-primary/10' : 'hover:bg-card/50'
+                    }`}
+                  >
+                    <Server className={`w-4 h-4 flex-shrink-0 ${
+                      !isReady ? 'text-red-400' :
+                      hasIssues ? 'text-orange-400' :
+                      'text-green-400'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground truncate">{node.name}</span>
+                        {node.roles.map(role => (
+                          <span key={role} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground flex-shrink-0">{role}</span>
+                        ))}
+                        {hasIssues && <AlertTriangle className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
+                      <span>{node.cpuCapacity} CPU</span>
+                      <span>{node.memoryCapacity}</span>
+                      {node.internalIP && <span className="font-mono">{node.internalIP}</span>}
+                      <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? 'rotate-90' : ''}`} />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Expanded Node Details */}
+            {Array.from(expandedNodes).map(nodeName => {
+              const node = clusterNodes.find(n => n.name === nodeName)
+              if (!node) return null
+              const hasIssues = node.conditions.some(c =>
+                (c.type === 'DiskPressure' || c.type === 'MemoryPressure' || c.type === 'PIDPressure' || c.type === 'NetworkUnavailable') &&
+                c.status === 'True'
+              )
+              return (
+                <div
+                  key={node.name}
+                  className={`rounded-lg border overflow-hidden mb-2 ${
+                    hasIssues ? 'bg-orange-500/10 border-orange-500/20' : 'bg-card/50 border-border'
+                  }`}
+                >
+                  <div className="p-3 flex items-center justify-between border-b border-border/30">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-medium"><Server className="w-3 h-3" />Node</span>
+                      <span className="font-medium text-foreground">{node.name}</span>
+                      {node.roles.map(role => (
+                        <span key={role} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{role}</span>
+                      ))}
+                    </div>
+                    <button onClick={() => setExpandedNodes(prev => { const next = new Set(prev); next.delete(node.name); return next })} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-20">
-                      <Gauge
-                        value={node.gpuAllocated}
-                        max={node.gpuCount}
-                        size="sm"
-                      />
+                  <div className="p-3 space-y-3 text-sm">
+                    {/* Basic Info */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><span className="text-muted-foreground">Internal IP:</span><span className="ml-2 font-mono text-foreground">{node.internalIP || '-'}</span></div>
+                      {node.externalIP && <div><span className="text-muted-foreground">External IP:</span><span className="ml-2 font-mono text-foreground">{node.externalIP}</span></div>}
+                      <div><span className="text-muted-foreground">Kubelet:</span><span className="ml-2 text-foreground">{node.kubeletVersion}</span></div>
+                      <div><span className="text-muted-foreground">Runtime:</span><span className="ml-2 text-foreground">{node.containerRuntime || '-'}</span></div>
+                      <div><span className="text-muted-foreground">OS/Arch:</span><span className="ml-2 text-foreground">{node.os}/{node.architecture}</span></div>
+                      <div><span className="text-muted-foreground">Age:</span><span className="ml-2 text-foreground">{node.age}</span></div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {node.gpuAllocated}/{node.gpuCount}
+                    <div><span className="text-muted-foreground">Capacity:</span><span className="ml-2 text-foreground">{node.cpuCapacity} CPU, {node.memoryCapacity} RAM, {node.podCapacity} pods</span></div>
+                    {/* Conditions */}
+                    <div>
+                      <span className="text-muted-foreground">Conditions:</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {node.conditions.map((cond, i) => (
+                          <span key={i} className={`text-xs px-2 py-1 rounded ${
+                            cond.type === 'Ready' ? cond.status === 'True' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                            : cond.status === 'True' ? 'bg-orange-500/20 text-orange-400' : 'bg-secondary text-muted-foreground'
+                          }`} title={cond.message || cond.reason}>{cond.type}: {cond.status}</span>
+                        ))}
+                      </div>
                     </div>
+                    {/* Taints */}
+                    {node.taints && node.taints.length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">Taints:</span>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {node.taints.map((taint, i) => (<span key={i} className="text-xs px-2 py-1 rounded bg-yellow-500/20 text-yellow-400">{taint}</span>))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Labels */}
+                    {node.labels && Object.keys(node.labels).length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">Labels:</span>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {Object.entries(node.labels).slice(0, 10).map(([k, v]) => (
+                            <span key={k} className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-400 font-mono">{k}={v}</span>
+                          ))}
+                          {Object.keys(node.labels).length > 10 && <span className="text-xs text-muted-foreground">+{Object.keys(node.labels).length - 10} more</span>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
-            </div>
+              )
+            })}
+            {nodesLoading && (
+              <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Loading node details...
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Issue Resource Detail Modal */}
+      {selectedIssueResource && (
+        <ResourceDetailModal
+          resource={selectedIssueResource}
+          onClose={() => setSelectedIssueResource(null)}
+        />
+      )}
     </div>
   )
 }
@@ -248,10 +1480,72 @@ export function Clusters() {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
     customFilter,
+    clusterGroups,
+    addClusterGroup,
+    deleteClusterGroup,
+    selectClusterGroup,
   } = useGlobalFilters()
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'all' | 'healthy' | 'unhealthy'>('all')
+  const [filter, setFilter] = useState<'all' | 'healthy' | 'unhealthy' | 'unreachable'>('all')
+  const [sortBy, setSortBy] = useState<'name' | 'nodes' | 'pods' | 'health'>('name')
+  const [sortAsc, setSortAsc] = useState(true)
   const [renamingCluster, setRenamingCluster] = useState<string | null>(null)
+  const [showGroupForm, setShowGroupForm] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupClusters, setNewGroupClusters] = useState<string[]>([])
+  const [showGroups, setShowGroups] = useState(false) // Collapsed by default so cluster cards are visible first
+
+  // Dashboard cards state
+  const [cards, setCards] = useState<ClusterCard[]>(loadClusterCards)
+  const [showAddCard, setShowAddCard] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [showCards, setShowCards] = useState(false) // Collapsed by default so cluster cards are visible first
+  const [configuringCard, setConfiguringCard] = useState<ClusterCard | null>(null)
+
+  // Save cards to localStorage when they change
+  useEffect(() => {
+    saveClusterCards(cards)
+  }, [cards])
+
+  const handleAddCards = useCallback((newCards: Array<{ type: string; title: string; config: Record<string, unknown> }>) => {
+    const cardsToAdd: ClusterCard[] = newCards.map(card => ({
+      id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      card_type: card.type,
+      config: card.config,
+      title: card.title,
+    }))
+    setCards(prev => [...prev, ...cardsToAdd])
+    setShowCards(true)
+    setShowAddCard(false)
+  }, [])
+
+  const handleRemoveCard = useCallback((cardId: string) => {
+    setCards(prev => prev.filter(c => c.id !== cardId))
+  }, [])
+
+  const handleConfigureCard = useCallback((cardId: string) => {
+    const card = cards.find(c => c.id === cardId)
+    if (card) setConfiguringCard(card)
+  }, [cards])
+
+  const handleSaveCardConfig = useCallback((cardId: string, config: Record<string, unknown>) => {
+    setCards(prev => prev.map(c =>
+      c.id === cardId ? { ...c, config } : c
+    ))
+    setConfiguringCard(null)
+  }, [])
+
+  const applyTemplate = useCallback((template: DashboardTemplate) => {
+    const newCards: ClusterCard[] = template.cards.map(card => ({
+      id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      card_type: card.card_type,
+      config: card.config || {},
+      title: card.title,
+    }))
+    setCards(newCards)
+    setShowCards(true)
+    setShowTemplates(false)
+  }, [])
 
   const handleRenameContext = async (oldName: string, newName: string) => {
     if (!isConnected) throw new Error('Local agent not connected')
@@ -287,14 +1581,41 @@ export function Clusters() {
     }
 
     // Apply local health filter
+    // Unreachable = no nodes (can't connect)
+    // Healthy = has nodes and healthy flag is true
+    // Unhealthy = has nodes but healthy flag is false
     if (filter === 'healthy') {
-      result = result.filter(c => c.healthy)
+      result = result.filter(c => !isClusterUnreachable(c) && c.healthy)
     } else if (filter === 'unhealthy') {
-      result = result.filter(c => !c.healthy)
+      result = result.filter(c => !isClusterUnreachable(c) && !c.healthy)
+    } else if (filter === 'unreachable') {
+      result = result.filter(c => isClusterUnreachable(c))
     }
 
+    // Sort
+    result = [...result].sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'name':
+          cmp = a.name.localeCompare(b.name)
+          break
+        case 'nodes':
+          cmp = (a.nodeCount || 0) - (b.nodeCount || 0)
+          break
+        case 'pods':
+          cmp = (a.podCount || 0) - (b.podCount || 0)
+          break
+        case 'health':
+          const aHealth = isClusterUnreachable(a) ? 0 : a.healthy ? 2 : 1
+          const bHealth = isClusterUnreachable(b) ? 0 : b.healthy ? 2 : 1
+          cmp = aHealth - bHealth
+          break
+      }
+      return sortAsc ? cmp : -cmp
+    })
+
     return result
-  }, [clusters, filter, globalSelectedClusters, isAllClustersSelected, customFilter])
+  }, [clusters, filter, globalSelectedClusters, isAllClustersSelected, customFilter, sortBy, sortAsc])
 
   // Get GPU count per cluster
   const gpuByCluster = useMemo(() => {
@@ -333,14 +1654,42 @@ export function Clusters() {
     return result
   }, [clusters, globalSelectedClusters, isAllClustersSelected, customFilter])
 
-  const stats = useMemo(() => ({
-    total: globalFilteredClusters.length,
-    healthy: globalFilteredClusters.filter(c => c.healthy).length,
-    unhealthy: globalFilteredClusters.filter(c => !c.healthy).length,
-    totalNodes: globalFilteredClusters.reduce((sum, c) => sum + (c.nodeCount || 0), 0),
-    totalCPUs: globalFilteredClusters.reduce((sum, c) => sum + (c.cpuCores || 0), 0),
-    totalPods: globalFilteredClusters.reduce((sum, c) => sum + (c.podCount || 0), 0),
-  }), [globalFilteredClusters])
+  const stats = useMemo(() => {
+    // Calculate total GPUs from GPU nodes that match filtered clusters
+    let totalGPUs = 0
+    let allocatedGPUs = 0
+    globalFilteredClusters.forEach(cluster => {
+      const clusterKey = cluster.name.split('/')[0]
+      const gpuInfo = gpuByCluster[clusterKey] || gpuByCluster[cluster.name]
+      if (gpuInfo) {
+        totalGPUs += gpuInfo.total
+        allocatedGPUs += gpuInfo.allocated
+      }
+    })
+
+    // Separate loading, unreachable, healthy, unhealthy
+    // Loading = health check in progress (nodeCount undefined)
+    // Unreachable = health check failed (nodeCount = 0)
+    // Healthy = has nodes and healthy flag is true
+    // Unhealthy = has nodes but healthy flag is false
+    const loadingCount = globalFilteredClusters.filter(c => isClusterLoading(c)).length
+    const unreachable = globalFilteredClusters.filter(c => !isClusterLoading(c) && isClusterUnreachable(c)).length
+    const healthy = globalFilteredClusters.filter(c => !isClusterLoading(c) && !isClusterUnreachable(c) && c.healthy).length
+    const unhealthy = globalFilteredClusters.filter(c => !isClusterLoading(c) && !isClusterUnreachable(c) && !c.healthy).length
+
+    return {
+      total: globalFilteredClusters.length,
+      loading: loadingCount,
+      healthy,
+      unhealthy,
+      unreachable,
+      totalNodes: globalFilteredClusters.reduce((sum, c) => sum + (c.nodeCount || 0), 0),
+      totalCPUs: globalFilteredClusters.reduce((sum, c) => sum + (c.cpuCores || 0), 0),
+      totalPods: globalFilteredClusters.reduce((sum, c) => sum + (c.podCount || 0), 0),
+      totalGPUs,
+      allocatedGPUs,
+    }
+  }, [globalFilteredClusters, gpuByCluster])
 
   if (isLoading) {
     return (
@@ -349,8 +1698,22 @@ export function Clusters() {
           <h1 className="text-2xl font-bold text-foreground">Clusters</h1>
           <p className="text-muted-foreground">Manage your Kubernetes clusters</p>
         </div>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+
+        {/* Stats Overview Skeleton */}
+        <StatsOverviewSkeleton />
+
+        {/* Filter Tabs Skeleton */}
+        <div className="flex gap-2 mb-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-10 w-24 bg-card/50 rounded-lg animate-pulse" />
+          ))}
+        </div>
+
+        {/* Cluster Grid Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <ClusterCardSkeleton key={i} />
+          ))}
         </div>
       </div>
     )
@@ -373,48 +1736,80 @@ export function Clusters() {
   return (
     <div className="pt-16">
       <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-foreground">Clusters</h1>
-          {isUpdating && (
-            <span className="flex items-center gap-1.5 text-sm text-amber-400 animate-pulse" title="Updating cluster list...">
-              <Hourglass className="w-4 h-4" />
-              <span>Updating...</span>
-            </span>
-          )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-foreground">Clusters</h1>
+            {isUpdating && (
+              <span className="flex items-center gap-1.5 text-sm text-amber-400 animate-pulse" title="Updating cluster list...">
+                <Hourglass className="w-4 h-4" />
+                <span>Updating...</span>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddCard(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Card
+            </button>
+            <button
+              onClick={() => setShowTemplates(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm"
+            >
+              <Layers className="w-4 h-4" />
+              Templates
+            </button>
+          </div>
         </div>
         <p className="text-muted-foreground">Manage your Kubernetes clusters</p>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
+      {/* Stats Overview - at the top */}
+      <div className="grid grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
         <div className="glass p-4 rounded-lg">
           <div className="text-3xl font-bold text-foreground">{stats.total}</div>
-          <div className="text-sm text-muted-foreground">Total Clusters</div>
+          <div className="text-sm text-muted-foreground">Total</div>
         </div>
         <div className="glass p-4 rounded-lg">
           <div className="text-3xl font-bold text-green-400">{stats.healthy}</div>
           <div className="text-sm text-muted-foreground">Healthy</div>
         </div>
         <div className="glass p-4 rounded-lg">
-          <div className="text-3xl font-bold text-red-400">{stats.unhealthy}</div>
+          <div className="text-3xl font-bold text-orange-400">{stats.unhealthy}</div>
           <div className="text-sm text-muted-foreground">Unhealthy</div>
+        </div>
+        <div className="glass p-4 rounded-lg" title="Unreachable - check network connection">
+          <div className="flex items-center gap-1.5">
+            <div className="text-3xl font-bold text-yellow-400">{stats.unreachable}</div>
+            {stats.unreachable > 0 && <WifiOff className="w-4 h-4 text-yellow-400" />}
+          </div>
+          <div className="text-sm text-muted-foreground">Unreachable</div>
         </div>
         <div className="glass p-4 rounded-lg">
           <div className="text-3xl font-bold text-foreground">{stats.totalNodes}</div>
-          <div className="text-sm text-muted-foreground">Total Nodes</div>
+          <div className="text-sm text-muted-foreground">Nodes</div>
         </div>
         <div className="glass p-4 rounded-lg">
           <div className="text-3xl font-bold text-foreground">{stats.totalCPUs}</div>
-          <div className="text-sm text-muted-foreground">Total CPUs</div>
+          <div className="text-sm text-muted-foreground">CPUs</div>
+        </div>
+        <div className="glass p-4 rounded-lg">
+          <div className="text-3xl font-bold text-foreground">{stats.totalGPUs}</div>
+          <div className="text-sm text-muted-foreground">GPUs</div>
+          {stats.allocatedGPUs > 0 && (
+            <div className="text-xs text-yellow-400">{stats.allocatedGPUs} allocated</div>
+          )}
         </div>
         <div className="glass p-4 rounded-lg">
           <div className="text-3xl font-bold text-foreground">{stats.totalPods}</div>
-          <div className="text-sm text-muted-foreground">Total Pods</div>
+          <div className="text-sm text-muted-foreground">Pods</div>
         </div>
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <button
           onClick={() => setFilter('all')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -439,19 +1834,58 @@ export function Clusters() {
           onClick={() => setFilter('unhealthy')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             filter === 'unhealthy'
-              ? 'bg-red-500 text-foreground'
+              ? 'bg-orange-500 text-foreground'
               : 'bg-card/50 text-muted-foreground hover:text-foreground'
           }`}
         >
           Unhealthy ({stats.unhealthy})
         </button>
+        <button
+          onClick={() => setFilter('unreachable')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'unreachable'
+              ? 'bg-yellow-500 text-foreground'
+              : 'bg-card/50 text-muted-foreground hover:text-foreground'
+          }`}
+          title="Clusters that cannot be contacted - check network connection"
+        >
+          <WifiOff className="w-3.5 h-3.5" />
+          Unreachable ({stats.unreachable})
+        </button>
+
+        {/* Sort selector */}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Sort:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'nodes' | 'pods' | 'health')}
+            className="px-2 py-1.5 rounded-lg text-sm bg-card/50 border border-border text-foreground"
+          >
+            <option value="name">Name</option>
+            <option value="nodes">Nodes</option>
+            <option value="pods">Pods</option>
+            <option value="health">Health</option>
+          </select>
+          <button
+            onClick={() => setSortAsc(!sortAsc)}
+            className="p-1.5 rounded-lg bg-card/50 border border-border text-muted-foreground hover:text-foreground"
+            title={sortAsc ? 'Ascending' : 'Descending'}
+          >
+            {sortAsc ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
-      {/* Cluster Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Cluster Grid - moved to top */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {filteredClusters.map((cluster) => {
           const clusterKey = cluster.name.split('/')[0]
           const gpuInfo = gpuByCluster[clusterKey] || gpuByCluster[cluster.name]
+          const loading = isClusterLoading(cluster)
+          const unreachable = isClusterUnreachable(cluster)
+
+          // Determine status: loading > unreachable > healthy
+          const status = loading ? 'loading' : unreachable ? 'warning' : 'healthy'
 
           return (
             <div
@@ -461,7 +1895,7 @@ export function Clusters() {
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <StatusIndicator status={cluster.healthy ? 'healthy' : 'error'} size="lg" />
+                  <StatusIndicator status={status} size="lg" />
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-foreground">
@@ -481,8 +1915,8 @@ export function Clusters() {
                     <div className="flex flex-col gap-1 mt-1">
                       {cluster.server && (
                         <span
-                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default truncate max-w-[220px]"
-                          title={`Server: ${cluster.server}`}
+                          className="flex items-center gap-1 text-xs text-muted-foreground truncate max-w-[200px]"
+                          title={cluster.server}
                         >
                           <Globe className="w-3 h-3 flex-shrink-0" />
                           <span className="truncate">{cluster.server.replace(/^https?:\/\//, '')}</span>
@@ -490,8 +1924,8 @@ export function Clusters() {
                       )}
                       {cluster.user && (
                         <span
-                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default truncate max-w-[220px]"
-                          title={`User: ${cluster.user}`}
+                          className="flex items-center gap-1 text-xs text-muted-foreground truncate max-w-[200px]"
+                          title={cluster.user}
                         >
                           <User className="w-3 h-3 flex-shrink-0" />
                           <span className="truncate">{cluster.user}</span>
@@ -521,19 +1955,27 @@ export function Clusters() {
 
               <div className="grid grid-cols-4 gap-4 text-center">
                 <div>
-                  <div className="text-lg font-bold text-foreground">{cluster.nodeCount || 0}</div>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : cluster.nodeCount || 0}
+                  </div>
                   <div className="text-xs text-muted-foreground">Nodes</div>
                 </div>
                 <div>
-                  <div className="text-lg font-bold text-foreground">{cluster.cpuCores || 0}</div>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : cluster.cpuCores || 0}
+                  </div>
                   <div className="text-xs text-muted-foreground">CPUs</div>
                 </div>
                 <div>
-                  <div className="text-lg font-bold text-foreground">{cluster.podCount || 0}</div>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : cluster.podCount || 0}
+                  </div>
                   <div className="text-xs text-muted-foreground">Pods</div>
                 </div>
                 <div>
-                  <div className="text-lg font-bold text-foreground">{gpuInfo?.total || 0}</div>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : gpuInfo?.total || 0}
+                  </div>
                   <div className="text-xs text-muted-foreground">GPUs</div>
                 </div>
               </div>
@@ -541,7 +1983,378 @@ export function Clusters() {
               <div className="mt-4 pt-4 border-t border-border">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Source: {cluster.source || 'kubeconfig'}</span>
-                  <span className="text-primary">View Details →</span>
+                  <span title="View details"><ChevronRight className="w-4 h-4 text-primary" /></span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {filteredClusters.length === 0 && (
+        <div className="text-center py-12 mb-6">
+          <p className="text-muted-foreground">No clusters match the current filter</p>
+        </div>
+      )}
+
+      {/* Cluster Groups */}
+      {(clusterGroups.length > 0 || showGroupForm) && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => setShowGroups(!showGroups)}
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <FolderOpen className="w-4 h-4" />
+              <span>Cluster Groups ({clusterGroups.length})</span>
+              {showGroups ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setShowGroupForm(!showGroupForm)}
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Group
+            </button>
+          </div>
+
+          {showGroups && (
+            <div className="space-y-2">
+              {/* New Group Form */}
+              {showGroupForm && (
+                <div className="glass p-4 rounded-lg space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Group name..."
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-secondary/50 border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    autoFocus
+                  />
+                  <div className="text-xs text-muted-foreground mb-1">Select clusters for this group:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {clusters.map((cluster) => {
+                      const isInGroup = newGroupClusters.includes(cluster.name)
+                      const unreachable = isClusterUnreachable(cluster)
+                      return (
+                        <button
+                          key={cluster.name}
+                          onClick={() => {
+                            if (isInGroup) {
+                              setNewGroupClusters(prev => prev.filter(c => c !== cluster.name))
+                            } else {
+                              setNewGroupClusters(prev => [...prev, cluster.name])
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                            isInGroup
+                              ? 'bg-primary/20 text-primary border border-primary/30'
+                              : 'bg-secondary/50 text-muted-foreground hover:text-foreground border border-transparent'
+                          }`}
+                        >
+                          {unreachable ? (
+                            <WifiOff className="w-3 h-3 text-yellow-400" />
+                          ) : cluster.healthy ? (
+                            <CheckCircle className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <AlertTriangle className="w-3 h-3 text-orange-400" />
+                          )}
+                          {cluster.context || cluster.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => {
+                        setShowGroupForm(false)
+                        setNewGroupName('')
+                        setNewGroupClusters([])
+                      }}
+                      className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (newGroupName.trim() && newGroupClusters.length > 0) {
+                          addClusterGroup({ name: newGroupName.trim(), clusters: newGroupClusters })
+                          setShowGroupForm(false)
+                          setNewGroupName('')
+                          setNewGroupClusters([])
+                        }
+                      }}
+                      disabled={!newGroupName.trim() || newGroupClusters.length === 0}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Create
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Existing Groups */}
+              {clusterGroups.map((group) => (
+                <div
+                  key={group.id}
+                  className="glass p-3 rounded-lg flex items-center justify-between hover:bg-secondary/30 transition-colors"
+                >
+                  <button
+                    onClick={() => selectClusterGroup(group.id)}
+                    className="flex-1 flex items-center gap-3 text-left"
+                  >
+                    <FolderOpen className="w-4 h-4 text-purple-400" />
+                    <div>
+                      <div className="font-medium text-foreground">{group.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {group.clusters.length} cluster{group.clusters.length !== 1 ? 's' : ''}
+                        <span className="mx-1">·</span>
+                        {group.clusters.slice(0, 3).join(', ')}
+                        {group.clusters.length > 3 && ` +${group.clusters.length - 3} more`}
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteClusterGroup(group.id)
+                    }}
+                    className="p-1.5 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors"
+                    title="Delete group"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Dashboard Cards Section */}
+      {cards.length > 0 && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowCards(!showCards)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-3"
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span>Dashboard Cards ({cards.length})</span>
+            {showCards ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+
+          {showCards && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {cards.map(card => {
+                const CardComponent = CLUSTER_CARD_COMPONENTS[card.card_type]
+                if (!CardComponent) return null
+                return (
+                  <CardWrapper
+                    key={card.id}
+                    cardId={card.id}
+                    cardType={card.card_type}
+                    title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    onConfigure={() => handleConfigureCard(card.id)}
+                    onRemove={() => handleRemoveCard(card.id)}
+                  >
+                    <CardComponent config={card.config} />
+                  </CardWrapper>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'all'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-card/50 text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          All ({stats.total})
+        </button>
+        <button
+          onClick={() => setFilter('healthy')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'healthy'
+              ? 'bg-green-500 text-foreground'
+              : 'bg-card/50 text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Healthy ({stats.healthy})
+        </button>
+        <button
+          onClick={() => setFilter('unhealthy')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'unhealthy'
+              ? 'bg-orange-500 text-foreground'
+              : 'bg-card/50 text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Unhealthy ({stats.unhealthy})
+        </button>
+        <button
+          onClick={() => setFilter('unreachable')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'unreachable'
+              ? 'bg-yellow-500 text-foreground'
+              : 'bg-card/50 text-muted-foreground hover:text-foreground'
+          }`}
+          title="Clusters that cannot be contacted - check network connection"
+        >
+          <WifiOff className="w-3.5 h-3.5" />
+          Unreachable ({stats.unreachable})
+        </button>
+
+        {/* Sort selector */}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Sort:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'nodes' | 'pods' | 'health')}
+            className="px-2 py-1.5 rounded-lg text-sm bg-card/50 border border-border text-foreground"
+          >
+            <option value="name">Name</option>
+            <option value="nodes">Nodes</option>
+            <option value="pods">Pods</option>
+            <option value="health">Health</option>
+          </select>
+          <button
+            onClick={() => setSortAsc(!sortAsc)}
+            className="p-1.5 rounded-lg bg-card/50 border border-border text-muted-foreground hover:text-foreground"
+            title={sortAsc ? 'Ascending' : 'Descending'}
+          >
+            {sortAsc ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Cluster Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredClusters.map((cluster) => {
+          const clusterKey = cluster.name.split('/')[0]
+          const gpuInfo = gpuByCluster[clusterKey] || gpuByCluster[cluster.name]
+          const loading = isClusterLoading(cluster)
+          const unreachable = isClusterUnreachable(cluster)
+
+          // Determine status: loading > unreachable > healthy
+          const status = loading ? 'loading' : unreachable ? 'warning' : 'healthy'
+
+          return (
+            <div
+              key={cluster.name}
+              onClick={() => setSelectedCluster(cluster.name)}
+              className={`glass p-5 rounded-lg cursor-pointer transition-all hover:scale-[1.02] hover:border-primary/50 border ${
+                unreachable ? 'border-yellow-500/30' : 'border-transparent'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <StatusIndicator status={status} size="lg" showLabel={false} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-foreground truncate">
+                        {cluster.context || cluster.name.split('/').pop()}
+                      </h3>
+                      {isConnected && (cluster.source === 'kubeconfig' || !cluster.source) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setRenamingCluster(cluster.name) }}
+                          className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground flex-shrink-0"
+                          title="Rename context"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    {/* Server and User with icons */}
+                    <div className="flex flex-col gap-1 mt-1">
+                      {cluster.server && (
+                        <span
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default truncate max-w-[220px]"
+                          title={`Server: ${cluster.server}`}
+                        >
+                          <Globe className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{cluster.server.replace(/^https?:\/\//, '')}</span>
+                        </span>
+                      )}
+                      {cluster.user && (
+                        <span
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default truncate max-w-[220px]"
+                          title={`User: ${cluster.user}`}
+                        >
+                          <User className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{cluster.user}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-start justify-end gap-1 flex-shrink-0">
+                  {cluster.isCurrent && (
+                    <span
+                      className="flex items-center px-1.5 py-0.5 rounded bg-primary/20 text-primary"
+                      title="Current kubectl context"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-current" />
+                    </span>
+                  )}
+                  {unreachable && (
+                    <span
+                      className="flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400"
+                      title="Unreachable - check network connection"
+                    >
+                      <WifiOff className="w-3.5 h-3.5" />
+                    </span>
+                  )}
+                  {!permissionsLoading && !isClusterAdmin(cluster.name) && !unreachable && (
+                    <span
+                      className="flex items-center px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400"
+                      title="You have limited permissions on this cluster"
+                      data-testid="permission-badge"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : `${cluster.nodeCount || 0} worker nodes`}>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (cluster.nodeCount || 0)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Nodes</div>
+                </div>
+                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : `${cluster.cpuCores || 0} CPU cores`}>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (cluster.cpuCores || 0)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">CPUs</div>
+                </div>
+                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : `${cluster.podCount || 0} running pods`}>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (cluster.podCount || 0)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Pods</div>
+                </div>
+                <div title={loading ? 'Checking...' : unreachable ? 'Unreachable - check network connection' : gpuInfo ? `${gpuInfo.allocated} allocated / ${gpuInfo.total} total GPUs` : 'No GPUs'}>
+                  <div className="text-lg font-bold text-foreground">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : unreachable ? '-' : (gpuInfo ? `${gpuInfo.allocated}/${gpuInfo.total}` : '0')}
+                  </div>
+                  <div className="text-xs text-muted-foreground">GPUs</div>
+                </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-border">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Source: {cluster.source || 'kubeconfig'}</span>
+                  <span title="View details"><ChevronRight className="w-4 h-4 text-primary" /></span>
                 </div>
               </div>
             </div>
@@ -556,9 +2369,13 @@ export function Clusters() {
       )}
 
       {selectedCluster && (
-        <ClusterDetail
+        <ClusterDetailModal
           clusterName={selectedCluster}
           onClose={() => setSelectedCluster(null)}
+          onRename={(name) => {
+            setSelectedCluster(null)
+            setRenamingCluster(name)
+          }}
         />
       )}
 
@@ -570,6 +2387,143 @@ export function Clusters() {
           onRename={handleRenameContext}
         />
       )}
+
+      {/* Add Card Modal */}
+      <AddCardModal
+        isOpen={showAddCard}
+        onClose={() => setShowAddCard(false)}
+        onAddCards={handleAddCards}
+        existingCardTypes={cards.map(c => c.card_type)}
+      />
+
+      {/* Card Configuration Modal */}
+      {configuringCard && (
+        <CardConfigModal
+          card={configuringCard}
+          clusters={clusters}
+          onSave={(config) => handleSaveCardConfig(configuringCard.id, config)}
+          onClose={() => setConfiguringCard(null)}
+        />
+      )}
+
+      {/* Templates Modal */}
+      <TemplatesModal
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onApplyTemplate={applyTemplate}
+      />
     </div>
   )
 }
+
+// Card Configuration Modal
+function CardConfigModal({
+  card,
+  clusters,
+  onSave,
+  onClose,
+}: {
+  card: ClusterCard
+  clusters: ClusterInfo[]
+  onSave: (config: Record<string, unknown>) => void
+  onClose: () => void
+}) {
+  const [config, setConfig] = useState<Record<string, unknown>>(card.config || {})
+
+  const handleSave = () => {
+    onSave(config)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="glass p-6 rounded-lg w-[500px] max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-foreground">
+            Configure {card.title || card.card_type.replace(/_/g, ' ')}
+          </h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Cluster Filter */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Filter by Cluster
+            </label>
+            <select
+              value={(config.cluster as string) || ''}
+              onChange={(e) => setConfig(prev => ({ ...prev, cluster: e.target.value || undefined }))}
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-foreground"
+            >
+              <option value="">All Clusters</option>
+              {clusters.map(c => (
+                <option key={c.name} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Namespace Filter */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Filter by Namespace
+            </label>
+            <input
+              type="text"
+              value={(config.namespace as string) || ''}
+              onChange={(e) => setConfig(prev => ({ ...prev, namespace: e.target.value || undefined }))}
+              placeholder="e.g., default, kube-system"
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Show Only Issues */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="showOnlyIssues"
+              checked={(config.showOnlyIssues as boolean) || false}
+              onChange={(e) => setConfig(prev => ({ ...prev, showOnlyIssues: e.target.checked }))}
+              className="rounded border-border"
+            />
+            <label htmlFor="showOnlyIssues" className="text-sm text-foreground">
+              Show only items with issues
+            </label>
+          </div>
+
+          {/* Max Items */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Max Items to Display
+            </label>
+            <input
+              type="number"
+              value={(config.maxItems as number) || 10}
+              onChange={(e) => setConfig(prev => ({ ...prev, maxItems: parseInt(e.target.value) || 10 }))}
+              min={1}
+              max={100}
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-foreground"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/80"
+          >
+            Save Configuration
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+

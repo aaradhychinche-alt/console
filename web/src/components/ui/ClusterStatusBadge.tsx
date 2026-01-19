@@ -58,9 +58,9 @@ const STATE_CONFIGS: Record<ClusterState, StateConfig> = {
     label: 'Degraded',
   },
   'unreachable-timeout': {
-    color: 'text-orange-400',
-    bgColor: 'bg-orange-500/10',
-    borderColor: 'border-orange-500/30',
+    color: 'text-yellow-400',
+    bgColor: 'bg-yellow-500/10',
+    borderColor: 'border-yellow-500/30',
     icon: WifiOff,
     label: 'Unreachable',
     suggestion: getSuggestionForErrorType('timeout'),
@@ -216,7 +216,7 @@ export function ClusterStatusDot({
   const dotColors: Record<ClusterState, string> = {
     healthy: 'bg-green-500',
     degraded: 'bg-yellow-500',
-    'unreachable-timeout': 'bg-orange-500',
+    'unreachable-timeout': 'bg-yellow-500',
     'unreachable-auth': 'bg-red-500',
     'unreachable-network': 'bg-red-500',
     'unreachable-cert': 'bg-red-500',

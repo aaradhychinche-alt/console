@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react'
-import { Server, CheckCircle, XCircle, Cpu, RefreshCw } from 'lucide-react'
+import { Server, CheckCircle, XCircle, WifiOff, Cpu, RefreshCw, Loader2 } from 'lucide-react'
 import { useClusters, useGPUNodes, ClusterInfo } from '../../hooks/useMCP'
-import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { CardControls, SortDirection } from '../ui/CardControls'
 import { Skeleton, SkeletonStats, SkeletonList } from '../ui/Skeleton'
 import { RefreshIndicator } from '../ui/RefreshIndicator'
 import { ClusterStatusDot, getClusterState, ClusterState } from '../ui/ClusterStatusBadge'
 import { classifyError } from '../../lib/errorClassifier'
+import { ClusterDetailModal } from '../clusters/ClusterDetailModal'
 
 type SortByOption = 'status' | 'name' | 'nodes' | 'pods'
 
@@ -35,11 +35,11 @@ function getClusterStateFromInfo(cluster: ClusterInfo): ClusterState {
 export function ClusterHealth() {
   const { clusters: rawClusters, isLoading, isRefreshing, lastUpdated, error, refetch } = useClusters()
   const { nodes: gpuNodes } = useGPUNodes()
-  const { drillToCluster } = useDrillDownActions()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const [sortBy, setSortBy] = useState<SortByOption>('status')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [limit, setLimit] = useState<number | 'unlimited'>('unlimited')
+  const [selectedCluster, setSelectedCluster] = useState<string | null>(null)
 
   // Calculate GPU counts per cluster
   const gpuByCluster = useMemo(() => {
@@ -76,8 +76,27 @@ export function ClusterHealth() {
   const filteredForStats = isAllClustersSelected
     ? rawClusters
     : rawClusters.filter(c => selectedClusters.includes(c.name))
-  const healthyClusters = filteredForStats.filter((c) => c.healthy).length
-  const unhealthyClusters = filteredForStats.filter((c) => !c.healthy).length
+
+  // Helper to determine if cluster is unreachable vs unhealthy
+  // A reachable cluster always has at least 1 node - 0 nodes means we couldn't connect
+  const isUnreachable = (c: ClusterInfo) => {
+    if (c.reachable === false) return true
+    if (c.errorType && ['timeout', 'network', 'certificate'].includes(c.errorType)) return true
+    // nodeCount === 0 means unreachable (health check completed but no nodes)
+    // nodeCount === undefined means still checking - treat as loading, not unreachable
+    if (c.nodeCount === 0) return true
+    return false
+  }
+
+  // Helper to determine if cluster health is still loading
+  const isClusterLoading = (c: ClusterInfo) => {
+    return c.nodeCount === undefined && c.reachable === undefined
+  }
+
+  // Stats: exclude loading clusters from unhealthy/unreachable counts
+  const healthyClusters = filteredForStats.filter((c) => !isClusterLoading(c) && c.healthy).length
+  const unreachableClusters = filteredForStats.filter((c) => !isClusterLoading(c) && !c.healthy && isUnreachable(c)).length
+  const unhealthyClusters = filteredForStats.filter((c) => !isClusterLoading(c) && !c.healthy && !isUnreachable(c)).length
   const totalNodes = filteredForStats.reduce((sum, c) => sum + (c.nodeCount || 0), 0)
   const totalCPUs = filteredForStats.reduce((sum, c) => sum + (c.cpuCores || 0), 0)
   const totalPods = filteredForStats.reduce((sum, c) => sum + (c.podCount || 0), 0)
@@ -147,7 +166,7 @@ export function ClusterHealth() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20" title={`${healthyClusters} clusters are healthy and responding`}>
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle className="w-4 h-4 text-green-400" />
@@ -155,12 +174,19 @@ export function ClusterHealth() {
           </div>
           <span className="text-2xl font-bold text-foreground">{healthyClusters}</span>
         </div>
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20" title={`${unhealthyClusters} clusters have issues or are unreachable`}>
+        <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20" title={`${unhealthyClusters} clusters are reachable but have issues`}>
           <div className="flex items-center gap-2 mb-1">
-            <XCircle className="w-4 h-4 text-red-400" />
-            <span className="text-xs text-red-400">Unhealthy</span>
+            <XCircle className="w-4 h-4 text-orange-400" />
+            <span className="text-xs text-orange-400">Unhealthy</span>
           </div>
           <span className="text-2xl font-bold text-foreground">{unhealthyClusters}</span>
+        </div>
+        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20" title={`${unreachableClusters} clusters cannot be contacted - check network connection`}>
+          <div className="flex items-center gap-2 mb-1">
+            <WifiOff className="w-4 h-4 text-yellow-400" />
+            <span className="text-xs text-yellow-400">Unreachable</span>
+          </div>
+          <span className="text-2xl font-bold text-foreground">{unreachableClusters}</span>
         </div>
       </div>
 
@@ -168,32 +194,47 @@ export function ClusterHealth() {
       <div className="flex-1 space-y-2 overflow-y-auto">
         {clusters.map((cluster) => {
           const clusterState = getClusterStateFromInfo(cluster)
-          const statusTooltip = cluster.healthy
-            ? `Cluster is healthy with ${cluster.nodeCount || 0} nodes`
-            : cluster.errorMessage || 'Cluster has issues - click to view details'
+          const clusterUnreachable = isUnreachable(cluster)
+          const clusterLoading = isClusterLoading(cluster)
+          const statusTooltip = clusterLoading
+            ? 'Checking cluster health...'
+            : cluster.healthy
+              ? `Cluster is healthy with ${cluster.nodeCount || 0} nodes and ${cluster.podCount || 0} pods`
+              : clusterUnreachable
+                ? 'Unreachable - check network connection'
+                : cluster.errorMessage || 'Cluster has issues - click to view details'
           return (
             <div
               key={cluster.name}
               className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer"
-              onClick={() => drillToCluster(cluster.name, {
-                healthy: cluster.healthy,
-                nodeCount: cluster.nodeCount,
-                podCount: cluster.podCount,
-                server: cluster.server,
-              })}
+              onClick={() => setSelectedCluster(cluster.name)}
               title={`Click to view details for ${cluster.name}`}
             >
               <div className="flex items-center gap-2" title={statusTooltip}>
                 <ClusterStatusDot state={clusterState} />
                 <span className="text-sm text-foreground">{cluster.name}</span>
+                {clusterLoading && (
+                  <span title="Checking health...">
+                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                  </span>
+                )}
+                {!clusterLoading && clusterUnreachable && (
+                  <span title="Unreachable - check network connection">
+                    <WifiOff className="w-3 h-3 text-yellow-400" />
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span title={`${cluster.nodeCount || 0} worker nodes in cluster`}>{cluster.nodeCount || 0} nodes</span>
-                {(cluster.cpuCores || 0) > 0 && (
+                <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.nodeCount || 0} worker nodes in cluster` : 'Unreachable - check network connection'}>
+                  {clusterLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : !clusterUnreachable ? (cluster.nodeCount || 0) : '-'} nodes
+                </span>
+                {!clusterLoading && !clusterUnreachable && (cluster.cpuCores || 0) > 0 && (
                   <span title={`${cluster.cpuCores} total CPU cores available`}>{cluster.cpuCores} CPUs</span>
                 )}
-                <span title={`${cluster.podCount || 0} pods running in cluster`}>{cluster.podCount || 0} pods</span>
-                {(gpuByCluster[cluster.name] || 0) > 0 && (
+                <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.podCount || 0} pods running in cluster` : 'Unreachable - check network connection'}>
+                  {clusterLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : !clusterUnreachable ? (cluster.podCount || 0) : '-'} pods
+                </span>
+                {!clusterLoading && !clusterUnreachable && (gpuByCluster[cluster.name] || 0) > 0 && (
                   <span className="flex items-center gap-1 text-purple-400" title={`${gpuByCluster[cluster.name]} GPUs available for workloads`}>
                     <Cpu className="w-3 h-3" />
                     {gpuByCluster[cluster.name]} GPUs
@@ -227,12 +268,21 @@ export function ClusterHealth() {
       )}
 
       {/* Show unreachable clusters summary if any */}
-      {!error && rawClusters.some(c => !c.healthy) && (
-        <div className="mt-2 p-2 rounded bg-orange-500/10 border border-orange-500/20" title="Click on individual clusters above to see specific issues">
-          <div className="text-xs text-orange-400">
-            {rawClusters.filter(c => !c.healthy).length} cluster(s) have issues
+      {!error && unreachableClusters > 0 && (
+        <div className="mt-2 p-2 rounded bg-yellow-500/10 border border-yellow-500/20" title="Check network connectivity and VPN status">
+          <div className="flex items-center gap-1.5 text-xs text-yellow-400">
+            <WifiOff className="w-3 h-3" />
+            {unreachableClusters} cluster(s) unreachable - check network connection
           </div>
         </div>
+      )}
+
+      {/* Cluster Detail Modal */}
+      {selectedCluster && (
+        <ClusterDetailModal
+          clusterName={selectedCluster}
+          onClose={() => setSelectedCluster(null)}
+        />
       )}
     </div>
   )
