@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Activity, AlertTriangle, Clock, Bell, ChevronRight, CheckCircle2, Calendar, Zap, Plus, Layout, LayoutGrid, ChevronDown, RefreshCw, Hourglass } from 'lucide-react'
 import { useEvents, useWarningEvents } from '../../hooks/useMCP'
@@ -38,6 +38,15 @@ function loadEventCards(): EventCard[] {
 function saveEventCards(cards: EventCard[]) {
   localStorage.setItem(EVENTS_CARDS_KEY, JSON.stringify(cards))
 }
+
+// Module-level cache for events stats (persists across navigation)
+interface EventsStatsCache {
+  total: number
+  warnings: number
+  normal: number
+  recentCount: number
+}
+let eventsStatsCache: EventsStatsCache | null = null
 
 type EventFilter = 'all' | 'warning' | 'normal'
 type ViewTab = 'overview' | 'timeline' | 'list'
@@ -418,18 +427,22 @@ export function Events() {
     }
   }, [globalFilteredAllEvents, globalFilteredWarningEvents])
 
-  // Cache the last known good stats to show during refresh
-  const cachedStats = useRef(stats)
-
-  // Update cache when we have real data (not refreshing or have actual events)
+  // Update module-level cache when we have real data
   useEffect(() => {
     if (!isRefreshing && stats.total > 0) {
-      cachedStats.current = stats
+      eventsStatsCache = {
+        total: stats.total,
+        warnings: stats.warnings,
+        normal: stats.normal,
+        recentCount: stats.recentCount,
+      }
     }
-  }, [isRefreshing, stats])
+  }, [isRefreshing, stats.total, stats.warnings, stats.normal, stats.recentCount])
 
-  // Use cached stats during refresh to prevent numbers going to 0
-  const displayStats = isRefreshing && cachedStats.current.total > 0 ? cachedStats.current : stats
+  // Use cached stats when stats are 0 but we have cached data (e.g., during initial load after navigation)
+  const displayStats = (stats.total === 0 && eventsStatsCache && eventsStatsCache.total > 0)
+    ? { ...stats, ...eventsStatsCache }
+    : stats
 
   // Group events by time
   const groupedEvents = useMemo(() => {

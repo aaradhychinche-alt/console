@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { HardDrive, Database, FolderArchive, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, Hourglass } from 'lucide-react'
-import { useClusters, usePVCs } from '../../hooks/useMCP'
+import { HardDrive, Database, FolderArchive, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, Hourglass, X, ExternalLink } from 'lucide-react'
+import { useClusters, usePVCs, PVC } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useShowCards } from '../../hooks/useShowCards'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
@@ -12,6 +12,134 @@ import { AddCardModal } from '../dashboard/AddCardModal'
 import { TemplatesModal } from '../dashboard/TemplatesModal'
 import { ConfigureCardModal } from '../dashboard/ConfigureCardModal'
 import { DashboardTemplate } from '../dashboard/templates'
+import { ClusterBadge } from '../ui/ClusterBadge'
+
+// PVC List Modal
+interface PVCListModalProps {
+  isOpen: boolean
+  onClose: () => void
+  pvcs: PVC[]
+  title: string
+  statusFilter?: 'Bound' | 'Pending' | 'all'
+  onSelectPVC: (cluster: string, namespace: string, name: string) => void
+}
+
+function PVCListModal({ isOpen, onClose, pvcs, title, statusFilter = 'all', onSelectPVC }: PVCListModalProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  // Filter by status and search query
+  const filteredPVCs = pvcs.filter(pvc => {
+    if (statusFilter !== 'all' && pvc.status !== statusFilter) return false
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      return (
+        pvc.name.toLowerCase().includes(query) ||
+        pvc.namespace.toLowerCase().includes(query) ||
+        (pvc.cluster && pvc.cluster.toLowerCase().includes(query)) ||
+        (pvc.storageClass && pvc.storageClass.toLowerCase().includes(query))
+      )
+    }
+    return true
+  })
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Bound': return 'text-green-400 bg-green-400/20'
+      case 'Pending': return 'text-yellow-400 bg-yellow-400/20'
+      case 'Lost': return 'text-red-400 bg-red-400/20'
+      default: return 'text-muted-foreground bg-secondary'
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative glass rounded-lg w-[800px] max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <Database className={`w-5 h-5 ${statusFilter === 'Bound' ? 'text-green-400' : statusFilter === 'Pending' ? 'text-yellow-400' : 'text-blue-400'}`} />
+            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-secondary text-muted-foreground">
+              {filteredPVCs.length} PVC{filteredPVCs.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="p-4 border-b border-border">
+          <input
+            type="text"
+            placeholder="Search by name, namespace, cluster, or storage class..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+        </div>
+
+        {/* PVC List */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {filteredPVCs.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No PVCs found matching the criteria
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredPVCs.map((pvc, idx) => (
+                <div
+                  key={`${pvc.cluster}-${pvc.namespace}-${pvc.name}-${idx}`}
+                  onClick={() => onSelectPVC(pvc.cluster || 'default', pvc.namespace, pvc.name)}
+                  className="glass p-3 rounded-lg cursor-pointer hover:bg-secondary/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Database className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground">{pvc.name}</span>
+                          <span className={`px-1.5 py-0.5 text-xs rounded ${getStatusColor(pvc.status)}`}>
+                            {pvc.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                          <span>Namespace: {pvc.namespace}</span>
+                          {pvc.storageClass && <span>• Storage Class: {pvc.storageClass}</span>}
+                          {pvc.capacity && <span>• {pvc.capacity}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {pvc.cluster && <ClusterBadge cluster={pvc.cluster} size="sm" />}
+                      <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 interface StorageCard {
   id: string
@@ -54,6 +182,9 @@ export function Storage() {
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<StorageCard | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  // PVC List Modal state
+  const [showPVCModal, setShowPVCModal] = useState(false)
+  const [pvcModalFilter, setPVCModalFilter] = useState<'Bound' | 'Pending' | 'all'>('all')
 
   // Combined loading/refreshing states (useClusters has shared cache so data persists)
   const isFetching = isLoading || isRefreshing
@@ -305,11 +436,12 @@ export function Storage() {
                 <div
                   className={`glass p-4 rounded-lg ${hasDataToShow && (stats?.totalPVCs || 0) > 0 ? 'cursor-pointer hover:bg-secondary/50' : ''} transition-colors`}
                   onClick={() => {
-                    if (hasDataToShow && (stats?.totalPVCs || 0) > 0 && filteredPVCs[0]) {
-                      drillToPVC(filteredPVCs[0].cluster || 'default', filteredPVCs[0].namespace, filteredPVCs[0].name)
+                    if (hasDataToShow && (stats?.totalPVCs || 0) > 0) {
+                      setPVCModalFilter('all')
+                      setShowPVCModal(true)
                     }
                   }}
-                  title={!hasDataToShow ? 'No reachable clusters' : (stats?.totalPVCs || 0) > 0 ? `${stats?.totalPVCs} persistent volume claim${(stats?.totalPVCs || 0) !== 1 ? 's' : ''} - Click to view details` : 'No PVCs found'}
+                  title={!hasDataToShow ? 'No reachable clusters' : (stats?.totalPVCs || 0) > 0 ? `${stats?.totalPVCs} persistent volume claim${(stats?.totalPVCs || 0) !== 1 ? 's' : ''} - Click to view list` : 'No PVCs found'}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="w-5 h-5 text-blue-400" />
@@ -321,12 +453,12 @@ export function Storage() {
                 <div
                   className={`glass p-4 rounded-lg ${hasDataToShow && (stats?.boundPVCs || 0) > 0 ? 'cursor-pointer hover:bg-secondary/50' : ''} transition-colors`}
                   onClick={() => {
-                    if (hasDataToShow) {
-                      const boundPVC = filteredPVCs.find(p => p.status === 'Bound')
-                      if (boundPVC) drillToPVC(boundPVC.cluster || 'default', boundPVC.namespace, boundPVC.name)
+                    if (hasDataToShow && (stats?.boundPVCs || 0) > 0) {
+                      setPVCModalFilter('Bound')
+                      setShowPVCModal(true)
                     }
                   }}
-                  title={!hasDataToShow ? 'No reachable clusters' : (stats?.boundPVCs || 0) > 0 ? `${stats?.boundPVCs} PVC${(stats?.boundPVCs || 0) !== 1 ? 's' : ''} bound - Click to view details` : 'No bound PVCs'}
+                  title={!hasDataToShow ? 'No reachable clusters' : (stats?.boundPVCs || 0) > 0 ? `${stats?.boundPVCs} PVC${(stats?.boundPVCs || 0) !== 1 ? 's' : ''} bound - Click to view list` : 'No bound PVCs'}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <FolderArchive className="w-5 h-5 text-green-400" />
@@ -338,12 +470,12 @@ export function Storage() {
                 <div
                   className={`glass p-4 rounded-lg ${hasDataToShow && (stats?.pendingPVCs || 0) > 0 ? 'cursor-pointer hover:bg-secondary/50' : ''} transition-colors`}
                   onClick={() => {
-                    if (hasDataToShow) {
-                      const pendingPVC = filteredPVCs.find(p => p.status === 'Pending')
-                      if (pendingPVC) drillToPVC(pendingPVC.cluster || 'default', pendingPVC.namespace, pendingPVC.name)
+                    if (hasDataToShow && (stats?.pendingPVCs || 0) > 0) {
+                      setPVCModalFilter('Pending')
+                      setShowPVCModal(true)
                     }
                   }}
-                  title={!hasDataToShow ? 'No reachable clusters' : (stats?.pendingPVCs || 0) > 0 ? `${stats?.pendingPVCs} PVC${(stats?.pendingPVCs || 0) !== 1 ? 's' : ''} pending - Click to view details` : 'No pending PVCs'}
+                  title={!hasDataToShow ? 'No reachable clusters' : (stats?.pendingPVCs || 0) > 0 ? `${stats?.pendingPVCs} PVC${(stats?.pendingPVCs || 0) !== 1 ? 's' : ''} pending - Click to view list` : 'No pending PVCs'}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="w-5 h-5 text-yellow-400" />
@@ -464,6 +596,19 @@ export function Storage() {
         card={configureCard}
         onClose={() => setConfiguringCard(null)}
         onSave={handleSaveCardConfig}
+      />
+
+      {/* PVC List Modal */}
+      <PVCListModal
+        isOpen={showPVCModal}
+        onClose={() => setShowPVCModal(false)}
+        pvcs={filteredPVCs}
+        title={pvcModalFilter === 'all' ? 'All PVCs' : pvcModalFilter === 'Bound' ? 'Bound PVCs' : 'Pending PVCs'}
+        statusFilter={pvcModalFilter}
+        onSelectPVC={(cluster, namespace, name) => {
+          setShowPVCModal(false)
+          drillToPVC(cluster, namespace, name)
+        }}
       />
     </div>
   )
