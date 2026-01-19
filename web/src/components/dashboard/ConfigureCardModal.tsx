@@ -85,6 +85,12 @@ const CARD_BEHAVIORS: Record<string, Array<{ key: string; label: string; descrip
     { key: 'alertOnNew', label: 'Alert on new issues', description: 'Notify when new deployment issues appear', default: false },
     { key: 'paginate', label: 'Enable pagination', description: 'Paginate results instead of showing all', default: false },
   ],
+  deployment_progress: [
+    { key: 'autoRefresh', label: 'Auto-refresh', description: 'Update rollout progress periodically', default: true },
+    { key: 'showPercentage', label: 'Show percentage', description: 'Display progress as percentage', default: true },
+    { key: 'alertOnComplete', label: 'Alert on complete', description: 'Notify when rollout completes', default: false },
+    { key: 'alertOnStalled', label: 'Alert on stalled', description: 'Notify when rollout is stuck', default: true },
+  ],
   upgrade_status: [
     { key: 'autoRefresh', label: 'Auto-refresh', description: 'Check for version updates periodically', default: true },
     { key: 'showOnlyUpgradeable', label: 'Show upgradeable only', description: 'Only show clusters with available upgrades', default: false },
@@ -146,6 +152,8 @@ const CARD_BEHAVIORS: Record<string, Array<{ key: string; label: string; descrip
   argocd_sync_status: [
     { key: 'autoRefresh', label: 'Auto-refresh', description: 'Check sync status periodically', default: true },
     { key: 'showHistory', label: 'Show history', description: 'Display recent sync history', default: true },
+    { key: 'showOutOfSync', label: 'Prioritize out-of-sync', description: 'Show out-of-sync apps first', default: true },
+    { key: 'alertOnOutOfSync', label: 'Alert on out-of-sync', description: 'Notify when apps go out of sync', default: false },
   ],
   kustomization_status: [
     { key: 'autoRefresh', label: 'Auto-refresh', description: 'Check Flux kustomizations periodically', default: true },

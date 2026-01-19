@@ -22,6 +22,7 @@ export interface CanIRequest {
   group?: string
   subresource?: string
   name?: string
+  groups?: string[]  // User groups for group-based RBAC (common in OpenShift)
 }
 
 export interface CanIResponse {

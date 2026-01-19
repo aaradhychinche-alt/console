@@ -1,9 +1,34 @@
-import { useState, useCallback } from 'react'
-import { Shield, Check, X, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useCallback, useMemo } from 'react'
+import { Shield, Check, X, Loader2, AlertCircle, ChevronDown } from 'lucide-react'
 import { useCanI } from '../../hooks/usePermissions'
-import { useClusters } from '../../hooks/useMCP'
+import { useClusters, useNamespaces } from '../../hooks/useMCP'
 
 const COMMON_VERBS = ['get', 'list', 'create', 'update', 'delete', 'watch', 'patch']
+
+// Common API groups for Kubernetes resources
+const COMMON_API_GROUPS = [
+  { value: '', label: 'Core API (pods, services, secrets)' },
+  { value: 'apps', label: 'apps (deployments, statefulsets)' },
+  { value: 'rbac.authorization.k8s.io', label: 'rbac.authorization.k8s.io (roles, bindings)' },
+  { value: 'batch', label: 'batch (jobs, cronjobs)' },
+  { value: 'networking.k8s.io', label: 'networking.k8s.io (ingresses)' },
+  { value: 'autoscaling', label: 'autoscaling (hpa)' },
+  { value: 'storage.k8s.io', label: 'storage.k8s.io (storageclasses)' },
+  { value: 'policy', label: 'policy (poddisruptionbudgets)' },
+  { value: 'admissionregistration.k8s.io', label: 'admissionregistration.k8s.io (webhooks)' },
+  { value: 'apiextensions.k8s.io', label: 'apiextensions.k8s.io (crds)' },
+]
+
+// Common user groups, especially for OpenShift
+const COMMON_USER_GROUPS = [
+  { value: 'system:authenticated', label: 'system:authenticated' },
+  { value: 'system:authenticated:oauth', label: 'system:authenticated:oauth (OpenShift)' },
+  { value: 'system:cluster-admins', label: 'system:cluster-admins' },
+  { value: 'cluster-admins', label: 'cluster-admins (OpenShift)' },
+  { value: 'dedicated-admins', label: 'dedicated-admins (OpenShift Dedicated)' },
+  { value: 'system:serviceaccounts', label: 'system:serviceaccounts' },
+  { value: 'system:masters', label: 'system:masters' },
+]
 
 // Resource to API group mapping - required for correct permission checks
 const RESOURCE_API_GROUPS: Record<string, string> = {
@@ -72,30 +97,64 @@ export function CanIChecker() {
   const [namespace, setNamespace] = useState('')
   const [customVerb, setCustomVerb] = useState('')
   const [customResource, setCustomResource] = useState('')
-  const [group, setGroup] = useState('')
+  const [apiGroup, setApiGroup] = useState('')
+  const [customApiGroup, setCustomApiGroup] = useState('')
+  const [selectedUserGroups, setSelectedUserGroups] = useState<string[]>([])
+  const [customUserGroup, setCustomUserGroup] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
 
+  // Get selected cluster for namespace fetching
+  const selectedCluster = cluster || clusters[0] || ''
+  const { namespaces } = useNamespaces(selectedCluster)
+
+  // Available namespaces for dropdown
+  const availableNamespaces = useMemo(() => {
+    return namespaces || []
+  }, [namespaces])
+
+  // Toggle user group selection
+  const toggleUserGroup = useCallback((group: string) => {
+    setSelectedUserGroups(prev =>
+      prev.includes(group)
+        ? prev.filter(g => g !== group)
+        : [...prev, group]
+    )
+  }, [])
+
+  // Add custom user group
+  const addCustomUserGroup = useCallback(() => {
+    if (customUserGroup.trim() && !selectedUserGroups.includes(customUserGroup.trim())) {
+      setSelectedUserGroups(prev => [...prev, customUserGroup.trim()])
+      setCustomUserGroup('')
+    }
+  }, [customUserGroup, selectedUserGroups])
+
   const handleCheck = useCallback(async () => {
-    const selectedCluster = cluster || clusters[0]
-    if (!selectedCluster) return
+    const targetCluster = cluster || clusters[0]
+    if (!targetCluster) return
 
     const selectedVerb = verb === 'custom' ? customVerb : verb
     const selectedResource = resource === 'custom' ? customResource : resource
 
     if (!selectedVerb || !selectedResource) return
 
-    // Auto-detect API group from resource, or use manual override if provided
-    const autoGroup = RESOURCE_API_GROUPS[selectedResource]
-    const effectiveGroup = group || autoGroup
+    // Determine effective API group
+    const effectiveApiGroup = apiGroup === 'custom'
+      ? customApiGroup
+      : apiGroup || RESOURCE_API_GROUPS[selectedResource]
+
+    // User groups for permission check
+    const groups = selectedUserGroups.length > 0 ? selectedUserGroups : undefined
 
     await checkPermission({
-      cluster: selectedCluster,
+      cluster: targetCluster,
       verb: selectedVerb,
       resource: selectedResource,
       namespace: namespace || undefined,
-      group: effectiveGroup !== undefined ? effectiveGroup : undefined,
+      group: effectiveApiGroup !== undefined ? effectiveApiGroup : undefined,
+      groups,
     })
-  }, [cluster, clusters, verb, customVerb, resource, customResource, namespace, group, checkPermission])
+  }, [cluster, clusters, verb, customVerb, resource, customResource, namespace, apiGroup, customApiGroup, selectedUserGroups, checkPermission])
 
   const handleReset = useCallback(() => {
     reset()
@@ -104,7 +163,10 @@ export function CanIChecker() {
     setNamespace('')
     setCustomVerb('')
     setCustomResource('')
-    setGroup('')
+    setApiGroup('')
+    setCustomApiGroup('')
+    setSelectedUserGroups([])
+    setCustomUserGroup('')
   }, [reset])
 
   return (
@@ -125,17 +187,20 @@ export function CanIChecker() {
           <label htmlFor="cluster-select" className="block text-sm font-medium text-foreground mb-1">
             Cluster
           </label>
-          <select
-            id="cluster-select"
-            value={cluster || clusters[0] || ''}
-            onChange={(e) => setCluster(e.target.value)}
-            className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-testid="can-i-cluster"
-          >
-            {clusters.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              id="cluster-select"
+              value={cluster || clusters[0] || ''}
+              onChange={(e) => setCluster(e.target.value)}
+              className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
+              data-testid="can-i-cluster"
+            >
+              {clusters.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
         </div>
 
         {/* Verb Selection */}
@@ -143,18 +208,21 @@ export function CanIChecker() {
           <label htmlFor="verb-select" className="block text-sm font-medium text-foreground mb-1">
             Action (Verb)
           </label>
-          <select
-            id="verb-select"
-            value={verb}
-            onChange={(e) => setVerb(e.target.value)}
-            className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-testid="can-i-verb"
-          >
-            {COMMON_VERBS.map((v) => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-            <option value="custom">Custom...</option>
-          </select>
+          <div className="relative">
+            <select
+              id="verb-select"
+              value={verb}
+              onChange={(e) => setVerb(e.target.value)}
+              className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
+              data-testid="can-i-verb"
+            >
+              {COMMON_VERBS.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+              <option value="custom">Custom...</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
           {verb === 'custom' && (
             <input
               type="text"
@@ -172,18 +240,21 @@ export function CanIChecker() {
           <label htmlFor="resource-select" className="block text-sm font-medium text-foreground mb-1">
             Resource
           </label>
-          <select
-            id="resource-select"
-            value={resource}
-            onChange={(e) => setResource(e.target.value)}
-            className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-testid="can-i-resource"
-          >
-            {COMMON_RESOURCES.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-            <option value="custom">Custom...</option>
-          </select>
+          <div className="relative">
+            <select
+              id="resource-select"
+              value={resource}
+              onChange={(e) => setResource(e.target.value)}
+              className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
+              data-testid="can-i-resource"
+            >
+              {COMMON_RESOURCES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+              <option value="custom">Custom...</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
           {resource === 'custom' && (
             <input
               type="text"
@@ -198,43 +269,139 @@ export function CanIChecker() {
 
         {/* Namespace (optional) */}
         <div>
-          <label htmlFor="namespace-input" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="namespace-select" className="block text-sm font-medium text-foreground mb-1">
             Namespace <span className="text-muted-foreground">(optional, leave empty for cluster-scoped)</span>
           </label>
-          <input
-            id="namespace-input"
-            type="text"
-            value={namespace}
-            onChange={(e) => setNamespace(e.target.value)}
-            placeholder="e.g., default"
-            className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-testid="can-i-namespace"
-          />
+          <div className="relative">
+            <select
+              id="namespace-select"
+              value={namespace}
+              onChange={(e) => setNamespace(e.target.value)}
+              className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
+              data-testid="can-i-namespace"
+            >
+              <option value="">All namespaces (cluster-scoped)</option>
+              {availableNamespaces.map((ns) => (
+                <option key={ns} value={ns}>{ns}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
+          {availableNamespaces.length === 0 && selectedCluster && (
+            <p className="mt-1 text-xs text-muted-foreground">Loading namespaces...</p>
+          )}
         </div>
 
-        {/* API Group - shown by default since it's required for accurate checks */}
+        {/* API Group - dropdown with common groups */}
         <div>
-          <label htmlFor="group-input" className="block text-sm font-medium text-foreground mb-1">
+          <label htmlFor="api-group-select" className="block text-sm font-medium text-foreground mb-1">
             API Group <span className="text-muted-foreground">(auto-detected for common resources)</span>
           </label>
-          <input
-            id="group-input"
-            type="text"
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-            placeholder={
-              resource !== 'custom' && RESOURCE_API_GROUPS[resource] !== undefined
-                ? `Auto: ${RESOURCE_API_GROUPS[resource] || '(core)'}`
-                : 'e.g., apps, rbac.authorization.k8s.io'
-            }
-            className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-testid="can-i-group"
-          />
-          {resource !== 'custom' && RESOURCE_API_GROUPS[resource] !== undefined && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Auto-detected: <code className="px-1 py-0.5 rounded bg-secondary">{RESOURCE_API_GROUPS[resource] || '(core API)'}</code>
-            </p>
+          <div className="relative">
+            <select
+              id="api-group-select"
+              value={apiGroup}
+              onChange={(e) => setApiGroup(e.target.value)}
+              className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
+              data-testid="can-i-api-group"
+            >
+              <option value="">
+                {resource !== 'custom' && RESOURCE_API_GROUPS[resource] !== undefined
+                  ? `Auto-detect: ${RESOURCE_API_GROUPS[resource] || '(core API)'}`
+                  : 'Auto-detect from resource'
+                }
+              </option>
+              {COMMON_API_GROUPS.map((group) => (
+                <option key={group.value || 'core'} value={group.value}>{group.label}</option>
+              ))}
+              <option value="custom">Custom...</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
+          {apiGroup === 'custom' && (
+            <input
+              type="text"
+              value={customApiGroup}
+              onChange={(e) => setCustomApiGroup(e.target.value)}
+              placeholder="Enter custom API group"
+              className="mt-2 w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-testid="can-i-custom-api-group"
+            />
           )}
+        </div>
+
+        {/* User Groups - multi-select dropdown for OpenShift and RBAC */}
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">
+            User Groups <span className="text-muted-foreground">(optional, for group-based RBAC)</span>
+          </label>
+
+          {/* Selected groups display */}
+          {selectedUserGroups.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {selectedUserGroups.map((group) => (
+                <span
+                  key={group}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400"
+                >
+                  {group}
+                  <button
+                    onClick={() => toggleUserGroup(group)}
+                    className="hover:text-blue-200"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Common groups dropdown */}
+          <div className="relative">
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value && !selectedUserGroups.includes(e.target.value)) {
+                  toggleUserGroup(e.target.value)
+                }
+              }}
+              className="w-full p-2 rounded-lg bg-secondary border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
+              data-testid="can-i-user-groups"
+            >
+              <option value="">Select common groups...</option>
+              {COMMON_USER_GROUPS.filter(g => !selectedUserGroups.includes(g.value)).map((group) => (
+                <option key={group.value} value={group.value}>{group.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
+
+          {/* Custom group input */}
+          <div className="mt-2 flex gap-2">
+            <input
+              type="text"
+              value={customUserGroup}
+              onChange={(e) => setCustomUserGroup(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addCustomUserGroup()
+                }
+              }}
+              placeholder="Add custom group..."
+              className="flex-1 p-2 rounded-lg bg-secondary border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={addCustomUserGroup}
+              disabled={!customUserGroup.trim()}
+              className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Add groups to check permissions via group bindings (common in OpenShift)
+          </p>
         </div>
 
         {/* Advanced Options */}

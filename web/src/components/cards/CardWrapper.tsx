@@ -208,7 +208,8 @@ export function CardWrapper({
         data-tour="card"
         className={cn(
           'glass rounded-xl h-full overflow-hidden card-hover',
-          'flex flex-col'
+          'flex flex-col',
+          isDemoData && 'border-2 border-dashed border-yellow-500/40'
         )}
         onMouseEnter={() => setShowSummary(true)}
         onMouseLeave={() => setShowSummary(false)}
