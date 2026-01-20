@@ -28,9 +28,13 @@ const PRIORITY_STYLES = {
 
 export function CardRecommendations({ currentCardTypes, onAddCard }: Props) {
   const { recommendations, hasRecommendations, highPriorityCount } = useCardRecommendations(currentCardTypes)
-  const { snoozeRecommendation, isSnoozed } = useSnoozedRecommendations()
+  // Subscribe to snoozedRecommendations to trigger re-render when snooze state changes
+  const { snoozeRecommendation, isSnoozed, snoozedRecommendations } = useSnoozedRecommendations()
   const [expandedRec, setExpandedRec] = useState<string | null>(null)
   const [addingCard, setAddingCard] = useState<string | null>(null)
+
+  // Force dependency on snoozedRecommendations for reactivity
+  void snoozedRecommendations
 
   const handleAddCard = async (rec: CardRecommendation) => {
     setAddingCard(rec.id)
@@ -152,7 +156,7 @@ export function CardRecommendations({ currentCardTypes, onAddCard }: Props) {
         {/* Stats badges */}
         {highPriorityCount > 0 && (
           <span className="px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px]">
-            {highPriorityCount} urgent
+            {highPriorityCount} critical
           </span>
         )}
 

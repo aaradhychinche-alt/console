@@ -45,10 +45,14 @@ const PRIORITY_STYLES = {
 export function MissionSuggestions() {
   const navigate = useNavigate()
   const { suggestions, hasSuggestions, stats } = useMissionSuggestions()
-  const { snoozeMission, dismissMission, getSnoozeRemaining } = useSnoozedMissions()
+  // Subscribe to snoozedMissions to trigger re-render when snooze state changes
+  const { snoozeMission, dismissMission, getSnoozeRemaining, snoozedMissions } = useSnoozedMissions()
   const { startMission } = useMissions()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [processingId, setProcessingId] = useState<string | null>(null)
+
+  // Force dependency on snoozedMissions for reactivity
+  void snoozedMissions
 
   const handleAction = async (suggestion: MissionSuggestion) => {
     setProcessingId(suggestion.id)
