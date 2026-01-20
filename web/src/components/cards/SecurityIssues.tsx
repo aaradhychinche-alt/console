@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Shield, AlertTriangle, RefreshCw, User, Network, Server, ChevronRight } from 'lucide-react'
 import { useSecurityIssues, SecurityIssue } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { PaginatedList } from '../ui/PaginatedList'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { CardControls } from '../ui/CardControls'
@@ -46,8 +47,16 @@ export function SecurityIssues({ config }: SecurityIssuesProps) {
   const namespace = config?.namespace as string | undefined
   const { issues: rawIssues, isLoading, isRefreshing, lastUpdated, error, refetch } = useSecurityIssues(cluster, namespace)
   const { filterItems } = useGlobalFilters()
+  const { drillToPod } = useDrillDownActions()
   const [sortBy, setSortBy] = useState<SortByOption>('severity')
   const [limit, setLimit] = useState<number | 'unlimited'>(5)
+
+  const handleIssueClick = (issue: SecurityIssue) => {
+    drillToPod(issue.cluster || 'default', issue.namespace, issue.name, {
+      securityIssue: issue.issue,
+      severity: issue.severity,
+    })
+  }
 
   const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
 
@@ -146,8 +155,9 @@ export function SecurityIssues({ config }: SecurityIssuesProps) {
             return (
               <div
                 key={`${issue.name}-${issue.issue}-${idx}`}
-                className={`p-3 rounded-lg ${colors.bg} border ${colors.border}`}
-                title={`Security issue in ${issue.name}: ${issue.issue}`}
+                className={`p-3 rounded-lg ${colors.bg} border ${colors.border} cursor-pointer hover:opacity-80 transition-opacity`}
+                onClick={() => handleIssueClick(issue)}
+                title={`Click to view pod ${issue.name} with security issue: ${issue.issue}`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`p-2 rounded-lg ${colors.badge} flex-shrink-0`} title={iconTooltip}>

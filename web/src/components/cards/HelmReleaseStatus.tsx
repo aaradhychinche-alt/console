@@ -150,7 +150,7 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
           <Anchor className="w-4 h-4 text-blue-400" />
           <span className="text-sm font-medium text-muted-foreground">Helm Releases</span>
           {failedCount > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400" title={`${failedCount} Helm release${failedCount !== 1 ? 's' : ''} in failed state`}>
               {failedCount} failed
             </span>
           )}
@@ -158,6 +158,7 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
         <button
           onClick={() => refetch()}
           className="p-1 hover:bg-secondary rounded transition-colors"
+          title="Refresh Helm releases"
         >
           <RefreshCw className="w-4 h-4 text-muted-foreground" />
         </button>
@@ -172,6 +173,7 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
             setSelectedNamespace('')
           }}
           className="flex-1 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm text-foreground"
+          title="Select a cluster to view Helm releases"
         >
           <option value="">Select cluster...</option>
           {clusters.map(c => (
@@ -183,6 +185,7 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
           onChange={(e) => setSelectedNamespace(e.target.value)}
           disabled={!selectedCluster}
           className="flex-1 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm text-foreground disabled:opacity-50"
+          title={selectedCluster ? "Filter by namespace" : "Select a cluster first"}
         >
           <option value="">All namespaces</option>
           {namespaces.map(ns => (
@@ -210,15 +213,15 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
 
           {/* Summary */}
           <div className="flex gap-2 mb-4">
-            <div className="flex-1 p-2 rounded-lg bg-blue-500/10 text-center">
+            <div className="flex-1 p-2 rounded-lg bg-blue-500/10 text-center cursor-default" title={`${releases.length} total Helm release${releases.length !== 1 ? 's' : ''}`}>
               <span className="text-lg font-bold text-blue-400">{releases.length}</span>
               <p className="text-xs text-muted-foreground">Total</p>
             </div>
-            <div className="flex-1 p-2 rounded-lg bg-green-500/10 text-center">
+            <div className="flex-1 p-2 rounded-lg bg-green-500/10 text-center cursor-default" title={`${deployedCount} release${deployedCount !== 1 ? 's' : ''} successfully deployed`}>
               <span className="text-lg font-bold text-green-400">{deployedCount}</span>
               <p className="text-xs text-muted-foreground">Deployed</p>
             </div>
-            <div className="flex-1 p-2 rounded-lg bg-red-500/10 text-center">
+            <div className="flex-1 p-2 rounded-lg bg-red-500/10 text-center cursor-default" title={`${failedCount} release${failedCount !== 1 ? 's' : ''} in failed state`}>
               <span className="text-lg font-bold text-red-400">{failedCount}</span>
               <p className="text-xs text-muted-foreground">Failed</p>
             </div>
@@ -233,21 +236,22 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
               return (
                 <div
                   key={idx}
-                  className={`p-3 rounded-lg ${release.status === 'failed' ? 'bg-red-500/10 border border-red-500/20' : 'bg-secondary/30'} hover:bg-secondary/50 transition-colors`}
+                  className={`p-3 rounded-lg ${release.status === 'failed' ? 'bg-red-500/10 border border-red-500/20' : 'bg-secondary/30'} hover:bg-secondary/50 transition-colors cursor-default`}
+                  title={`${release.name} - ${release.chart}@${release.version} (Revision ${release.revision})`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <StatusIcon className={`w-4 h-4 text-${color}-400`} />
-                      <span className="text-sm text-foreground font-medium">{release.name}</span>
+                      <span title={`Status: ${release.status}`}><StatusIcon className={`w-4 h-4 text-${color}-400`} /></span>
+                      <span className="text-sm text-foreground font-medium" title={release.name}>{release.name}</span>
                     </div>
-                    <span className={`text-xs px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`} title={`Release status: ${release.status}`}>
                       {release.status}
                     </span>
                   </div>
                   <div className="flex items-center gap-4 ml-6 text-xs text-muted-foreground">
-                    <span>{release.chart}@{release.version}</span>
-                    <span>Rev {release.revision}</span>
-                    <span className="ml-auto">{formatTime(release.updated)}</span>
+                    <span title={`Chart: ${release.chart}, Version: ${release.version}`}>{release.chart}@{release.version}</span>
+                    <span title={`Helm revision: ${release.revision}`}>Rev {release.revision}</span>
+                    <span className="ml-auto" title={`Last updated: ${new Date(release.updated).toLocaleString()}`}>{formatTime(release.updated)}</span>
                   </div>
                 </div>
               )

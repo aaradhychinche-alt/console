@@ -42,7 +42,8 @@ export function RadarChart({
       {title && (
         <h4 className="text-sm font-medium text-muted-foreground mb-2">{title}</h4>
       )}
-      <ResponsiveContainer width="100%" height={size}>
+      <div style={{ minHeight: size, width: '100%' }}>
+      <ResponsiveContainer width="100%" height={size} minHeight={size}>
         <RechartsRadarChart data={data}>
           {showGrid && <PolarGrid stroke="#333" />}
           {showAxis && (
@@ -73,6 +74,7 @@ export function RadarChart({
           />
         </RechartsRadarChart>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }
@@ -104,7 +106,8 @@ export function MultiRadarChart({
       {title && (
         <h4 className="text-sm font-medium text-muted-foreground mb-2">{title}</h4>
       )}
-      <ResponsiveContainer width="100%" height={size}>
+      <div style={{ minHeight: size, width: '100%' }}>
+      <ResponsiveContainer width="100%" height={size} minHeight={size}>
         <RechartsRadarChart data={data}>
           {showGrid && <PolarGrid stroke="#333" />}
           <PolarAngleAxis
@@ -140,6 +143,7 @@ export function MultiRadarChart({
           ))}
         </RechartsRadarChart>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }

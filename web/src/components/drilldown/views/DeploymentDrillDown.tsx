@@ -35,7 +35,6 @@ export function DeploymentDrillDown({ data }: Props) {
   const [yamlLoading, setYamlLoading] = useState(false)
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [canScale, setCanScale] = useState<boolean | null>(null)
-  const [desiredReplicas, setDesiredReplicas] = useState<number>((data.replicas as number) || 0)
   const [isScaling, setIsScaling] = useState(false)
   const [scaleError, setScaleError] = useState<string | null>(null)
   const { checkPermission } = useCanI()
@@ -181,14 +180,10 @@ export function DeploymentDrillDown({ data }: Props) {
     checkScalePermission()
   }, [checkScalePermission])
 
-  // Keep desiredReplicas in sync with replicas when it changes
-  useEffect(() => {
-    setDesiredReplicas(replicas)
-  }, [replicas])
-
-  // Handle scale deployment
-  const handleScale = async () => {
-    if (!agentConnected || !canScale || desiredReplicas === replicas) return
+  // Handle scale deployment - directly scales to the specified count
+  const handleScaleTo = async (targetReplicas: number) => {
+    if (!agentConnected || !canScale || targetReplicas === replicas) return
+    if (targetReplicas < 0 || targetReplicas > 10) return
 
     setIsScaling(true)
     setScaleError(null)
@@ -200,12 +195,12 @@ export function DeploymentDrillDown({ data }: Props) {
         deploymentName,
         '-n',
         namespace,
-        `--replicas=${desiredReplicas}`,
+        `--replicas=${targetReplicas}`,
       ])
 
       if (output.toLowerCase().includes('scaled') || output.toLowerCase().includes('deployment')) {
         // Success - update local state immediately
-        setReplicas(desiredReplicas)
+        setReplicas(targetReplicas)
         // Refetch data to get updated status
         setTimeout(fetchData, 1000)
       } else if (output.toLowerCase().includes('error') || output.toLowerCase().includes('forbidden')) {
@@ -217,6 +212,10 @@ export function DeploymentDrillDown({ data }: Props) {
       setIsScaling(false)
     }
   }
+
+  // Increment/decrement handlers that directly trigger scaling
+  const handleDecrement = () => handleScaleTo(replicas - 1)
+  const handleIncrement = () => handleScaleTo(replicas + 1)
 
   // Track if we've already loaded data to prevent refetching
   const hasLoadedRef = useRef(false)
@@ -331,7 +330,12 @@ export function DeploymentDrillDown({ data }: Props) {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <Gauge value={readyReplicas} max={replicas} size="sm" />
+                  <Gauge
+                    value={replicas > 0 ? Math.round((readyReplicas / replicas) * 100) : 0}
+                    max={100}
+                    size="sm"
+                    invertColors
+                  />
                   <div className="text-right">
                     <div className="text-2xl font-bold text-foreground">{readyReplicas}/{replicas}</div>
                     <div className="text-xs text-muted-foreground">Replicas Ready</div>
@@ -357,41 +361,51 @@ export function DeploymentDrillDown({ data }: Props) {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setDesiredReplicas(Math.max(0, desiredReplicas - 1))}
-                    disabled={!canScale || desiredReplicas <= 0 || isScaling}
+                    onClick={handleDecrement}
+                    disabled={!canScale || replicas <= 0 || isScaling}
                     className={cn(
                       'p-2 rounded-lg transition-colors',
-                      canScale && desiredReplicas > 0
+                      canScale && replicas > 0 && !isScaling
                         ? 'bg-secondary hover:bg-secondary/80 text-foreground'
                         : 'bg-secondary/30 text-muted-foreground cursor-not-allowed'
                     )}
-                    title={canScale === false ? 'No permission to scale' : 'Decrease replicas'}
+                    title={
+                      canScale === false ? 'No permission to scale deployments in this namespace' :
+                      replicas <= 0 ? 'Already at minimum (0 replicas)' :
+                      isScaling ? 'Scaling in progress...' :
+                      `Scale down to ${replicas - 1} replica${replicas - 1 !== 1 ? 's' : ''}`
+                    }
                   >
                     <Minus className="w-4 h-4" />
                   </button>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    value={desiredReplicas}
-                    onChange={(e) => setDesiredReplicas(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
-                    disabled={!canScale || isScaling}
+                  <div
                     className={cn(
-                      'w-16 text-center py-2 rounded-lg bg-secondary border border-border text-foreground font-mono text-lg',
-                      (!canScale || isScaling) && 'opacity-50 cursor-not-allowed'
+                      'w-16 text-center py-2 rounded-lg bg-secondary border border-border text-foreground font-mono text-lg flex items-center justify-center',
+                      isScaling && 'opacity-70'
                     )}
-                    title={canScale === false ? 'No permission to scale' : 'Desired replicas (0-10)'}
-                  />
+                    title={`Current: ${replicas} replica${replicas !== 1 ? 's' : ''}`}
+                  >
+                    {isScaling ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
+                    ) : (
+                      replicas
+                    )}
+                  </div>
                   <button
-                    onClick={() => setDesiredReplicas(Math.min(10, desiredReplicas + 1))}
-                    disabled={!canScale || desiredReplicas >= 10 || isScaling}
+                    onClick={handleIncrement}
+                    disabled={!canScale || replicas >= 10 || isScaling}
                     className={cn(
                       'p-2 rounded-lg transition-colors',
-                      canScale && desiredReplicas < 10
+                      canScale && replicas < 10 && !isScaling
                         ? 'bg-secondary hover:bg-secondary/80 text-foreground'
                         : 'bg-secondary/30 text-muted-foreground cursor-not-allowed'
                     )}
-                    title={canScale === false ? 'No permission to scale' : 'Increase replicas'}
+                    title={
+                      canScale === false ? 'No permission to scale deployments in this namespace' :
+                      replicas >= 10 ? 'Maximum is 10 replicas' :
+                      isScaling ? 'Scaling in progress...' :
+                      `Scale up to ${replicas + 1} replica${replicas + 1 !== 1 ? 's' : ''}`
+                    }
                   >
                     <Plus className="w-4 h-4" />
                   </button>
@@ -403,32 +417,15 @@ export function DeploymentDrillDown({ data }: Props) {
                       Checking permissions...
                     </span>
                   ) : canScale === false ? (
-                    <span className="text-yellow-400">No permission to scale deployments</span>
-                  ) : desiredReplicas !== replicas ? (
-                    <span>Change from {replicas} to {desiredReplicas} replicas</span>
+                    <span className="text-yellow-400">No permission to scale deployments in this namespace</span>
+                  ) : isScaling ? (
+                    <span className="text-purple-400 flex items-center gap-2">
+                      Scaling deployment...
+                    </span>
                   ) : (
-                    <span>Current: {replicas} replica{replicas !== 1 ? 's' : ''}</span>
+                    <span>Click +/- to scale (0-10 replicas)</span>
                   )}
                 </div>
-                <button
-                  onClick={handleScale}
-                  disabled={!canScale || desiredReplicas === replicas || isScaling}
-                  className={cn(
-                    'px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2',
-                    canScale && desiredReplicas !== replicas && !isScaling
-                      ? 'bg-purple-500 text-white hover:bg-purple-600'
-                      : 'bg-secondary/30 text-muted-foreground cursor-not-allowed'
-                  )}
-                >
-                  {isScaling ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Scaling...
-                    </>
-                  ) : (
-                    'Scale'
-                  )}
-                </button>
               </div>
             </div>
 

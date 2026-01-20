@@ -62,7 +62,7 @@ const STATE_CONFIGS: Record<ClusterState, StateConfig> = {
     bgColor: 'bg-yellow-500/10',
     borderColor: 'border-yellow-500/30',
     icon: WifiOff,
-    label: 'Unreachable',
+    label: 'Offline',
     suggestion: getSuggestionForErrorType('timeout'),
   },
   'unreachable-auth': {
@@ -94,7 +94,7 @@ const STATE_CONFIGS: Record<ClusterState, StateConfig> = {
     bgColor: 'bg-red-500/10',
     borderColor: 'border-red-500/30',
     icon: AlertCircle,
-    label: 'Unreachable',
+    label: 'Offline',
     suggestion: getSuggestionForErrorType('unknown'),
   },
 }

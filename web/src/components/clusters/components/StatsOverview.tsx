@@ -1,4 +1,4 @@
-import { WifiOff, HardDrive, Server, CheckCircle2, AlertTriangle, Cpu, MemoryStick, Layers, Zap, Box } from 'lucide-react'
+import { WifiOff, HardDrive, Server, CheckCircle2, XCircle, Cpu, MemoryStick, Layers, Zap, Box } from 'lucide-react'
 import { formatStat, formatMemoryStat } from '../../../lib/formatStats'
 
 export interface ClusterStats {
@@ -49,8 +49,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={`${formatStat(stats.total)} total clusters${onFilterByStatus ? ' - Click to show all' : ''}`}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Server className="w-5 h-5 text-purple-400" />
-          <span className="text-sm text-muted-foreground">Clusters</span>
+          <Server className="w-5 h-5 shrink-0 text-purple-400" />
+          <span className="text-sm text-muted-foreground truncate">Clusters</span>
         </div>
         <div className="text-3xl font-bold text-foreground">{formatStat(stats.total)}</div>
         <div className="text-xs text-muted-foreground">total</div>
@@ -61,8 +61,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={`${formatStat(stats.healthy)} healthy clusters${onFilterByStatus && stats.healthy > 0 ? ' - Click to filter' : ''}`}
       >
         <div className="flex items-center gap-2 mb-2">
-          <CheckCircle2 className="w-5 h-5 text-green-400" />
-          <span className="text-sm text-muted-foreground">Healthy</span>
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-green-400" />
+          <span className="text-sm text-muted-foreground truncate">Healthy</span>
         </div>
         <div className="text-3xl font-bold text-green-400">{formatStat(stats.healthy)}</div>
         <div className="text-xs text-muted-foreground">clusters</div>
@@ -73,8 +73,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={`${formatStat(stats.unhealthy)} unhealthy clusters${onFilterByStatus && stats.unhealthy > 0 ? ' - Click to filter' : ''}`}
       >
         <div className="flex items-center gap-2 mb-2">
-          <AlertTriangle className="w-5 h-5 text-orange-400" />
-          <span className="text-sm text-muted-foreground">Unhealthy</span>
+          <XCircle className="w-5 h-5 shrink-0 text-orange-400" />
+          <span className="text-sm text-muted-foreground truncate">Unhealthy</span>
         </div>
         <div className="text-3xl font-bold text-orange-400">{formatStat(stats.unhealthy)}</div>
         <div className="text-xs text-muted-foreground">clusters</div>
@@ -82,11 +82,11 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
       <div
         className={`glass p-4 rounded-lg ${onFilterByStatus && stats.unreachable > 0 ? 'cursor-pointer hover:bg-secondary/50' : ''} transition-colors`}
         onClick={() => stats.unreachable > 0 && onFilterByStatus?.('unreachable')}
-        title={`${formatStat(stats.unreachable)} unreachable clusters - check network connection${onFilterByStatus && stats.unreachable > 0 ? ' - Click to filter' : ''}`}
+        title={`${formatStat(stats.unreachable)} offline clusters - check network connection${onFilterByStatus && stats.unreachable > 0 ? ' - Click to filter' : ''}`}
       >
         <div className="flex items-center gap-2 mb-2">
-          <WifiOff className="w-5 h-5 text-yellow-400" />
-          <span className="text-sm text-muted-foreground">Unreachable</span>
+          <WifiOff className="w-5 h-5 shrink-0 text-yellow-400" />
+          <span className="text-sm text-muted-foreground truncate">Offline</span>
         </div>
         <div className="text-3xl font-bold text-yellow-400">{formatStat(stats.unreachable)}</div>
         <div className="text-xs text-muted-foreground">clusters</div>
@@ -97,8 +97,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={hasData ? `${formatStat(stats.totalNodes)} total nodes${onNodesClick && stats.totalNodes > 0 ? ' - Click to view' : ''}` : 'No data available'}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Box className="w-5 h-5 text-cyan-400" />
-          <span className="text-sm text-muted-foreground">Nodes</span>
+          <Box className="w-5 h-5 shrink-0 text-cyan-400" />
+          <span className="text-sm text-muted-foreground truncate">Nodes</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
           {hasData ? formatStat(stats.totalNodes) : '-'}
@@ -113,8 +113,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={hasData ? `${formatStat(stats.totalCPUs)} CPU cores${onCPUClick && stats.totalCPUs > 0 ? ' - Click to view details' : ''}` : 'No data available'}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Cpu className="w-5 h-5 text-blue-400" />
-          <span className="text-sm text-muted-foreground">CPUs</span>
+          <Cpu className="w-5 h-5 shrink-0 text-blue-400" />
+          <span className="text-sm text-muted-foreground truncate">CPUs</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
           {hasData ? formatStat(stats.totalCPUs) : '-'}
@@ -127,8 +127,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={hasData ? `${formatMemoryStat(stats.totalMemoryGB, hasData)} memory${onMemoryClick && stats.totalMemoryGB > 0 ? ' - Click to view details' : ''}` : 'No data available'}
       >
         <div className="flex items-center gap-2 mb-2">
-          <MemoryStick className="w-5 h-5 text-green-400" />
-          <span className="text-sm text-muted-foreground">Memory</span>
+          <MemoryStick className="w-5 h-5 shrink-0 text-green-400" />
+          <span className="text-sm text-muted-foreground truncate">Memory</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
           {formatMemoryStat(stats.totalMemoryGB, hasData)}
@@ -141,8 +141,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={hasData ? `${formatMemoryStat(stats.totalStorageGB, hasData)} ephemeral storage${onStorageClick && stats.totalStorageGB > 0 ? ' - Click to view details' : ''}` : 'No data available'}
       >
         <div className="flex items-center gap-2 mb-2">
-          <HardDrive className="w-5 h-5 text-purple-400" />
-          <span className="text-sm text-muted-foreground">Storage</span>
+          <HardDrive className="w-5 h-5 shrink-0 text-purple-400" />
+          <span className="text-sm text-muted-foreground truncate">Storage</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
           {formatMemoryStat(stats.totalStorageGB, hasData)}
@@ -155,8 +155,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={hasData ? `${formatStat(stats.totalGPUs)} total GPUs${stats.allocatedGPUs > 0 ? ` (${formatStat(stats.allocatedGPUs)} allocated)` : ''}${onGPUClick && stats.totalGPUs > 0 ? ' - Click to view details' : ''}` : 'No data available'}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Zap className="w-5 h-5 text-yellow-400" />
-          <span className="text-sm text-muted-foreground">GPUs</span>
+          <Zap className="w-5 h-5 shrink-0 text-yellow-400" />
+          <span className="text-sm text-muted-foreground truncate">GPUs</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
           {hasData ? formatStat(stats.totalGPUs) : '-'}
@@ -171,8 +171,8 @@ export function StatsOverview({ stats, onFilterByStatus, onCPUClick, onMemoryCli
         title={hasData ? `${formatStat(stats.totalPods)} running pods${onPodsClick && stats.totalPods > 0 ? ' - Click to view' : ''}` : 'No data available'}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Layers className="w-5 h-5 text-purple-400" />
-          <span className="text-sm text-muted-foreground">Pods</span>
+          <Layers className="w-5 h-5 shrink-0 text-purple-400" />
+          <span className="text-sm text-muted-foreground truncate">Pods</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
           {hasData ? formatStat(stats.totalPods) : '-'}

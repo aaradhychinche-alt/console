@@ -35,7 +35,8 @@ export function BarChart({
   unit = '',
 }: BarChartProps) {
   const Chart = (
-    <ResponsiveContainer width="100%" height={height}>
+    <div style={{ minHeight: Math.max(height, 100), width: '100%' }}>
+    <ResponsiveContainer width="100%" height={height} minHeight={100}>
       <RechartsBarChart
         data={data}
         layout={horizontal ? 'vertical' : 'horizontal'}
@@ -90,6 +91,7 @@ export function BarChart({
         </Bar>
       </RechartsBarChart>
     </ResponsiveContainer>
+    </div>
   )
 
   return (
@@ -127,7 +129,8 @@ export function StackedBarChart({
       {title && (
         <h4 className="text-sm font-medium text-muted-foreground mb-2">{title}</h4>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <div style={{ minHeight: Math.max(height, 100), width: '100%' }}>
+      <ResponsiveContainer width="100%" height={height} minHeight={100}>
         <RechartsBarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
           <XAxis
@@ -159,6 +162,7 @@ export function StackedBarChart({
           ))}
         </RechartsBarChart>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }

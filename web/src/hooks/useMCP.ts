@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
+import { reportAgentDataError, reportAgentDataSuccess } from './useLocalAgent'
+
+// Refresh interval for automatic polling (2 minutes) - manual refresh bypasses this
+const REFRESH_INTERVAL_MS = 120000
 
 // Types matching the backend MCP bridge
 export interface ClusterInfo {
@@ -27,6 +31,8 @@ export interface ClusterInfo {
   lastSeen?: string
   errorType?: 'timeout' | 'auth' | 'network' | 'certificate' | 'unknown'
   errorMessage?: string
+  // Refresh state - true when a refresh is in progress for this cluster
+  refreshing?: boolean
 }
 
 export interface ClusterHealth {
@@ -280,8 +286,8 @@ export function useMCPStatus() {
     }
 
     fetchStatus()
-    // Poll every 30 seconds
-    const interval = setInterval(fetchStatus, 30000)
+    // Poll every 2 minutes
+    const interval = setInterval(fetchStatus, REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [])
 
@@ -320,13 +326,25 @@ function notifyClusterSubscribers() {
   clusterSubscribers.forEach(subscriber => subscriber(clusterCache))
 }
 
+// Debounced notification for batching rapid updates (prevents flashing during health checks)
+let notifyTimeout: ReturnType<typeof setTimeout> | null = null
+function notifyClusterSubscribersDebounced() {
+  if (notifyTimeout) {
+    clearTimeout(notifyTimeout)
+  }
+  notifyTimeout = setTimeout(() => {
+    notifyClusterSubscribers()
+    notifyTimeout = null
+  }, 50) // 50ms debounce batches rapid health check completions
+}
+
 // Update shared cluster cache
 function updateClusterCache(updates: Partial<ClusterCache>) {
   clusterCache = { ...clusterCache, ...updates }
   notifyClusterSubscribers()
 }
 
-// Update a single cluster in the shared cache
+// Update a single cluster in the shared cache (debounced to prevent flashing)
 function updateSingleClusterInCache(clusterName: string, updates: Partial<ClusterInfo>) {
   clusterCache = {
     ...clusterCache,
@@ -334,7 +352,8 @@ function updateSingleClusterInCache(clusterName: string, updates: Partial<Cluste
       c.name === clusterName ? { ...c, ...updates } : c
     ),
   }
-  notifyClusterSubscribers()
+  // Use debounced notification to batch multiple cluster updates
+  notifyClusterSubscribersDebounced()
 }
 
 // Track if initial fetch has been triggered (to avoid duplicate fetches)
@@ -366,6 +385,8 @@ async function fetchClusterListFromAgent(): Promise<ClusterInfo[] | null> {
     clearTimeout(timeoutId)
     if (response.ok) {
       const data = await response.json()
+      // Report successful data fetch - can recover from degraded state
+      reportAgentDataSuccess()
       // Transform agent response to ClusterInfo format - mark as "checking" initially
       return (data.clusters || []).map((c: any) => ({
         name: c.name,
@@ -379,9 +400,14 @@ async function fetchClusterListFromAgent(): Promise<ClusterInfo[] | null> {
         podCount: undefined,
         isCurrent: c.isCurrent,
       }))
+    } else {
+      // Non-OK response (e.g., 503 Service Unavailable)
+      reportAgentDataError('/clusters', `HTTP ${response.status}`)
     }
-  } catch {
-    // Local agent not available
+  } catch (err) {
+    // Local agent not available or timeout
+    // Note: We don't report this as a data error because if the agent
+    // is completely unavailable, the health check will catch it
   }
   return null
 }
@@ -393,7 +419,7 @@ async function fetchSingleClusterHealth(clusterName: string): Promise<ClusterHea
     const response = await fetch(
       `/api/mcp/clusters/${encodeURIComponent(clusterName)}/health`,
       {
-        signal: AbortSignal.timeout(5000), // 5 second timeout per cluster
+        signal: AbortSignal.timeout(10000), // 10 second timeout per cluster (increased for slow networks)
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       }
     )
@@ -414,8 +440,9 @@ async function checkHealthProgressively(clusterList: ClusterInfo[]) {
     const health = await fetchSingleClusterHealth(cluster.name)
 
     if (health) {
-      // Health data available - use it to determine reachability
-      const isReachable = health.reachable !== false && health.nodeCount > 0
+      // Health data available - cluster is reachable if we got a response
+      // Only mark unreachable if explicitly set to false by backend
+      const isReachable = health.reachable !== false
       updateSingleClusterInCache(cluster.name, {
         healthy: health.healthy,
         reachable: isReachable,
@@ -431,6 +458,7 @@ async function checkHealthProgressively(clusterList: ClusterInfo[]) {
         pvcBoundCount: health.pvcBoundCount,
         errorType: health.errorType,
         errorMessage: health.errorMessage,
+        refreshing: false,
       })
     } else {
       // No health data or timeout - cluster is unreachable
@@ -440,6 +468,7 @@ async function checkHealthProgressively(clusterList: ClusterInfo[]) {
         nodeCount: 0,
         podCount: 0,
         errorType: 'timeout',
+        refreshing: false,
       })
     }
   })
@@ -473,8 +502,18 @@ async function silentFetchClusters() {
   }
 }
 
+// Track if a fetch is in progress to prevent duplicate requests
+let fetchInProgress = false
+
 // Full refetch - updates shared cache with loading state
+// Deduplicates concurrent calls - only one fetch runs at a time
 async function fullFetchClusters() {
+  // If a fetch is already in progress, skip this call (deduplication)
+  if (fetchInProgress) {
+    return
+  }
+  fetchInProgress = true
+
   // If we have cached data, show refreshing; otherwise show loading
   const hasCachedData = clusterCache.clusters.length > 0
   const startTime = Date.now()
@@ -499,15 +538,37 @@ async function fullFetchClusters() {
     // Try local agent first - get cluster list quickly
     const agentClusters = await fetchClusterListFromAgent()
     if (agentClusters) {
-      // Show clusters immediately with "checking" state
+      // Merge new cluster list with existing cached health data (preserve stats during refresh)
+      const existingClusters = clusterCache.clusters
+      const mergedClusters = agentClusters.map(newCluster => {
+        const existing = existingClusters.find(c => c.name === newCluster.name)
+        if (existing && existing.nodeCount !== undefined) {
+          // Preserve existing health data during silent background refresh (no visual indicator)
+          return {
+            ...newCluster,
+            nodeCount: existing.nodeCount,
+            podCount: existing.podCount,
+            cpuCores: existing.cpuCores,
+            memoryGB: existing.memoryGB,
+            storageGB: existing.storageGB,
+            healthy: existing.healthy,
+            reachable: existing.reachable,
+            refreshing: false, // Keep false during background polling - no visual indicator
+          }
+        }
+        return newCluster
+      })
+      // Show clusters immediately with preserved health data
       await finishWithMinDuration({
-        clusters: agentClusters,
+        clusters: mergedClusters,
         error: null,
         lastUpdated: new Date(),
         isLoading: false,
         isRefreshing: false,
       })
-      // Check health progressively (non-blocking)
+      // Reset flag before returning - allows subsequent refresh calls
+      fetchInProgress = false
+      // Check health progressively (non-blocking) - will update each cluster's data
       checkHealthProgressively(agentClusters)
       return
     }
@@ -520,6 +581,7 @@ async function fullFetchClusters() {
       isLoading: false,
       isRefreshing: false,
     })
+    fetchInProgress = false
   } catch (err) {
     await finishWithMinDuration({
       error: 'Failed to fetch clusters',
@@ -527,22 +589,28 @@ async function fullFetchClusters() {
       isLoading: false,
       isRefreshing: false,
     })
+    fetchInProgress = false
   }
 }
 
 // Refresh health for a single cluster (exported for use in components)
+// Keeps cached values visible while refreshing - only updates surgically when new data is available
 export async function refreshSingleCluster(clusterName: string): Promise<void> {
-  // Mark the cluster as loading (set nodeCount to undefined)
-  updateSingleClusterInCache(clusterName, {
-    nodeCount: undefined,
-    reachable: undefined,
-  })
+  // Mark the cluster as refreshing immediately (no debounce - user needs to see the spinner)
+  clusterCache = {
+    ...clusterCache,
+    clusters: clusterCache.clusters.map(c =>
+      c.name === clusterName ? { ...c, refreshing: true } : c
+    ),
+  }
+  notifyClusterSubscribers() // Immediate notification for user feedback
 
   const health = await fetchSingleClusterHealth(clusterName)
 
   if (health) {
-    // Health data available - use it to determine reachability
-    const isReachable = health.reachable !== false && health.nodeCount > 0
+    // Health data available - cluster is reachable if we got a response
+    // Only mark unreachable if explicitly set to false by backend
+    const isReachable = health.reachable !== false
     updateSingleClusterInCache(clusterName, {
       healthy: health.healthy,
       reachable: isReachable,
@@ -558,15 +626,16 @@ export async function refreshSingleCluster(clusterName: string): Promise<void> {
       pvcBoundCount: health.pvcBoundCount,
       errorType: health.errorType,
       errorMessage: health.errorMessage,
+      refreshing: false,
     })
   } else {
     // No health data or timeout - cluster is unreachable
+    // Keep existing cached values for nodes/pods/cpus, just update reachability status
     updateSingleClusterInCache(clusterName, {
       healthy: false,
       reachable: false,
-      nodeCount: 0,
-      podCount: 0,
       errorType: 'timeout',
+      refreshing: false,
     })
   }
 }
@@ -691,9 +760,6 @@ export function useClusterHealth(cluster?: string) {
   return { health, isLoading, error, refetch }
 }
 
-// Standard refresh interval for all polling hooks (30 seconds)
-const REFRESH_INTERVAL_MS = 30000
-
 // Hook to get pods
 export function usePods(cluster?: string, namespace?: string, sortBy: 'restarts' | 'name' = 'restarts', limit = 10) {
   const [pods, setPods] = useState<PodInfo[]>([])
@@ -703,9 +769,8 @@ export function usePods(cluster?: string, namespace?: string, sortBy: 'restarts'
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       setIsLoading(true)
     }
     try {
@@ -727,13 +792,15 @@ export function usePods(cluster?: string, namespace?: string, sortBy: 'restarts'
       setError(null)
       setLastUpdated(new Date())
     } catch (err) {
-      setError('Failed to fetch pods')
       // Keep existing data on silent refresh (stale-while-revalidate)
       if (!silent) {
+        setError('Failed to fetch pods')
         setPods(getDemoPods())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, sortBy, limit])
@@ -776,14 +843,11 @@ export function usePodIssues(cluster?: string, namespace?: string) {
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       const hasCachedData = podIssuesCache && podIssuesCache.key === cacheKey
       if (!hasCachedData) {
         setIsLoading(true)
-      } else {
-        setIsRefreshing(true)
       }
     }
     try {
@@ -801,13 +865,15 @@ export function usePodIssues(cluster?: string, namespace?: string) {
       setError(null)
       setLastUpdated(now)
     } catch (err) {
-      setError('Failed to fetch pod issues')
       // Keep stale data, only use demo if no cached data
-      if (!podIssuesCache) {
+      if (!silent && !podIssuesCache) {
+        setError('Failed to fetch pod issues')
         setIssues(getDemoPodIssues())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, cacheKey])
@@ -851,14 +917,11 @@ export function useEvents(cluster?: string, namespace?: string, limit = 20) {
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       const hasCachedData = eventsCache && eventsCache.key === cacheKey
       if (!hasCachedData) {
         setIsLoading(true)
-      } else {
-        setIsRefreshing(true)
       }
     }
     try {
@@ -877,13 +940,15 @@ export function useEvents(cluster?: string, namespace?: string, limit = 20) {
       setError(null)
       setLastUpdated(now)
     } catch (err) {
-      setError('Failed to fetch events')
       // Keep stale data, only use demo if no cached data
-      if (!eventsCache) {
+      if (!silent && !eventsCache) {
+        setError('Failed to fetch events')
         setEvents(getDemoEvents())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, limit, cacheKey])
@@ -927,14 +992,11 @@ export function useDeploymentIssues(cluster?: string, namespace?: string) {
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       const hasCachedData = deploymentIssuesCache && deploymentIssuesCache.key === cacheKey
       if (!hasCachedData) {
         setIsLoading(true)
-      } else {
-        setIsRefreshing(true)
       }
     }
     try {
@@ -952,13 +1014,15 @@ export function useDeploymentIssues(cluster?: string, namespace?: string) {
       setError(null)
       setLastUpdated(now)
     } catch (err) {
-      setError('Failed to fetch deployment issues')
       // Keep stale data, only use demo if no cached data
-      if (!deploymentIssuesCache) {
+      if (!silent && !deploymentIssuesCache) {
+        setError('Failed to fetch deployment issues')
         setIssues(getDemoDeploymentIssues())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, cacheKey])
@@ -974,18 +1038,37 @@ export function useDeploymentIssues(cluster?: string, namespace?: string) {
   return { issues, isLoading, isRefreshing, lastUpdated, error, refetch: () => refetch(false) }
 }
 
+// Module-level cache for deployments data (persists across navigation)
+interface DeploymentsCache {
+  data: Deployment[]
+  timestamp: Date
+  key: string
+}
+let deploymentsCache: DeploymentsCache | null = null
+
 // Hook to get deployments with rollout status
 export function useDeployments(cluster?: string, namespace?: string) {
-  const [deployments, setDeployments] = useState<Deployment[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const cacheKey = `deployments:${cluster || 'all'}:${namespace || 'all'}`
+
+  // Initialize from cache if available and matches current key
+  const getCachedData = () => {
+    if (deploymentsCache && deploymentsCache.key === cacheKey) {
+      return { data: deploymentsCache.data, timestamp: deploymentsCache.timestamp }
+    }
+    return null
+  }
+
+  const cached = getCachedData()
+  const [deployments, setDeployments] = useState<Deployment[]>(cached?.data || [])
+  const [isLoading, setIsLoading] = useState(!cached)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(cached?.timestamp || null)
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent && (!deploymentsCache || deploymentsCache.key !== cacheKey)) {
+      // Only show loading if no cache
       setIsLoading(true)
     }
     try {
@@ -993,26 +1076,35 @@ export function useDeployments(cluster?: string, namespace?: string) {
       if (cluster) params.append('cluster', cluster)
       if (namespace) params.append('namespace', namespace)
       const { data } = await api.get<{ deployments: Deployment[] }>(`/api/mcp/deployments?${params}`)
-      setDeployments(data.deployments || [])
+      const newDeployments = data.deployments || []
+      setDeployments(newDeployments)
       setError(null)
-      setLastUpdated(new Date())
+      const now = new Date()
+      setLastUpdated(now)
+      // Update cache
+      deploymentsCache = { data: newDeployments, timestamp: now, key: cacheKey }
     } catch (err) {
-      setError('Failed to fetch deployments')
-      if (!silent) {
+      // Only set demo data if no cache exists
+      if (!silent && !deploymentsCache) {
+        setError('Failed to fetch deployments')
         setDeployments(getDemoDeployments())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
-  }, [cluster, namespace])
+  }, [cluster, namespace, cacheKey])
 
   useEffect(() => {
-    refetch(false)
+    // If we have cached data, do a silent refresh
+    const hasCachedData = deploymentsCache && deploymentsCache.key === cacheKey
+    refetch(hasCachedData ? true : false)
     // Poll every 30 seconds for deployment updates
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [refetch])
+  }, [refetch, cacheKey])
 
   return { deployments, isLoading, isRefreshing, lastUpdated, error, refetch: () => refetch(false) }
 }
@@ -1045,15 +1137,12 @@ export function useServices(cluster?: string, namespace?: string) {
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       // Only show loading if we have no data
       const hasCachedData = servicesCache && servicesCache.key === cacheKey
       if (!hasCachedData) {
         setIsLoading(true)
-      } else {
-        setIsRefreshing(true)
       }
     }
     try {
@@ -1071,10 +1160,14 @@ export function useServices(cluster?: string, namespace?: string) {
       setError(null)
       setLastUpdated(now)
     } catch (err) {
-      setError('Failed to fetch services')
+      if (!silent) {
+        setError('Failed to fetch services')
+      }
       // Don't clear services on error - keep stale data
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, cacheKey])
@@ -1334,14 +1427,11 @@ export function useWarningEvents(cluster?: string, namespace?: string, limit = 2
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       const hasCachedData = warningEventsCache && warningEventsCache.key === cacheKey
       if (!hasCachedData) {
         setIsLoading(true)
-      } else {
-        setIsRefreshing(true)
       }
     }
     try {
@@ -1360,13 +1450,15 @@ export function useWarningEvents(cluster?: string, namespace?: string, limit = 2
       setError(null)
       setLastUpdated(now)
     } catch (err) {
-      setError('Failed to fetch warning events')
       // Keep stale data, only use demo if no cached data
-      if (!warningEventsCache) {
+      if (!silent && !warningEventsCache) {
+        setError('Failed to fetch warning events')
         setEvents(getDemoEvents().filter(e => e.type === 'Warning'))
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, limit, cacheKey])
@@ -1460,10 +1552,8 @@ export function useSecurityIssues(cluster?: string, namespace?: string) {
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    // If we have data, show refreshing instead of loading (stale-while-revalidate)
-    if (silent || issues.length > 0) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent && issues.length === 0) {
       setIsLoading(true)
     }
     try {
@@ -1475,13 +1565,15 @@ export function useSecurityIssues(cluster?: string, namespace?: string) {
       setError(null)
       setLastUpdated(new Date())
     } catch (err) {
-      setError('Failed to fetch security issues')
-      // Only set demo data if we don't have existing data
-      if (issues.length === 0) {
+      // Only set demo data if we don't have existing data and not silent
+      if (!silent && issues.length === 0) {
+        setError('Failed to fetch security issues')
         setIssues(getDemoSecurityIssues())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace, issues.length])
@@ -1514,9 +1606,8 @@ export function useGitOpsDrifts(cluster?: string, namespace?: string) {
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    // For silent (background) refreshes, don't update loading states - prevents UI flashing
+    if (!silent) {
       setIsLoading(true)
     }
     try {
@@ -1528,12 +1619,14 @@ export function useGitOpsDrifts(cluster?: string, namespace?: string) {
       setError(null)
       setLastUpdated(new Date())
     } catch (err) {
-      setError('Failed to fetch GitOps drifts')
       if (!silent) {
+        setError('Failed to fetch GitOps drifts')
         setDrifts(getDemoGitOpsDrifts())
       }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [cluster, namespace])

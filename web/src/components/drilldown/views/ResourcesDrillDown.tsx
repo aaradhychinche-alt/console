@@ -133,11 +133,11 @@ export function ResourcesDrillDown({ data: _data }: Props) {
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <StatusIndicator status={cluster.healthy ? 'healthy' : 'error'} />
+                    <StatusIndicator status={cluster.reachable === false ? 'unreachable' : cluster.healthy ? 'healthy' : 'error'} />
                     <div>
                       <div className="font-medium text-foreground">{cluster.name.split('/').pop()}</div>
                       <div className="text-xs text-muted-foreground">
-                        {cluster.nodeCount} nodes • {cluster.podCount} pods
+                        {cluster.reachable !== false ? `${cluster.nodeCount ?? '-'} nodes • ${cluster.podCount ?? '-'} pods` : 'Cluster offline'}
                       </div>
                     </div>
                   </div>

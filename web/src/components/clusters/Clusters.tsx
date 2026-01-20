@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { useShowCards } from '../../hooks/useShowCards'
-import { Pencil, X, Check, Loader2, Hourglass, WifiOff, ChevronRight, CheckCircle, AlertTriangle, ChevronDown, HardDrive, Network, FolderOpen, Plus, Trash2, Box, Layers, Server, List, GitBranch, Eye, Terminal, FileText, Info, Activity, Briefcase, Lock, Settings, LayoutGrid, Wrench, Layout, RefreshCw } from 'lucide-react'
+import { Pencil, X, Check, Loader2, Hourglass, WifiOff, ChevronRight, CheckCircle, AlertTriangle, AlertCircle, ChevronDown, HardDrive, Network, FolderOpen, Plus, Trash2, Box, Layers, Server, List, GitBranch, Eye, Terminal, FileText, Info, Activity, Briefcase, Lock, Settings, LayoutGrid, Wrench, Layout, RefreshCw } from 'lucide-react'
 import { useClusters, useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes, useNamespaceStats, useNodes, usePods, useDeployments, useServices, useJobs, useHPAs, useConfigMaps, useSecrets, usePodLogs, ClusterInfo, refreshSingleCluster } from '../../hooks/useMCP'
 import { AddCardModal } from '../dashboard/AddCardModal'
 import { TemplatesModal } from '../dashboard/TemplatesModal'
@@ -15,7 +15,7 @@ import {
   FilterTabs,
   ClusterGrid,
 } from './components'
-import { isClusterUnreachable, isClusterLoading } from './utils'
+import { isClusterUnreachable } from './utils'
 import { formatK8sMemory } from '../../lib/formatters'
 
 interface ClusterCard {
@@ -334,8 +334,18 @@ function NamespaceResources({ clusterName, namespace }: NamespaceResourcesProps)
     annotations?: Record<string, string>
     data?: Record<string, unknown>
   } | null>(null)
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false)
 
-  const isLoading = podsLoading || deploymentsLoading || servicesLoading || jobsLoading || hpasLoading || configmapsLoading || secretsLoading
+  // Timeout after 10 seconds to prevent infinite loading
+  useEffect(() => {
+    const timer = setTimeout(() => setLoadingTimedOut(true), 10000)
+    return () => clearTimeout(timer)
+  }, [clusterName, namespace])
+
+  // Show content as soon as pods and deployments load - don't wait for everything
+  const isInitialLoading = podsLoading && deploymentsLoading && !loadingTimedOut
+  const _isPartiallyLoading = (podsLoading || deploymentsLoading || servicesLoading || jobsLoading || hpasLoading || configmapsLoading || secretsLoading) && !loadingTimedOut
+  void _isPartiallyLoading // silence unused warning - available for future use showing partial loading indicator
 
   const toggleType = (type: string) => {
     setExpandedTypes(prev => {
@@ -499,12 +509,23 @@ function NamespaceResources({ clusterName, namespace }: NamespaceResourcesProps)
     }
   }
 
-  if (isLoading) {
+  if (isInitialLoading && pods.length === 0 && deployments.length === 0) {
     return (
       <div className="px-3 pb-3 pt-0 border-t border-border/30">
         <div className="pl-6 py-4 flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading namespace resources...
+        </div>
+      </div>
+    )
+  }
+
+  if (loadingTimedOut && pods.length === 0 && deployments.length === 0) {
+    return (
+      <div className="px-3 pb-3 pt-0 border-t border-border/30">
+        <div className="pl-6 py-4 flex items-center gap-2 text-sm text-yellow-400">
+          <AlertCircle className="w-4 h-4" />
+          Loading timed out. The cluster may be unreachable.
         </div>
       </div>
     )
@@ -818,8 +839,13 @@ export function _ClusterDetail({ clusterName, onClose, onRename }: _ClusterDetai
   const clusterGPUs = gpuNodes.filter(n => n.cluster === clusterName || n.cluster.includes(clusterName.split('/')[0]))
   const clusterDeploymentIssues = deploymentIssues.filter(d => d.cluster === clusterName || d.cluster?.includes(clusterName.split('/')[0]))
 
-  // Determine cluster status
-  const isUnreachable = !health?.nodeCount || health.nodeCount === 0
+  // Determine cluster status - use same logic as ClusterDetailModal
+  // Only mark as unreachable when we have confirmed unreachable status, not when loading
+  const isUnreachable = health ? (
+    health.reachable === false ||
+    (health.errorType && ['timeout', 'network', 'certificate'].includes(health.errorType)) ||
+    health.nodeCount === 0
+  ) : false
   const isHealthy = !isUnreachable && health?.healthy !== false
 
   // Group GPUs by type for summary
@@ -866,7 +892,7 @@ export function _ClusterDetail({ clusterName, onClose, onRename }: _ClusterDetai
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             {isUnreachable ? (
-              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-yellow-500/20 text-yellow-400" title="Unreachable - check network connection">
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-yellow-500/20 text-yellow-400" title="Offline - check network connection">
                 <WifiOff className="w-4 h-4" />
               </span>
             ) : isHealthy ? (
@@ -909,7 +935,7 @@ export function _ClusterDetail({ clusterName, onClose, onRename }: _ClusterDetai
               Nodes
               {!isUnreachable && <ChevronDown className={`w-3 h-3 transition-transform ${showNodeDetails ? 'rotate-180' : ''}`} />}
             </div>
-            <div className="text-xs text-green-400">{!isUnreachable ? `${health?.readyNodes || 0} ready` : 'unreachable'}</div>
+            <div className="text-xs text-green-400">{!isUnreachable ? `${health?.readyNodes || 0} ready` : 'offline'}</div>
           </button>
           <button
             onClick={() => !isUnreachable && setShowPodsByNamespace(!showPodsByNamespace)}
@@ -1349,6 +1375,7 @@ export function Clusters() {
     selectClusterGroup,
   } = useGlobalFilters()
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null)
 
   // Read filter from URL, default to 'all'
@@ -1406,10 +1433,10 @@ export function Clusters() {
     }
   }, [searchParams, setSearchParams])
 
-  // Trigger refresh on mount (ensures data is fresh when navigating to this page)
+  // Trigger refresh when navigating to this page (location.key changes on each navigation)
   useEffect(() => {
     refetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -1590,19 +1617,22 @@ export function Clusters() {
       }
     })
 
-    // Separate loading, unreachable, healthy, unhealthy
-    // Loading = health check in progress (nodeCount undefined)
-    // Unreachable = health check failed (nodeCount = 0)
-    // Healthy = has nodes and healthy flag is true
-    // Unhealthy = has nodes but healthy flag is false
-    const loadingCount = globalFilteredClusters.filter(c => isClusterLoading(c)).length
-    const unreachable = globalFilteredClusters.filter(c => !isClusterLoading(c) && isClusterUnreachable(c)).length
-    const healthy = globalFilteredClusters.filter(c => !isClusterLoading(c) && !isClusterUnreachable(c) && c.healthy).length
-    const unhealthy = globalFilteredClusters.filter(c => !isClusterLoading(c) && !isClusterUnreachable(c) && !c.healthy).length
+    // Separate unreachable, healthy, unhealthy - simplified logic matching sidebar
+    // Note: Don't filter by "loading" state to avoid hiding clusters during refresh
+    // Unreachable = reachable explicitly false or connection errors or no nodes
+    const unreachable = globalFilteredClusters.filter(c => isClusterUnreachable(c)).length
+    // Healthy = not unreachable and healthy flag is true
+    const healthy = globalFilteredClusters.filter(c => !isClusterUnreachable(c) && c.healthy === true).length
+    // Unhealthy = not unreachable and healthy flag is false (or undefined which means not yet healthy)
+    const unhealthy = globalFilteredClusters.filter(c => !isClusterUnreachable(c) && c.healthy === false).length
+    // Loading = initial load only (no data yet), not during refresh
+    const loadingCount = globalFilteredClusters.filter(c =>
+      c.nodeCount === undefined && c.reachable === undefined
+    ).length
 
     // Check if we have any reachable clusters with resource data
     const hasResourceData = globalFilteredClusters.some(c =>
-      !isClusterLoading(c) && !isClusterUnreachable(c) && c.nodeCount !== undefined && c.nodeCount > 0
+      !isClusterUnreachable(c) && c.nodeCount !== undefined && c.nodeCount > 0
     )
 
     return {
@@ -1691,24 +1721,23 @@ export function Clusters() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <label htmlFor="clusters-auto-refresh" className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
+            <label htmlFor="clusters-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
               <input
                 type="checkbox"
                 id="clusters-auto-refresh"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border w-3.5 h-3.5"
               />
-              Auto-refresh
+              Auto
             </label>
             <button
               onClick={() => refetch()}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           </div>
         </div>

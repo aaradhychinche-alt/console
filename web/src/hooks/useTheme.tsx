@@ -5,14 +5,15 @@ import { Theme, themes, getThemeById, getDefaultTheme } from '../lib/themes'
 export type ThemeMode = 'dark' | 'light' | 'system'
 
 const STORAGE_KEY = 'kubestellar-theme-id'
+const LAST_DARK_THEME_KEY = 'kubestellar-last-dark-theme'
 
-// Reserved for future system theme preference support
-// function getSystemPrefersDark(): boolean {
-//   if (typeof window !== 'undefined' && window.matchMedia) {
-//     return window.matchMedia('(prefers-color-scheme: dark)').matches
-//   }
-//   return true
-// }
+// Get system theme preference
+function getSystemPrefersDark(): boolean {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  }
+  return true
+}
 
 /**
  * Apply theme CSS variables to the document
@@ -142,18 +143,46 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeId] = useState<string>(() => {
+  const [themeId, setThemeIdState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEY)
-      // Handle legacy 'dark'/'light'/'system' values
-      if (stored === 'dark' || stored === 'system') return 'kubestellar'
+      // Handle legacy 'dark'/'light' values
+      if (stored === 'dark') return 'kubestellar'
       if (stored === 'light') return 'kubestellar-light'
+      // Keep 'system' as a valid value
       return stored || 'kubestellar'
     }
     return 'kubestellar'
   })
 
-  const currentTheme = getThemeById(themeId) || getDefaultTheme()
+  // Track the last selected dark theme for toggle functionality
+  const [lastDarkTheme, setLastDarkTheme] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(LAST_DARK_THEME_KEY) || 'kubestellar'
+    }
+    return 'kubestellar'
+  })
+
+  // Wrapper to track last dark theme when setting theme
+  const setThemeId = useCallback((id: string) => {
+    setThemeIdState(id)
+    // Remember dark themes for toggle functionality
+    const theme = getThemeById(id)
+    if (theme?.dark && id !== 'system') {
+      setLastDarkTheme(id)
+      localStorage.setItem(LAST_DARK_THEME_KEY, id)
+    }
+  }, [])
+
+  // Track system preference for 'system' theme
+  const [systemPrefersDark, setSystemPrefersDark] = useState(getSystemPrefersDark)
+
+  // Resolve actual theme when 'system' is selected
+  const resolvedThemeId = themeId === 'system'
+    ? (systemPrefersDark ? 'kubestellar' : 'kubestellar-light')
+    : themeId
+
+  const currentTheme = getThemeById(resolvedThemeId) || getDefaultTheme()
 
   // Apply theme on mount and changes
   useEffect(() => {
@@ -161,11 +190,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, themeId)
   }, [currentTheme, themeId])
 
-  // Listen for system theme changes (for potential future 'system' theme support)
+  // Listen for system theme changes
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleChange = () => {
-      // Could potentially trigger re-apply if using a 'system' theme
+    const handleChange = (e: MediaQueryListEvent) => {
+      setSystemPrefersDark(e.matches)
     }
     mediaQuery.addEventListener('change', handleChange)
     return () => mediaQuery.removeEventListener('change', handleChange)
@@ -173,26 +202,34 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = useCallback((id: string) => {
     const newTheme = getThemeById(id)
-    if (newTheme) {
+    if (newTheme || id === 'system') {
       setThemeId(id)
     }
-  }, [])
+  }, [setThemeId])
 
   const toggleTheme = useCallback(() => {
-    // Cycle through some popular themes
-    const quickThemes = ['kubestellar', 'kubestellar-light', 'dracula', 'nord', 'tokyo-night']
-    const currentIndex = quickThemes.indexOf(themeId)
-    const nextIndex = (currentIndex + 1) % quickThemes.length
-    setThemeId(quickThemes[nextIndex])
-  }, [themeId])
+    // Cycle through: current dark theme -> light -> system -> back to dark theme
+    const currentTheme = getThemeById(themeId === 'system' ? (systemPrefersDark ? 'kubestellar' : 'kubestellar-light') : themeId)
+
+    if (themeId === 'system') {
+      // From system, go to the user's last selected dark theme
+      setThemeId(lastDarkTheme)
+    } else if (currentTheme?.dark) {
+      // From any dark theme, go to light
+      setThemeId('kubestellar-light')
+    } else {
+      // From light theme, go to system
+      setThemeId('system')
+    }
+  }, [themeId, lastDarkTheme, systemPrefersDark, setThemeId])
 
   const value: ThemeContextValue = {
     currentTheme,
     themeId,
     themes,
     setTheme,
-    // Legacy compatibility
-    theme: currentTheme.dark ? 'dark' : 'light',
+    // Legacy compatibility - theme returns 'system' when in system mode
+    theme: themeId === 'system' ? 'system' : (currentTheme.dark ? 'dark' : 'light'),
     resolvedTheme: currentTheme.dark ? 'dark' : 'light',
     isDark: currentTheme.dark,
     toggleTheme,

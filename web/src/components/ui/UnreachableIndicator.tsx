@@ -30,7 +30,7 @@ const LABEL_SIZES = {
 export function UnreachableIndicator({
   size = 'sm',
   showLabel = false,
-  tooltip = 'Unreachable - check network connection',
+  tooltip = 'Offline - check network connection',
   className = '',
 }: UnreachableIndicatorProps) {
   return (
@@ -40,7 +40,7 @@ export function UnreachableIndicator({
     >
       <WifiOff className={SIZES[size]} />
       {showLabel && (
-        <span className={LABEL_SIZES[size]}>Unreachable</span>
+        <span className={LABEL_SIZES[size]}>Offline</span>
       )}
     </span>
   )
@@ -74,7 +74,7 @@ export function UnreachableValue({
     return (
       <span
         className={`text-muted-foreground ${className}`}
-        title="Unreachable - check network connection"
+        title="Offline - check network connection"
       >
         -{suffix && ` ${suffix}`}
       </span>

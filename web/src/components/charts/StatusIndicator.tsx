@@ -1,6 +1,6 @@
-import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react'
+import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2, WifiOff } from 'lucide-react'
 
-export type Status = 'healthy' | 'error' | 'warning' | 'critical' | 'pending' | 'loading' | 'unknown'
+export type Status = 'healthy' | 'error' | 'warning' | 'critical' | 'pending' | 'loading' | 'unknown' | 'unreachable'
 
 interface StatusIndicatorProps {
   status: Status
@@ -23,6 +23,7 @@ const statusConfig: Record<Status, {
   pending: { icon: Clock, color: 'text-blue-400', bg: 'bg-blue-500', label: 'Pending' },
   loading: { icon: Loader2, color: 'text-purple-400', bg: 'bg-purple-500', label: 'Loading' },
   unknown: { icon: AlertTriangle, color: 'text-gray-400', bg: 'bg-gray-500', label: 'Unknown' },
+  unreachable: { icon: WifiOff, color: 'text-yellow-400', bg: 'bg-yellow-500', label: 'Offline' },
 }
 
 const sizes = {

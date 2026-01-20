@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { ChevronRight, ChevronDown, Box, Layers, Network, List, GitBranch, Activity, Briefcase, Lock, Settings, Loader2, User, HardDrive } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { ChevronRight, ChevronDown, Box, Layers, Network, List, GitBranch, Activity, Briefcase, Lock, Settings, Loader2, User, HardDrive, AlertCircle } from 'lucide-react'
 import { usePods, useDeployments, useServices, useJobs, useHPAs, useConfigMaps, useSecrets, useServiceAccounts, usePVCs } from '../../../hooks/useMCP'
 import { useDrillDownActions } from '../../../hooks/useDrillDown'
 
@@ -37,8 +37,20 @@ export function NamespaceResources({ clusterName, namespace, onClose }: Namespac
   const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree')
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set(['deployments', 'pods']))
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false)
 
-  const isLoading = podsLoading || deploymentsLoading || servicesLoading || jobsLoading || hpasLoading || configmapsLoading || secretsLoading || serviceAccountsLoading || pvcsLoading
+  // Timeout after 10 seconds to prevent infinite loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadingTimedOut(true)
+    }, 10000)
+    return () => clearTimeout(timer)
+  }, [clusterName, namespace])
+
+  // Show content as soon as pods and deployments (the most important resources) are loaded
+  // Other resources can continue loading in the background
+  const isInitialLoading = podsLoading && deploymentsLoading && !loadingTimedOut
+  const isPartiallyLoading = (podsLoading || deploymentsLoading || servicesLoading || jobsLoading || hpasLoading || configmapsLoading || secretsLoading || serviceAccountsLoading || pvcsLoading) && !loadingTimedOut
 
   const toggleType = (type: string) => {
     setExpandedTypes(prev => {
@@ -242,11 +254,22 @@ export function NamespaceResources({ clusterName, namespace, onClose }: Namespac
     if (onClose) onClose()
   }
 
-  if (isLoading) {
+  // Only show full loading screen if nothing has loaded yet
+  if (isInitialLoading && pods.length === 0 && deployments.length === 0) {
     return (
       <div className="py-4 flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="w-4 h-4 animate-spin" />
         Loading namespace resources...
+      </div>
+    )
+  }
+
+  // Show timeout message if loading took too long and we still have no data
+  if (loadingTimedOut && pods.length === 0 && deployments.length === 0) {
+    return (
+      <div className="py-4 flex items-center gap-2 text-sm text-yellow-400">
+        <AlertCircle className="w-4 h-4" />
+        Loading timed out. The cluster may be unreachable or slow to respond.
       </div>
     )
   }
@@ -256,7 +279,14 @@ export function NamespaceResources({ clusterName, namespace, onClose }: Namespac
   return (
     <div className="pt-2">
       {/* View toggle */}
-      <div className="flex justify-end pb-2">
+      <div className="flex justify-between items-center pb-2">
+        {isPartiallyLoading && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Loading more...</span>
+          </div>
+        )}
+        {!isPartiallyLoading && <div />}
         <div className="flex items-center gap-1 p-0.5 rounded bg-secondary/50">
           <button
             onClick={() => setViewMode('list')}

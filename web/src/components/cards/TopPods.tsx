@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
-import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react'
+import { RefreshCw, Loader2, AlertTriangle, ChevronRight } from 'lucide-react'
 import { usePods } from '../../hooks/useMCP'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { CardControls } from '../ui/CardControls'
 import { Pagination, usePagination } from '../ui/Pagination'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 
 type SortByOption = 'restarts' | 'name'
 
@@ -33,6 +34,7 @@ export function TopPods({ config }: TopPodsProps) {
     isAllClustersSelected,
     customFilter,
   } = useGlobalFilters()
+  const { drillToPod } = useDrillDownActions()
 
   // Fetch more pods to allow client-side filtering and pagination
   const { pods: rawPods, isLoading, error, refetch } = usePods(cluster, namespace, sortBy, 100)
@@ -125,7 +127,12 @@ export function TopPods({ config }: TopPodsProps) {
             return (
             <div
               key={`${pod.cluster}-${pod.namespace}-${pod.name}`}
-              className="group p-2 rounded-lg bg-secondary/30 border border-border/50 hover:border-border transition-colors"
+              className="group p-2 rounded-lg bg-secondary/30 border border-border/50 hover:border-border transition-colors cursor-pointer"
+              onClick={() => drillToPod(pod.cluster || 'default', pod.namespace, pod.name, {
+                status: pod.status,
+                restarts: pod.restarts,
+              })}
+              title={`Click to view details for ${pod.name}`}
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -176,10 +183,13 @@ export function TopPods({ config }: TopPodsProps) {
               </div>
 
               {/* Details row */}
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex-shrink-0">{pod.status}</span>
-                <span className="flex-shrink-0">{pod.ready}</span>
-                <span className="flex-shrink-0">{pod.age}</span>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <div className="flex items-center gap-3">
+                  <span className="flex-shrink-0">{pod.status}</span>
+                  <span className="flex-shrink-0">{pod.ready}</span>
+                  <span className="flex-shrink-0">{pod.age}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             </div>
           )})}

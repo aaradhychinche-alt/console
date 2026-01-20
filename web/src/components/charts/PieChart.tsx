@@ -34,8 +34,8 @@ export function PieChart({
         <h4 className="text-sm font-medium text-muted-foreground mb-2">{title}</h4>
       )}
       <div className="flex items-center gap-4">
-        <div className="relative" style={{ width: size, height: size }}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="relative" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
+          <ResponsiveContainer width={size} height={size} minWidth={size} minHeight={size}>
             <RechartsPieChart>
               <Pie
                 data={data}

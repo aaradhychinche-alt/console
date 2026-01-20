@@ -80,7 +80,7 @@ export function Navbar() {
     if (info.errorMessage) return `Error: ${info.errorMessage}`
     if (info.errorType) {
       const errorMessages: Record<string, string> = {
-        timeout: 'Connection timed out - cluster may be unreachable',
+        timeout: 'Connection timed out - cluster may be offline',
         auth: 'Authentication failed - check credentials',
         network: 'Network error - unable to reach cluster',
         certificate: 'Certificate error - check TLS configuration',

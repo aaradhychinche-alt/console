@@ -78,11 +78,11 @@ export function ClusterDrillDown({ data }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-lg bg-card/50 border border-border">
           <div className="flex items-center gap-2 mb-2">
-            <StatusIndicator status={health?.healthy ? 'healthy' : 'error'} />
+            <StatusIndicator status={health?.reachable === false ? 'unreachable' : health?.healthy ? 'healthy' : 'error'} />
             <span className="text-sm text-muted-foreground">Status</span>
           </div>
           <div className="text-2xl font-bold text-foreground">
-            {health?.healthy ? 'Healthy' : 'Unhealthy'}
+            {health?.reachable === false ? 'Offline' : health?.healthy ? 'Healthy' : 'Unhealthy'}
           </div>
         </div>
 

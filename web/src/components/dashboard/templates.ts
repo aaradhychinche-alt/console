@@ -24,8 +24,9 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
     category: 'cluster',
     cards: [
       { card_type: 'cluster_health', position: { w: 4, h: 2 } },
-      { card_type: 'resource_usage', position: { w: 4, h: 2 } },
-      { card_type: 'cluster_metrics', position: { w: 4, h: 2 } },
+      { card_type: 'compute_overview', position: { w: 4, h: 3 } },
+      { card_type: 'storage_overview', position: { w: 4, h: 3 } },
+      { card_type: 'network_overview', position: { w: 4, h: 3 } },
       { card_type: 'pod_issues', position: { w: 6, h: 2 } },
       { card_type: 'deployment_issues', position: { w: 6, h: 2 } },
     ],
@@ -212,9 +213,8 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
     icon: '💾',
     category: 'storage',
     cards: [
-      { card_type: 'resource_capacity', title: 'Storage Capacity', position: { w: 4, h: 2 } },
-      { card_type: 'resource_usage', title: 'Storage Usage', position: { w: 4, h: 2 } },
-      { card_type: 'cluster_health', title: 'Cluster Storage Health', position: { w: 4, h: 2 } },
+      { card_type: 'storage_overview', position: { w: 4, h: 3 } },
+      { card_type: 'pvc_status', position: { w: 8, h: 3 } },
       { card_type: 'event_stream', title: 'Storage Events', config: { filter: 'storage' }, position: { w: 12, h: 2 } },
     ],
   },
@@ -227,6 +227,7 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
     icon: '⚙️',
     category: 'compute',
     cards: [
+      { card_type: 'compute_overview', position: { w: 4, h: 3 } },
       { card_type: 'resource_usage', position: { w: 4, h: 2 } },
       { card_type: 'resource_capacity', position: { w: 4, h: 2 } },
       { card_type: 'cluster_metrics', position: { w: 4, h: 2 } },
@@ -243,9 +244,10 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
     icon: '🌐',
     category: 'network',
     cards: [
-      { card_type: 'cluster_network', position: { w: 6, h: 3 } },
-      { card_type: 'cluster_health', title: 'Network Health', position: { w: 6, h: 3 } },
-      { card_type: 'event_stream', title: 'Network Events', config: { filter: 'network' }, position: { w: 12, h: 2 } },
+      { card_type: 'network_overview', position: { w: 4, h: 3 } },
+      { card_type: 'service_status', position: { w: 8, h: 3 } },
+      { card_type: 'cluster_network', position: { w: 6, h: 2 } },
+      { card_type: 'event_stream', title: 'Network Events', config: { filter: 'network' }, position: { w: 6, h: 2 } },
     ],
   },
 

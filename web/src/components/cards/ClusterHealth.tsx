@@ -228,7 +228,7 @@ export function ClusterHealth() {
         <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20" title={`${unreachableClusters} clusters cannot be contacted - check network connection`}>
           <div className="flex items-center gap-2 mb-1">
             <WifiOff className="w-4 h-4 text-yellow-400" />
-            <span className="text-xs text-yellow-400">Unreachable</span>
+            <span className="text-xs text-yellow-400">Offline</span>
           </div>
           <span className="text-2xl font-bold text-foreground">{unreachableClusters}</span>
         </div>
@@ -248,7 +248,7 @@ export function ClusterHealth() {
             : cluster.healthy
               ? `Cluster is healthy with ${cluster.nodeCount || 0} nodes and ${cluster.podCount || 0} pods`
               : clusterUnreachable
-                ? 'Unreachable - check network connection'
+                ? 'Offline - check network connection'
                 : cluster.errorMessage || 'Cluster has issues - click to view details'
           return (
             <div
@@ -281,19 +281,19 @@ export function ClusterHealth() {
                   </span>
                 )}
                 {!clusterLoading && clusterUnreachable && (
-                  <span title="Unreachable - check network connection">
+                  <span title="Offline - check network connection">
                     <WifiOff className="w-3 h-3 text-yellow-400" />
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.nodeCount || 0} worker nodes in cluster` : 'Unreachable - check network connection'}>
+                <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.nodeCount || 0} worker nodes in cluster` : 'Offline - check network connection'}>
                   {clusterLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : !clusterUnreachable ? (cluster.nodeCount || 0) : '-'} nodes
                 </span>
                 {!clusterLoading && !clusterUnreachable && (cluster.cpuCores || 0) > 0 && (
                   <span title={`${cluster.cpuCores} total CPU cores available`}>{cluster.cpuCores} CPUs</span>
                 )}
-                <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.podCount || 0} pods running in cluster` : 'Unreachable - check network connection'}>
+                <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.podCount || 0} pods running in cluster` : 'Offline - check network connection'}>
                   {clusterLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : !clusterUnreachable ? (cluster.podCount || 0) : '-'} pods
                 </span>
                 {!clusterLoading && !clusterUnreachable && (gpuByCluster[cluster.name] || 0) > 0 && (
@@ -329,12 +329,12 @@ export function ClusterHealth() {
         </div>
       )}
 
-      {/* Show unreachable clusters summary if any */}
+      {/* Show offline clusters summary if any */}
       {!error && unreachableClusters > 0 && (
         <div className="mt-2 p-2 rounded bg-yellow-500/10 border border-yellow-500/20" title="Check network connectivity and VPN status">
           <div className="flex items-center gap-1.5 text-xs text-yellow-400">
             <WifiOff className="w-3 h-3" />
-            {unreachableClusters} cluster(s) unreachable - check network connection
+            {unreachableClusters} cluster(s) offline - check network connection
           </div>
         </div>
       )}

@@ -89,8 +89,9 @@ export function usePermissions() {
   }, [fetchPermissions])
 
   // Check if user is cluster admin for a specific cluster
+  // If permissions data is not available for a cluster, assume admin (don't show warning)
   const isClusterAdmin = useCallback((cluster: string): boolean => {
-    if (!permissions?.clusters[cluster]) return false
+    if (!permissions?.clusters[cluster]) return true // Assume admin if no data
     return permissions.clusters[cluster].isClusterAdmin
   }, [permissions])
 

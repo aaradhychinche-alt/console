@@ -14,6 +14,23 @@ import {
   LayoutDashboard,
   Square,
 } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useSidebarConfig, AVAILABLE_ICONS, SidebarItem } from '../../hooks/useSidebarConfig'
 import { useDashboards, Dashboard } from '../../hooks/useDashboards'
 import { DASHBOARD_TEMPLATES, TEMPLATE_CATEGORIES } from '../dashboard/templates'
@@ -38,6 +55,63 @@ const CARD_TYPE_LABELS: Record<string, string> = {
   gpu_status: 'GPU Status',
   gpu_overview: 'GPU Overview',
   security_issues: 'Security Issues',
+}
+
+// Sortable sidebar item component
+interface SortableItemProps {
+  item: SidebarItem
+  canRemove: boolean
+  onRemove: (id: string) => void
+  renderIcon: (iconName: string, className?: string) => React.ReactNode
+}
+
+function SortableItem({ item, canRemove, onRemove, renderIcon }: SortableItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 'auto',
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center gap-2 p-2 rounded-lg bg-secondary/30',
+        item.isCustom && 'border border-purple-500/20',
+        isDragging && 'shadow-lg'
+      )}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
+      </button>
+      {renderIcon(item.icon, 'w-4 h-4 text-muted-foreground')}
+      <span className="flex-1 text-sm text-foreground">{item.name}</span>
+      <span className="text-xs text-muted-foreground">{item.href}</span>
+      {(canRemove || item.isCustom) && (
+        <button
+          onClick={() => onRemove(item.id)}
+          className="p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  )
 }
 
 // Known routes with descriptions
@@ -93,10 +167,40 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
     config,
     addItem,
     removeItem,
+    reorderItems,
     toggleClusterStatus,
     resetToDefault,
     generateFromBehavior,
   } = useSidebarConfig()
+
+  // DnD sensors for both mouse and keyboard
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // Handle drag end for reordering
+  const handleDragEnd = (event: DragEndEvent, items: SidebarItem[], target: 'primary' | 'secondary') => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = items.findIndex(item => item.id === active.id)
+    const newIndex = items.findIndex(item => item.id === over.id)
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const reordered = arrayMove(items, oldIndex, newIndex).map((item, idx) => ({
+        ...item,
+        order: idx,
+      }))
+      reorderItems(reordered, target)
+    }
+  }
 
   const { getAllDashboardsWithCards } = useDashboards()
 
@@ -107,7 +211,7 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
   const [newItemHref, setNewItemHref] = useState('')
   const [newItemTarget, setNewItemTarget] = useState<'primary' | 'secondary'>('primary')
   const [showAddForm, setShowAddForm] = useState(false)
-  const [selectedKnownRoute, setSelectedKnownRoute] = useState<string>('custom')
+  const [selectedKnownRoute, setSelectedKnownRoute] = useState<string>('')
   const [showRouteDropdown, setShowRouteDropdown] = useState(false)
   const [expandedSection, setExpandedSection] = useState<string | null>('primary')
   const [dashboardsWithCards, setDashboardsWithCards] = useState<Dashboard[]>([])
@@ -156,25 +260,18 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
     setNewItemName('')
     setNewItemHref('')
     setNewItemIcon('Zap')
-    setSelectedKnownRoute('custom')
+    setSelectedKnownRoute('')
     setShowAddForm(false)
   }
 
   // Handle selecting a known route
   const handleSelectKnownRoute = (routeHref: string) => {
-    if (routeHref === 'custom') {
-      setSelectedKnownRoute('custom')
-      setNewItemName('')
-      setNewItemHref('')
-      setNewItemIcon('Zap')
-    } else {
-      const route = KNOWN_ROUTES.find(r => r.href === routeHref)
-      if (route) {
-        setSelectedKnownRoute(routeHref)
-        setNewItemName(route.name)
-        setNewItemHref(route.href)
-        setNewItemIcon(route.icon)
-      }
+    const route = KNOWN_ROUTES.find(r => r.href === routeHref)
+    if (route) {
+      setSelectedKnownRoute(routeHref)
+      setNewItemName(route.name)
+      setNewItemHref(route.href)
+      setNewItemIcon(route.icon)
     }
     setShowRouteDropdown(false)
   }
@@ -216,31 +313,26 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
     return IconComponent ? <IconComponent className={className} /> : null
   }
 
-  const renderItemList = (items: SidebarItem[], canRemove = false) => (
-    <div className="space-y-1">
-      {items.map((item) => (
-        <div
-          key={item.id}
-          className={cn(
-            'flex items-center gap-2 p-2 rounded-lg bg-secondary/30',
-            item.isCustom && 'border border-purple-500/20'
-          )}
-        >
-          <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
-          {renderIcon(item.icon, 'w-4 h-4 text-muted-foreground')}
-          <span className="flex-1 text-sm text-foreground">{item.name}</span>
-          <span className="text-xs text-muted-foreground">{item.href}</span>
-          {(canRemove || item.isCustom) && (
-            <button
-              onClick={() => removeItem(item.id)}
-              className="p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+  const renderItemList = (items: SidebarItem[], canRemove = false, target: 'primary' | 'secondary') => (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={(event) => handleDragEnd(event, items, target)}
+    >
+      <SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-1">
+          {items.map((item) => (
+            <SortableItem
+              key={item.id}
+              item={item}
+              canRemove={canRemove}
+              onRemove={removeItem}
+              renderIcon={renderIcon}
+            />
+          ))}
         </div>
-      ))}
-    </div>
+      </SortableContext>
+    </DndContext>
   )
 
   return (
@@ -317,36 +409,19 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
                     onClick={() => setShowRouteDropdown(!showRouteDropdown)}
                     className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm text-left"
                   >
-                    {selectedKnownRoute === 'custom' ? (
-                      <span className="text-muted-foreground">Custom URL (enter manually below)</span>
-                    ) : (
+                    {selectedKnownRoute ? (
                       <span className="text-foreground">
                         {KNOWN_ROUTES.find(r => r.href === selectedKnownRoute)?.name}
                         <span className="text-muted-foreground ml-2">({selectedKnownRoute})</span>
                       </span>
+                    ) : (
+                      <span className="text-muted-foreground">Select a dashboard to add...</span>
                     )}
                     <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', showRouteDropdown && 'rotate-180')} />
                   </button>
 
                   {showRouteDropdown && (
                     <div className="absolute top-full left-0 right-0 mt-1 py-2 rounded-lg bg-card border border-border shadow-xl z-50 max-h-[300px] overflow-y-auto">
-                      {/* Custom option */}
-                      <button
-                        onClick={() => handleSelectKnownRoute('custom')}
-                        className={cn(
-                          'w-full px-3 py-2 text-left hover:bg-secondary/50 transition-colors',
-                          selectedKnownRoute === 'custom' && 'bg-purple-500/10'
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          {renderIcon('Edit3', 'w-4 h-4 text-muted-foreground')}
-                          <span className={cn('text-sm font-medium', selectedKnownRoute === 'custom' ? 'text-purple-400' : 'text-foreground')}>
-                            Custom URL
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground pl-6 mt-0.5">Enter a custom route path manually</p>
-                      </button>
-
                       {/* Known routes grouped by category */}
                       {ROUTE_CATEGORIES.map(category => (
                         <div key={category}>
@@ -393,67 +468,56 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
                 </div>
               </div>
 
-              {/* Name, Icon, and Section fields - URL only shown for custom */}
-              <div className={cn('grid gap-3', selectedKnownRoute === 'custom' ? 'grid-cols-2' : 'grid-cols-3')}>
-                <div>
-                  <label className="text-xs text-muted-foreground">Name</label>
-                  <input
-                    type="text"
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="Menu item name"
-                    className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
-                  />
-                </div>
-                {selectedKnownRoute === 'custom' && (
+              {/* Name, Route (read-only), Icon, and Section fields */}
+              {selectedKnownRoute && (
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">URL Path</label>
+                    <label className="text-xs text-muted-foreground">Name</label>
                     <input
                       type="text"
-                      value={newItemHref}
-                      onChange={(e) => setNewItemHref(e.target.value)}
-                      placeholder="/my-page"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      placeholder="Menu item name"
                       className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
                     />
                   </div>
-                )}
-                <div>
-                  <label className="text-xs text-muted-foreground">Icon</label>
-                  <select
-                    value={newItemIcon}
-                    onChange={(e) => setNewItemIcon(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
-                  >
-                    {AVAILABLE_ICONS.map((icon) => (
-                      <option key={icon} value={icon}>{icon}</option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Route</label>
+                    <div className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary/50 border border-border text-muted-foreground text-sm">
+                      {newItemHref}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Icon</label>
+                    <select
+                      value={newItemIcon}
+                      onChange={(e) => setNewItemIcon(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+                    >
+                      {AVAILABLE_ICONS.map((icon) => (
+                        <option key={icon} value={icon}>{icon}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Section</label>
+                    <select
+                      value={newItemTarget}
+                      onChange={(e) => setNewItemTarget(e.target.value as 'primary' | 'secondary')}
+                      className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+                    >
+                      <option value="primary">Primary Navigation</option>
+                      <option value="secondary">Secondary Navigation</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Section</label>
-                  <select
-                    value={newItemTarget}
-                    onChange={(e) => setNewItemTarget(e.target.value as 'primary' | 'secondary')}
-                    className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
-                  >
-                    <option value="primary">Primary Navigation</option>
-                    <option value="secondary">Secondary Navigation</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Note about custom routes */}
-              {selectedKnownRoute === 'custom' && (
-                <p className="text-xs text-muted-foreground mt-3 p-2 rounded bg-yellow-500/10 border border-yellow-500/20">
-                  <strong>Note:</strong> Custom routes must exist in the application. Routes are compiled into the application at build time and cannot be dynamically loaded from external sources.
-                </p>
               )}
 
               <div className="flex justify-end gap-2 mt-4">
                 <button
                   onClick={() => {
                     setShowAddForm(false)
-                    setSelectedKnownRoute('custom')
+                    setSelectedKnownRoute('')
                     setNewItemName('')
                     setNewItemHref('')
                     setNewItemIcon('Zap')
@@ -470,6 +534,11 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
                   Add Item
                 </button>
               </div>
+
+              {/* Note about adding custom dashboards */}
+              <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
+                Need a custom dashboard? See the <a href="https://github.com/kubestellar/console/blob/main/CONTRIBUTING.md#adding-a-new-dashboard" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 underline">developer guide</a> for instructions on adding new dashboards to the source.
+              </p>
             </div>
           )}
 
@@ -487,7 +556,7 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
               <span className="text-sm font-medium text-foreground">Primary Navigation</span>
               <span className="text-xs text-muted-foreground">({config.primaryNav.length} items)</span>
             </button>
-            {expandedSection === 'primary' && renderItemList(config.primaryNav)}
+            {expandedSection === 'primary' && renderItemList(config.primaryNav, false, 'primary')}
           </div>
 
           {/* Secondary Navigation */}
@@ -504,7 +573,7 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
               <span className="text-sm font-medium text-foreground">Secondary Navigation</span>
               <span className="text-xs text-muted-foreground">({config.secondaryNav.length} items)</span>
             </button>
-            {expandedSection === 'secondary' && renderItemList(config.secondaryNav)}
+            {expandedSection === 'secondary' && renderItemList(config.secondaryNav, false, 'secondary')}
           </div>
 
           {/* Dashboard Cards */}

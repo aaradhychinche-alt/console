@@ -6,7 +6,7 @@
     "critical": "Critical",
     "degraded": "Degraded",
     "unknown": "Unknown",
-    "unreachable": "Unreachable",
+    "unreachable": "Offline",
     "connected": "Connected",
     "disconnected": "Disconnected"
   },

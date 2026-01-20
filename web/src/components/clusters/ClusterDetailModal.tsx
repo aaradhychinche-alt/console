@@ -266,9 +266,14 @@ After I approve, help me execute the repairs step by step.`,
     })
   }
 
-  // Determine cluster status
-  const isUnreachable = !health?.nodeCount || health.nodeCount === 0
-  const isHealthy = !isUnreachable && health?.healthy !== false
+  // Determine cluster status - use same logic as utils.ts
+  // Only mark as unreachable when we have confirmed unreachable status, not when loading
+  const isUnreachable = health ? (
+    health.reachable === false ||
+    (health.errorType && ['timeout', 'network', 'certificate'].includes(health.errorType)) ||
+    health.nodeCount === 0
+  ) : false
+  const isHealthy = !isLoading && !isUnreachable && health?.healthy !== false
 
   // Group GPUs by type for summary
   const gpuByType = useMemo(() => {
@@ -293,7 +298,7 @@ After I approve, help me execute the repairs step by step.`,
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             {isUnreachable ? (
-              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-yellow-500/20 text-yellow-400" title="Unreachable - check network connection">
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-yellow-500/20 text-yellow-400" title="Offline - check network connection">
                 <WifiOff className="w-4 h-4" />
               </span>
             ) : isHealthy ? (
@@ -422,7 +427,7 @@ After I approve, help me execute the repairs step by step.`,
                   Nodes
                   {!isUnreachable && <ChevronDown className={`w-4 h-4 transition-transform text-cyan-400 ${showNodeDetails ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />}
                 </div>
-                <div className="text-xs text-green-400">{!isUnreachable ? `${health?.readyNodes || 0} ready` : 'unreachable'}</div>
+                <div className="text-xs text-green-400">{!isUnreachable ? `${health?.readyNodes || 0} ready` : 'offline'}</div>
                 {!isUnreachable && !showNodeDetails && (
                   <div className="text-[10px] text-muted-foreground/50 mt-2 group-hover:text-cyan-400/70 transition-colors">click to expand</div>
                 )}

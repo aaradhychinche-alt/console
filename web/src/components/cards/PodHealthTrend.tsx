@@ -29,16 +29,24 @@ export function PodHealthTrend() {
   const historyRef = useRef<HealthPoint[]>([])
   const [history, setHistory] = useState<HealthPoint[]>([])
 
-  // Filter by selected clusters
+  // Filter by selected clusters AND exclude offline/unreachable clusters
   const filteredClusters = useMemo(() => {
-    if (isAllClustersSelected) return clusters
-    return clusters.filter(c => selectedClusters.includes(c.name))
+    const reachableClusters = clusters.filter(c => c.reachable !== false)
+    if (isAllClustersSelected) return reachableClusters
+    return reachableClusters.filter(c => selectedClusters.includes(c.name))
   }, [clusters, selectedClusters, isAllClustersSelected])
 
+  // Get names of reachable clusters for issue filtering
+  const reachableClusterNames = useMemo(() => {
+    return new Set(clusters.filter(c => c.reachable !== false).map(c => c.name))
+  }, [clusters])
+
   const filteredIssues = useMemo(() => {
-    if (isAllClustersSelected) return issues
-    return issues.filter(i => i.cluster && selectedClusters.includes(i.cluster))
-  }, [issues, selectedClusters, isAllClustersSelected])
+    // First filter to only issues from reachable clusters
+    const reachableIssues = issues.filter(i => i.cluster && reachableClusterNames.has(i.cluster))
+    if (isAllClustersSelected) return reachableIssues
+    return reachableIssues.filter(i => i.cluster && selectedClusters.includes(i.cluster))
+  }, [issues, selectedClusters, isAllClustersSelected, reachableClusterNames])
 
   // Calculate current stats
   const currentStats = useMemo(() => {
@@ -48,6 +56,9 @@ export function PodHealthTrend() {
     const healthyPods = Math.max(0, totalPods - issuePods)
     return { healthy: healthyPods, issues: issuePods - pendingPods, pending: pendingPods, total: totalPods }
   }, [filteredClusters, filteredIssues])
+
+  // Check if we have any reachable clusters
+  const hasReachableClusters = filteredClusters.some(c => c.reachable !== false && c.nodeCount !== undefined && c.nodeCount > 0)
 
   // Check if we have real data
   const hasRealData = !clustersLoading && filteredClusters.length > 0 &&
@@ -135,26 +146,26 @@ export function PodHealthTrend() {
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20">
+        <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20" title={hasReachableClusters ? `${currentStats.healthy} healthy pods` : 'No reachable clusters'}>
           <div className="flex items-center gap-1.5 mb-1">
             <CheckCircle className="w-3 h-3 text-green-400" />
             <span className="text-xs text-green-400">Healthy</span>
           </div>
-          <span className="text-lg font-bold text-foreground">{currentStats.healthy}</span>
+          <span className="text-lg font-bold text-foreground">{hasReachableClusters ? currentStats.healthy : '-'}</span>
         </div>
-        <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+        <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20" title={hasReachableClusters ? `${currentStats.issues} pods with issues` : 'No reachable clusters'}>
           <div className="flex items-center gap-1.5 mb-1">
             <AlertTriangle className="w-3 h-3 text-orange-400" />
             <span className="text-xs text-orange-400">Issues</span>
           </div>
-          <span className="text-lg font-bold text-foreground">{currentStats.issues}</span>
+          <span className="text-lg font-bold text-foreground">{hasReachableClusters ? currentStats.issues : '-'}</span>
         </div>
-        <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+        <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20" title={hasReachableClusters ? `${currentStats.pending} pending pods` : 'No reachable clusters'}>
           <div className="flex items-center gap-1.5 mb-1">
             <Clock className="w-3 h-3 text-yellow-400" />
             <span className="text-xs text-yellow-400">Pending</span>
           </div>
-          <span className="text-lg font-bold text-foreground">{currentStats.pending}</span>
+          <span className="text-lg font-bold text-foreground">{hasReachableClusters ? currentStats.pending : '-'}</span>
         </div>
       </div>
 
@@ -165,6 +176,7 @@ export function PodHealthTrend() {
             No pod data available
           </div>
         ) : (
+          <div style={{ width: '100%', minHeight: 160, height: 160 }}>
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={history} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
               <defs>
@@ -204,7 +216,7 @@ export function PodHealthTrend() {
                 labelStyle={{ color: '#888' }}
               />
               <Area
-                type="monotone"
+                type="basis"
                 dataKey="issues"
                 stackId="1"
                 stroke="#f97316"
@@ -213,7 +225,7 @@ export function PodHealthTrend() {
                 name="Issues"
               />
               <Area
-                type="monotone"
+                type="basis"
                 dataKey="pending"
                 stackId="1"
                 stroke="#eab308"
@@ -222,7 +234,7 @@ export function PodHealthTrend() {
                 name="Pending"
               />
               <Area
-                type="monotone"
+                type="basis"
                 dataKey="healthy"
                 stackId="1"
                 stroke="#22c55e"
@@ -232,6 +244,7 @@ export function PodHealthTrend() {
               />
             </AreaChart>
           </ResponsiveContainer>
+          </div>
         )}
       </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useMissions } from '../../../hooks/useMissions'
 import { useLocalAgent } from '../../../hooks/useLocalAgent'
 import { useDrillDownActions, useDrillDown } from '../../../hooks/useDrillDown'
@@ -182,9 +182,67 @@ export function PodDrillDown({ data }: Props) {
   const status = data.status as string
   const restarts = (data.restarts as number) || 0
   const reason = data.reason as string
-  const issues = (data.issues as string[]) || []
+  const passedIssues = (data.issues as string[]) || []
   const passedLabels = data.labels as Record<string, string> | undefined
   const passedAnnotations = data.annotations as Record<string, string> | undefined
+
+  // Unhealthy statuses that should be flagged as issues
+  const UNHEALTHY_STATUSES = [
+    'Evicted', 'Failed', 'Error', 'CrashLoopBackOff', 'ImagePullBackOff',
+    'ErrImagePull', 'CreateContainerConfigError', 'InvalidImageName',
+    'OOMKilled', 'Terminating', 'Unknown', 'ContainerStatusUnknown',
+    'Pending', 'Init:Error', 'Init:CrashLoopBackOff', 'PodInitializing'
+  ]
+
+  // Compute all issues including status-based ones
+  const issues = useMemo(() => {
+    const allIssues = [...passedIssues]
+
+    // Check status from data prop
+    if (status && UNHEALTHY_STATUSES.some(s => status.toLowerCase().includes(s.toLowerCase()))) {
+      if (!allIssues.some(i => i.toLowerCase() === status.toLowerCase())) {
+        allIssues.unshift(status)
+      }
+    }
+
+    // Parse kubectl output for status - handles cases where data.status is stale
+    if (podStatusOutput) {
+      // Parse the STATUS column from kubectl get pod output
+      const lines = podStatusOutput.split('\n')
+      const dataLine = lines.find(line => line.includes(podName))
+      if (dataLine) {
+        const parts = dataLine.trim().split(/\s+/)
+        // Format: NAME READY STATUS RESTARTS AGE ...
+        if (parts.length >= 3) {
+          const kubectlStatus = parts[2]
+          // Check if kubectl status is unhealthy
+          if (kubectlStatus && UNHEALTHY_STATUSES.some(s => kubectlStatus.toLowerCase().includes(s.toLowerCase()))) {
+            if (!allIssues.some(i => i.toLowerCase() === kubectlStatus.toLowerCase())) {
+              allIssues.unshift(kubectlStatus)
+            }
+          }
+          // Check READY column (e.g., 0/1)
+          const ready = parts[1]
+          if (ready && ready.includes('/')) {
+            const [current, total] = ready.split('/')
+            if (current !== total && total !== '0') {
+              const notReadyMsg = `${current}/${total} containers ready`
+              if (!allIssues.some(i => i.includes('containers ready'))) {
+                allIssues.push(notReadyMsg)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Add reason as an issue if it exists and indicates a problem
+    if (reason && !allIssues.some(i => i.toLowerCase() === reason.toLowerCase())) {
+      allIssues.push(reason)
+    }
+
+    return allIssues
+  }, [passedIssues, status, reason, podStatusOutput, podName])
 
   // Use passed labels/annotations if available
   useEffect(() => {
@@ -1273,6 +1331,13 @@ Please proceed step by step and ask for confirmation before making any changes.`
                   </div>
                 )}
 
+              </div>
+            ) : (podStatusLoading || describeLoading) ? (
+              <div className="p-4 rounded-lg bg-secondary/30 border border-border text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <p className="text-muted-foreground">Analyzing pod health...</p>
+                </div>
               </div>
             ) : (
               <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 text-center">

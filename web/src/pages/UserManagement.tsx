@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Users, Shield, Key, Search, RefreshCw, Plus, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Users, Shield, Key, Search, RefreshCw, Plus, ChevronRight, Hourglass } from 'lucide-react'
 import { useConsoleUsers } from '../hooks/useUsers'
 import { useClusters } from '../hooks/useMCP'
 import { useGlobalFilters } from '../hooks/useGlobalFilters'
@@ -10,9 +10,37 @@ type TabType = 'console' | 'kubernetes' | 'rbac'
 export function UserManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>('console')
   const [searchQuery, setSearchQuery] = useState('')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const { users, isLoading: usersLoading, refetch: refetchUsers } = useConsoleUsers()
-  const { clusters } = useClusters()
+  const { clusters, refetch: refetchClusters } = useClusters()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
+
+  // Handle refresh with visual feedback
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([refetchUsers(), refetchClusters()])
+      setLastUpdated(new Date())
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [refetchUsers, refetchClusters])
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      handleRefresh()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [handleRefresh])
+
+  // Set initial lastUpdated when data loads
+  useEffect(() => {
+    if (!usersLoading && users.length > 0 && !lastUpdated) {
+      setLastUpdated(new Date())
+    }
+  }, [usersLoading, users.length, lastUpdated])
 
   const tabs = [
     { key: 'console' as const, label: 'Console Users', icon: Users },
@@ -34,11 +62,24 @@ export function UserManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isRefreshing && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Hourglass className="w-3 h-3 animate-pulse" />
+              updating...
+            </span>
+          )}
+          {lastUpdated && !isRefreshing && (
+            <span className="text-xs text-muted-foreground">
+              Updated {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
           <button
-            onClick={() => refetchUsers()}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-muted-foreground hover:text-white transition-colors"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-muted-foreground hover:text-white transition-colors disabled:opacity-50"
+            title="Refresh user data"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors">

@@ -1,6 +1,7 @@
-import { Bot, Stethoscope, FileSearch, AlertCircle, Play, CheckCircle, Clock, RefreshCw } from 'lucide-react'
+import { Bot, Stethoscope, FileSearch, AlertCircle, Play, CheckCircle, Clock, RefreshCw, ChevronRight } from 'lucide-react'
 import { useMissions } from '../../hooks/useMissions'
 import { useClusters, usePodIssues, useDeploymentIssues } from '../../hooks/useMCP'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { cn } from '../../lib/cn'
 
 // Klaude Mission Cards - Quick actions for AI-powered cluster management
@@ -15,6 +16,7 @@ export function KlaudeIssuesCard(_props: KlaudeMissionCardProps) {
   useClusters() // Keep hook active for real-time updates
   const { issues: podIssues } = usePodIssues()
   const { issues: deploymentIssues } = useDeploymentIssues()
+  const { drillToPod, drillToDeployment } = useDrillDownActions()
 
   const totalIssues = podIssues.length + deploymentIssues.length
   const clustersWithIssues = new Set([
@@ -71,11 +73,25 @@ Please:
 
       {/* Issue Summary */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+        <div
+          className={cn(
+            "p-3 rounded-lg bg-orange-500/10 border border-orange-500/20",
+            podIssues.length > 0 && "cursor-pointer hover:bg-orange-500/20 transition-colors"
+          )}
+          onClick={() => podIssues.length > 0 && podIssues[0] && drillToPod(podIssues[0].cluster || 'default', podIssues[0].namespace, podIssues[0].name)}
+          title={podIssues.length > 0 ? `${podIssues.length} pod${podIssues.length !== 1 ? 's' : ''} with issues - Click to view first issue` : 'No pod issues'}
+        >
           <div className="text-2xl font-bold text-foreground">{podIssues.length}</div>
           <div className="text-xs text-orange-400">Pod Issues</div>
         </div>
-        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+        <div
+          className={cn(
+            "p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20",
+            deploymentIssues.length > 0 && "cursor-pointer hover:bg-yellow-500/20 transition-colors"
+          )}
+          onClick={() => deploymentIssues.length > 0 && deploymentIssues[0] && drillToDeployment(deploymentIssues[0].cluster || 'default', deploymentIssues[0].namespace, deploymentIssues[0].name)}
+          title={deploymentIssues.length > 0 ? `${deploymentIssues.length} deployment${deploymentIssues.length !== 1 ? 's' : ''} with issues - Click to view first issue` : 'No deployment issues'}
+        >
           <div className="text-2xl font-bold text-foreground">{deploymentIssues.length}</div>
           <div className="text-xs text-yellow-400">Deployment Issues</div>
         </div>
@@ -84,13 +100,21 @@ Please:
       {/* Top Issues Preview */}
       <div className="flex-1 space-y-2 overflow-y-auto mb-4">
         {podIssues.slice(0, 3).map((issue, i) => (
-          <div key={`pod-${i}`} className="p-2 rounded bg-orange-500/10 text-xs">
-            <div className="font-medium text-foreground truncate">{issue.name}</div>
-            <div className="text-orange-400">{issue.status}</div>
+          <div
+            key={`pod-${i}`}
+            className="p-2 rounded bg-orange-500/10 text-xs cursor-pointer hover:bg-orange-500/20 transition-colors group flex items-center justify-between"
+            onClick={() => drillToPod(issue.cluster || 'default', issue.namespace, issue.name, { status: issue.status, restarts: issue.restarts, issues: issue.issues })}
+            title={`Click to view details for pod ${issue.name}`}
+          >
+            <div className="min-w-0">
+              <div className="font-medium text-foreground truncate">{issue.name}</div>
+              <div className="text-orange-400">{issue.status}</div>
+            </div>
+            <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 flex-shrink-0" />
           </div>
         ))}
         {totalIssues > 3 && (
-          <div className="text-xs text-muted-foreground text-center">
+          <div className="text-xs text-muted-foreground text-center" title={`${totalIssues - 3} additional issues`}>
             +{totalIssues - 3} more issues
           </div>
         )}
@@ -134,6 +158,7 @@ Please:
 export function KlaudeKubeconfigAuditCard(_props: KlaudeMissionCardProps) {
   const { startMission, missions } = useMissions()
   const { clusters, isLoading, refetch } = useClusters()
+  const { drillToCluster } = useDrillDownActions()
 
   const unreachableClusters = clusters.filter(c => c.reachable === false || c.nodeCount === 0)
 
@@ -147,9 +172,9 @@ export function KlaudeKubeconfigAuditCard(_props: KlaudeMissionCardProps) {
       initialPrompt: `Please audit my kubeconfig and help me clean it up.
 
 Current clusters (${clusters.length} total):
-${clusters.map(c => `- ${c.name}: ${c.reachable === false ? 'UNREACHABLE' : c.healthy ? 'healthy' : 'unhealthy'} (${c.nodeCount || 0} nodes)`).join('\n')}
+${clusters.map(c => `- ${c.name}: ${c.reachable === false ? 'OFFLINE' : c.healthy ? 'healthy' : 'unhealthy'} (${c.nodeCount || 0} nodes)`).join('\n')}
 
-Unreachable clusters (${unreachableClusters.length}):
+Offline clusters (${unreachableClusters.length}):
 ${unreachableClusters.map(c => `- ${c.name}: ${c.errorMessage || 'Connection failed'}`).join('\n') || 'None'}
 
 Please:
@@ -188,33 +213,48 @@ Please:
 
       {/* Audit Summary */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+        <div
+          className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 cursor-default"
+          title={`${clusters.length} total cluster context${clusters.length !== 1 ? 's' : ''} in kubeconfig`}
+        >
           <div className="text-2xl font-bold text-foreground">{clusters.length}</div>
           <div className="text-xs text-cyan-400">Total Contexts</div>
         </div>
-        <div className={cn(
-          'p-3 rounded-lg border',
-          unreachableClusters.length > 0
-            ? 'bg-yellow-500/10 border-yellow-500/20'
-            : 'bg-green-500/10 border-green-500/20'
-        )}>
+        <div
+          className={cn(
+            'p-3 rounded-lg border',
+            unreachableClusters.length > 0
+              ? 'bg-yellow-500/10 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20 transition-colors'
+              : 'bg-green-500/10 border-green-500/20 cursor-default'
+          )}
+          onClick={() => unreachableClusters.length > 0 && unreachableClusters[0] && drillToCluster(unreachableClusters[0].name)}
+          title={unreachableClusters.length > 0 ? `${unreachableClusters.length} offline cluster${unreachableClusters.length !== 1 ? 's' : ''} - Click to view first` : 'All clusters are reachable'}
+        >
           <div className="text-2xl font-bold text-foreground">{unreachableClusters.length}</div>
           <div className={cn('text-xs', unreachableClusters.length > 0 ? 'text-yellow-400' : 'text-green-400')}>
-            Unreachable
+            Offline
           </div>
         </div>
       </div>
 
-      {/* Unreachable Clusters Preview */}
+      {/* Offline Clusters Preview */}
       <div className="flex-1 space-y-2 overflow-y-auto mb-4">
         {unreachableClusters.slice(0, 3).map((cluster, i) => (
-          <div key={i} className="p-2 rounded bg-yellow-500/10 text-xs">
-            <div className="font-medium text-foreground truncate">{cluster.name}</div>
-            <div className="text-yellow-400 truncate">{cluster.errorMessage || 'Connection failed'}</div>
+          <div
+            key={i}
+            className="p-2 rounded bg-yellow-500/10 text-xs cursor-pointer hover:bg-yellow-500/20 transition-colors group flex items-center justify-between"
+            onClick={() => drillToCluster(cluster.name)}
+            title={`Click to view details for ${cluster.name}`}
+          >
+            <div className="min-w-0">
+              <div className="font-medium text-foreground truncate">{cluster.name}</div>
+              <div className="text-yellow-400 truncate">{cluster.errorMessage || 'Connection failed'}</div>
+            </div>
+            <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 flex-shrink-0" />
           </div>
         ))}
         {unreachableClusters.length === 0 && (
-          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground" title="All clusters are reachable">
             <CheckCircle className="w-4 h-4 mr-2 text-green-400" />
             All clusters reachable
           </div>
@@ -254,6 +294,7 @@ export function KlaudeHealthCheckCard(_props: KlaudeMissionCardProps) {
   const { clusters, isLoading, refetch } = useClusters()
   const { issues: podIssues } = usePodIssues()
   const { issues: deploymentIssues } = useDeploymentIssues()
+  const { drillToCluster, drillToPod } = useDrillDownActions()
 
   const healthyClusters = clusters.filter(c => c.healthy && c.reachable !== false).length
   const unhealthyClusters = clusters.filter(c => !c.healthy && c.reachable !== false).length
@@ -276,7 +317,7 @@ Cluster Overview:
 - Total clusters: ${clusters.length}
 - Healthy: ${healthyClusters}
 - Unhealthy: ${unhealthyClusters}
-- Unreachable: ${unreachableClusters}
+- Offline: ${unreachableClusters}
 
 Resource Summary:
 - Total nodes: ${totalNodes}
@@ -284,7 +325,7 @@ Resource Summary:
 - Known issues: ${totalIssues}
 
 Clusters by status:
-${clusters.map(c => `- ${c.name}: ${c.healthy ? '✓ healthy' : c.reachable === false ? '✗ unreachable' : '⚠ unhealthy'} (${c.nodeCount || 0} nodes, ${c.podCount || 0} pods)`).join('\n')}
+${clusters.map(c => `- ${c.name}: ${c.healthy ? '✓ healthy' : c.reachable === false ? '✗ offline' : '⚠ unhealthy'} (${c.nodeCount || 0} nodes, ${c.podCount || 0} pods)`).join('\n')}
 
 Please provide:
 1. Overall infrastructure health score (1-10)
@@ -351,23 +392,61 @@ Please provide:
 
       {/* Quick Stats */}
       <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-        <div className="p-2 rounded bg-green-500/10">
+        <div
+          className={cn(
+            "p-2 rounded bg-green-500/10",
+            healthyClusters > 0 && "cursor-pointer hover:bg-green-500/20 transition-colors"
+          )}
+          onClick={() => {
+            const healthyCluster = clusters.find(c => c.healthy && c.reachable !== false)
+            if (healthyCluster) drillToCluster(healthyCluster.name)
+          }}
+          title={`${healthyClusters} healthy cluster${healthyClusters !== 1 ? 's' : ''} - Click to view`}
+        >
           <div className="text-lg font-bold text-green-400">{healthyClusters}</div>
           <div className="text-[10px] text-muted-foreground">Healthy</div>
         </div>
-        <div className="p-2 rounded bg-orange-500/10">
+        <div
+          className={cn(
+            "p-2 rounded bg-orange-500/10",
+            unhealthyClusters > 0 && "cursor-pointer hover:bg-orange-500/20 transition-colors"
+          )}
+          onClick={() => {
+            const unhealthyCluster = clusters.find(c => !c.healthy && c.reachable !== false)
+            if (unhealthyCluster) drillToCluster(unhealthyCluster.name)
+          }}
+          title={`${unhealthyClusters} unhealthy cluster${unhealthyClusters !== 1 ? 's' : ''} - Click to view`}
+        >
           <div className="text-lg font-bold text-orange-400">{unhealthyClusters}</div>
           <div className="text-[10px] text-muted-foreground">Unhealthy</div>
         </div>
-        <div className="p-2 rounded bg-yellow-500/10">
+        <div
+          className={cn(
+            "p-2 rounded bg-yellow-500/10",
+            unreachableClusters > 0 && "cursor-pointer hover:bg-yellow-500/20 transition-colors"
+          )}
+          onClick={() => {
+            const unreachableCluster = clusters.find(c => c.reachable === false)
+            if (unreachableCluster) drillToCluster(unreachableCluster.name)
+          }}
+          title={`${unreachableClusters} offline cluster${unreachableClusters !== 1 ? 's' : ''} - Click to view`}
+        >
           <div className="text-lg font-bold text-yellow-400">{unreachableClusters}</div>
-          <div className="text-[10px] text-muted-foreground">Unreachable</div>
+          <div className="text-[10px] text-muted-foreground">Offline</div>
         </div>
       </div>
 
       {/* Issues Summary */}
       {totalIssues > 0 && (
-        <div className="mb-4 p-2 rounded bg-orange-500/10 border border-orange-500/20">
+        <div
+          className="mb-4 p-2 rounded bg-orange-500/10 border border-orange-500/20 cursor-pointer hover:bg-orange-500/20 transition-colors"
+          onClick={() => {
+            if (podIssues.length > 0 && podIssues[0]) {
+              drillToPod(podIssues[0].cluster || 'default', podIssues[0].namespace, podIssues[0].name)
+            }
+          }}
+          title={`${totalIssues} issue${totalIssues !== 1 ? 's' : ''} detected - Click to view first issue`}
+        >
           <div className="flex items-center gap-2 text-xs text-orange-400">
             <AlertCircle className="w-3 h-3" />
             {totalIssues} issues detected

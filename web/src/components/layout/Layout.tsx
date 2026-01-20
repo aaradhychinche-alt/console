@@ -15,7 +15,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const { config } = useSidebarConfig()
-  const { isSidebarOpen: isMissionSidebarOpen } = useMissions()
+  const { isSidebarOpen: isMissionSidebarOpen, isSidebarMinimized: isMissionSidebarMinimized } = useMissions()
 
   // Track navigation for behavior analysis
   useNavigationHistory()
@@ -50,7 +50,8 @@ export function Layout({ children }: LayoutProps) {
         <main className={cn(
           'flex-1 p-6 transition-all duration-300',
           config.collapsed ? 'ml-20' : 'ml-64',
-          isMissionSidebarOpen && 'mr-96'
+          isMissionSidebarOpen && !isMissionSidebarMinimized && 'mr-96',
+          isMissionSidebarOpen && isMissionSidebarMinimized && 'mr-12'
         )}>
           {children}
         </main>

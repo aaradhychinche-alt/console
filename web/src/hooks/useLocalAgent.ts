@@ -17,7 +17,7 @@ export interface AgentHealth {
   }
 }
 
-export type AgentConnectionStatus = 'connected' | 'disconnected' | 'connecting'
+export type AgentConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'degraded'
 
 export interface ConnectionEvent {
   timestamp: Date
@@ -54,6 +54,8 @@ interface AgentState {
   health: AgentHealth | null
   error: string | null
   connectionEvents: ConnectionEvent[]
+  dataErrorCount: number
+  lastDataError: string | null
 }
 
 type Listener = (state: AgentState) => void
@@ -64,13 +66,18 @@ class AgentManager {
     health: null,
     error: null,
     connectionEvents: [],
+    dataErrorCount: 0,
+    lastDataError: null,
   }
   private listeners: Set<Listener> = new Set()
   private pollInterval: ReturnType<typeof setInterval> | null = null
   private failureCount = 0
+  private dataErrorTimestamps: number[] = [] // Track recent data errors
   private isChecking = false
   private isStarted = false
   private maxEvents = 50
+  private dataErrorWindow = 60000 // 1 minute window for data errors
+  private dataErrorThreshold = 3 // Errors within window to trigger degraded
 
   start() {
     if (this.isStarted) return
@@ -112,9 +119,23 @@ class AgentManager {
     this.listeners.forEach((listener) => listener(this.state))
   }
 
-  private setState(updates: Partial<AgentState>) {
+  private setState(updates: Partial<AgentState>, forceNotify = false) {
+    const prevState = this.state
     this.state = { ...this.state, ...updates }
-    this.notify()
+
+    // Only notify if state actually changed (prevents UI flashing on background polls)
+    const hasChanged = forceNotify ||
+      prevState.status !== this.state.status ||
+      prevState.error !== this.state.error ||
+      prevState.dataErrorCount !== this.state.dataErrorCount ||
+      // For health, only check meaningful changes
+      prevState.health?.clusters !== this.state.health?.clusters ||
+      prevState.health?.hasClaude !== this.state.health?.hasClaude ||
+      prevState.health?.status !== this.state.health?.status
+
+    if (hasChanged) {
+      this.notify()
+    }
   }
 
   private addEvent(type: ConnectionEvent['type'], message: string) {
@@ -191,10 +212,81 @@ class AgentManager {
   getState() {
     return this.state
   }
+
+  // Report a data endpoint error (e.g., /clusters returned 503)
+  reportDataError(endpoint: string, error: string) {
+    const now = Date.now()
+    this.dataErrorTimestamps.push(now)
+
+    // Clean up old timestamps outside the window
+    this.dataErrorTimestamps = this.dataErrorTimestamps.filter(
+      ts => now - ts < this.dataErrorWindow
+    )
+
+    const recentErrors = this.dataErrorTimestamps.length
+
+    // Only transition to degraded if we're currently connected
+    if (this.state.status === 'connected' && recentErrors >= this.dataErrorThreshold) {
+      this.addEvent('error', `Data endpoint errors: ${endpoint} - ${error}`)
+      this.setState({
+        status: 'degraded',
+        dataErrorCount: recentErrors,
+        lastDataError: `${endpoint}: ${error}`,
+      })
+      console.log(`[AgentManager] Transitioning to degraded - ${recentErrors} data errors in last minute`)
+    } else if (this.state.status === 'degraded') {
+      // Update error count while degraded
+      this.setState({
+        dataErrorCount: recentErrors,
+        lastDataError: `${endpoint}: ${error}`,
+      })
+    }
+  }
+
+  // Report successful data fetch - can recover from degraded
+  reportDataSuccess() {
+    if (this.state.status === 'degraded') {
+      // Clear old errors and check if we can recover
+      const now = Date.now()
+      this.dataErrorTimestamps = this.dataErrorTimestamps.filter(
+        ts => now - ts < this.dataErrorWindow
+      )
+
+      if (this.dataErrorTimestamps.length < this.dataErrorThreshold) {
+        this.addEvent('connected', 'Data endpoints recovered')
+        this.setState({
+          status: 'connected',
+          dataErrorCount: 0,
+          lastDataError: null,
+        })
+        console.log('[AgentManager] Recovered from degraded state')
+      }
+    }
+  }
 }
 
 // Global singleton instance
 const agentManager = new AgentManager()
+
+// ============================================================================
+// Non-hook API for reporting data errors from module-level code
+// ============================================================================
+
+/**
+ * Report a data endpoint error from non-hook code (e.g., useMCP.ts)
+ * This is used when the health endpoint passes but data endpoints fail
+ */
+export function reportAgentDataError(endpoint: string, error: string) {
+  agentManager.reportDataError(endpoint, error)
+}
+
+/**
+ * Report successful data fetch from non-hook code
+ * This can help recover from degraded state
+ */
+export function reportAgentDataSuccess() {
+  agentManager.reportDataSuccess()
+}
 
 // ============================================================================
 // React Hook - subscribes to the singleton
@@ -235,14 +327,27 @@ export function useLocalAgent() {
     ],
   }
 
+  const reportDataError = useCallback((endpoint: string, error: string) => {
+    agentManager.reportDataError(endpoint, error)
+  }, [])
+
+  const reportDataSuccess = useCallback(() => {
+    agentManager.reportDataSuccess()
+  }, [])
+
   return {
     status: state.status,
     health: state.health,
     error: state.error,
     connectionEvents: state.connectionEvents,
-    isConnected: state.status === 'connected',
+    dataErrorCount: state.dataErrorCount,
+    lastDataError: state.lastDataError,
+    isConnected: state.status === 'connected' || state.status === 'degraded',
+    isDegraded: state.status === 'degraded',
     isDemoMode: state.status === 'disconnected',
     installInstructions,
     refresh,
+    reportDataError,
+    reportDataSuccess,
   }
 }

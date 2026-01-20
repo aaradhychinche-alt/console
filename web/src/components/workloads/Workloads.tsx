@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Layers, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, FolderOpen, AlertTriangle, AlertCircle, ListChecks } from 'lucide-react'
-import { useDeploymentIssues, usePodIssues, useClusters } from '../../hooks/useMCP'
+import { useSearchParams } from 'react-router-dom'
+import { Layers, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, FolderOpen, AlertTriangle, AlertCircle, ListChecks, Hourglass } from 'lucide-react'
+import { useDeploymentIssues, usePodIssues, useClusters, useDeployments } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useShowCards } from '../../hooks/useShowCards'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
@@ -19,6 +20,7 @@ interface WorkloadCard {
   card_type: string
   config: Record<string, unknown>
   title?: string
+  position?: { w: number; h: number }
 }
 
 const WORKLOADS_CARDS_KEY = 'kubestellar-workloads-cards'
@@ -46,8 +48,10 @@ interface AppSummary {
 }
 
 export function Workloads() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { issues: podIssues, isLoading: podIssuesLoading, isRefreshing: podIssuesRefreshing, lastUpdated, refetch: refetchPodIssues } = usePodIssues()
   const { issues: deploymentIssues, isLoading: deploymentIssuesLoading, isRefreshing: deploymentIssuesRefreshing, refetch: refetchDeploymentIssues } = useDeploymentIssues()
+  const { deployments: allDeployments, isLoading: deploymentsLoading, isRefreshing: deploymentsRefreshing, refetch: refetchDeployments } = useDeployments()
   const { clusters, isLoading: clustersLoading, refetch: refetchClusters } = useClusters()
   const { drillToNamespace } = useDrillDownActions()
 
@@ -61,33 +65,42 @@ export function Workloads() {
   const [autoRefresh, setAutoRefresh] = useState(true)
 
   // Combined loading/refreshing states
-  const isLoading = podIssuesLoading || deploymentIssuesLoading || clustersLoading
-  const isRefreshing = podIssuesRefreshing || deploymentIssuesRefreshing
+  const isLoading = podIssuesLoading || deploymentIssuesLoading || deploymentsLoading || clustersLoading
+  const isRefreshing = podIssuesRefreshing || deploymentIssuesRefreshing || deploymentsRefreshing
   const isFetching = isLoading || isRefreshing
   // Only show skeletons when we have no data yet
-  const showSkeletons = (podIssues.length === 0 && deploymentIssues.length === 0) && isLoading
+  const showSkeletons = (allDeployments.length === 0 && podIssues.length === 0 && deploymentIssues.length === 0) && isLoading
 
   // Save cards to localStorage when they change
   useEffect(() => {
     saveWorkloadCards(cards)
   }, [cards])
 
+  // Handle addCard URL param - open modal and clear param
+  useEffect(() => {
+    if (searchParams.get('addCard') === 'true') {
+      setShowAddCard(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   // Auto-refresh every 30 seconds
   useEffect(() => {
     if (!autoRefresh) return
 
     const interval = setInterval(() => {
-      Promise.all([refetchPodIssues(), refetchDeploymentIssues(), refetchClusters()])
+      Promise.all([refetchPodIssues(), refetchDeploymentIssues(), refetchDeployments(), refetchClusters()])
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [autoRefresh, refetchPodIssues, refetchDeploymentIssues, refetchClusters])
+  }, [autoRefresh, refetchPodIssues, refetchDeploymentIssues, refetchDeployments, refetchClusters])
 
   const handleRefresh = useCallback(() => {
     refetchPodIssues()
     refetchDeploymentIssues()
+    refetchDeployments()
     refetchClusters()
-  }, [refetchPodIssues, refetchDeploymentIssues, refetchClusters])
+  }, [refetchPodIssues, refetchDeploymentIssues, refetchDeployments, refetchClusters])
 
   const handleAddCards = useCallback((newCards: Array<{ type: string; title: string; config: Record<string, unknown> }>) => {
     const cardsToAdd: WorkloadCard[] = newCards.map(card => ({
@@ -117,6 +130,12 @@ export function Workloads() {
     setConfiguringCard(null)
   }, [])
 
+  const handleWidthChange = useCallback((cardId: string, newWidth: number) => {
+    setCards(prev => prev.map(c =>
+      c.id === cardId ? { ...c, position: { ...(c.position || { w: 4, h: 2 }), w: newWidth } } : c
+    ))
+  }, [])
+
   const applyTemplate = useCallback((template: DashboardTemplate) => {
     const newCards: WorkloadCard[] = template.cards.map(card => ({
       id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -136,11 +155,15 @@ export function Workloads() {
 
   // Group applications by namespace with global filter applied
   const apps = useMemo(() => {
-    // Filter issues by global cluster selection
+    // Filter deployments and issues by global cluster selection
+    let filteredDeployments = allDeployments
     let filteredPodIssues = podIssues
     let filteredDeploymentIssues = deploymentIssues
 
     if (!isAllClustersSelected) {
+      filteredDeployments = filteredDeployments.filter(d =>
+        d.cluster && globalSelectedClusters.includes(d.cluster)
+      )
       filteredPodIssues = filteredPodIssues.filter(issue =>
         issue.cluster && globalSelectedClusters.includes(issue.cluster)
       )
@@ -149,11 +172,14 @@ export function Workloads() {
       )
     }
 
-    // Note: Status filter not applied here as issues represent problems, not running state
-
     // Apply custom text filter
     if (customFilter.trim()) {
       const query = customFilter.toLowerCase()
+      filteredDeployments = filteredDeployments.filter(d =>
+        d.name.toLowerCase().includes(query) ||
+        d.namespace.toLowerCase().includes(query) ||
+        (d.cluster && d.cluster.toLowerCase().includes(query))
+      )
       filteredPodIssues = filteredPodIssues.filter(issue =>
         issue.name.toLowerCase().includes(query) ||
         issue.namespace.toLowerCase().includes(query) ||
@@ -168,7 +194,24 @@ export function Workloads() {
 
     const appMap = new Map<string, AppSummary>()
 
-    // Group pod issues by namespace
+    // First, populate from ALL deployments (not just issues)
+    filteredDeployments.forEach(deployment => {
+      const key = `${deployment.cluster}/${deployment.namespace}`
+      if (!appMap.has(key)) {
+        appMap.set(key, {
+          namespace: deployment.namespace,
+          cluster: deployment.cluster || 'unknown',
+          deploymentCount: 0,
+          podIssues: 0,
+          deploymentIssues: 0,
+          status: 'healthy',
+        })
+      }
+      const app = appMap.get(key)!
+      app.deploymentCount++
+    })
+
+    // Add pod issues to the map
     filteredPodIssues.forEach(issue => {
       const key = `${issue.cluster}/${issue.namespace}`
       if (!appMap.has(key)) {
@@ -186,7 +229,7 @@ export function Workloads() {
       app.status = app.podIssues > 3 ? 'error' : 'warning'
     })
 
-    // Group deployment issues by namespace
+    // Add deployment issues to the map
     filteredDeploymentIssues.forEach(issue => {
       const key = `${issue.cluster}/${issue.namespace}`
       if (!appMap.has(key)) {
@@ -200,7 +243,6 @@ export function Workloads() {
         })
       }
       const app = appMap.get(key)!
-      app.deploymentCount++
       app.deploymentIssues++
       if (app.status !== 'error') {
         app.status = 'warning'
@@ -208,20 +250,22 @@ export function Workloads() {
     })
 
     return Array.from(appMap.values()).sort((a, b) => {
-      // Sort by status (critical first), then by issue count
+      // Sort by status (critical first), then by deployment count
       const statusOrder: Record<string, number> = { error: 0, critical: 0, warning: 1, healthy: 2 }
       if (statusOrder[a.status] !== statusOrder[b.status]) {
         return statusOrder[a.status] - statusOrder[b.status]
       }
-      return (b.podIssues + b.deploymentIssues) - (a.podIssues + a.deploymentIssues)
+      // Then sort by deployment count (more deployments = more important)
+      return b.deploymentCount - a.deploymentCount
     })
-  }, [podIssues, deploymentIssues, globalSelectedClusters, isAllClustersSelected, customFilter])
+  }, [allDeployments, podIssues, deploymentIssues, globalSelectedClusters, isAllClustersSelected, customFilter])
 
   const stats = useMemo(() => ({
     total: apps.length,
     healthy: apps.filter(a => a.status === 'healthy').length,
     warning: apps.filter(a => a.status === 'warning').length,
     critical: apps.filter(a => a.status === 'error').length,
+    totalDeployments: apps.reduce((sum, a) => sum + a.deploymentCount, 0),
     totalPodIssues: podIssues.length,
     totalDeploymentIssues: deploymentIssues.length,
   }), [apps, podIssues, deploymentIssues])
@@ -239,32 +283,39 @@ export function Workloads() {
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Layers className="w-6 h-6 text-purple-400" />
-              Workloads
-            </h1>
-            <p className="text-muted-foreground">View and manage deployed applications across clusters</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <Layers className="w-6 h-6 text-purple-400" />
+                Workloads
+              </h1>
+              <p className="text-muted-foreground">View and manage deployed applications across clusters</p>
+            </div>
+            {isRefreshing && (
+              <span className="flex items-center gap-1 text-xs text-amber-400 animate-pulse" title="Updating...">
+                <Hourglass className="w-3 h-3" />
+                <span>Updating</span>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            <label htmlFor="workloads-auto-refresh" className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
+            <label htmlFor="workloads-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
               <input
                 type="checkbox"
                 id="workloads-auto-refresh"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border w-3.5 h-3.5"
               />
-              Auto-refresh
+              Auto
             </label>
             <button
               onClick={handleRefresh}
               disabled={isFetching}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           </div>
         </div>
@@ -307,7 +358,15 @@ export function Workloads() {
             ) : (
               // Real data
               <>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${apps.length > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    if (apps.length > 0 && apps[0]) {
+                      drillToNamespace(apps[0].cluster, apps[0].namespace)
+                    }
+                  }}
+                  title={apps.length > 0 ? `${stats.total} namespace${stats.total !== 1 ? 's' : ''} with workloads - Click to view details` : 'No namespaces with issues'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <FolderOpen className="w-5 h-5 text-purple-400" />
                     <span className="text-sm text-muted-foreground">Namespaces</span>
@@ -315,7 +374,14 @@ export function Workloads() {
                   <div className="text-3xl font-bold text-foreground">{stats.total}</div>
                   <div className="text-xs text-muted-foreground">active namespaces</div>
                 </div>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${stats.critical > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    const criticalApp = apps.find(a => a.status === 'error')
+                    if (criticalApp) drillToNamespace(criticalApp.cluster, criticalApp.namespace)
+                  }}
+                  title={stats.critical > 0 ? `${stats.critical} namespace${stats.critical !== 1 ? 's' : ''} with critical issues - Click to view` : 'No critical issues'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <AlertCircle className="w-5 h-5 text-red-400" />
                     <span className="text-sm text-muted-foreground">Critical</span>
@@ -323,7 +389,14 @@ export function Workloads() {
                   <div className="text-3xl font-bold text-red-400">{stats.critical}</div>
                   <div className="text-xs text-muted-foreground">critical issues</div>
                 </div>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${stats.warning > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    const warningApp = apps.find(a => a.status === 'warning')
+                    if (warningApp) drillToNamespace(warningApp.cluster, warningApp.namespace)
+                  }}
+                  title={stats.warning > 0 ? `${stats.warning} namespace${stats.warning !== 1 ? 's' : ''} with warnings - Click to view` : 'No warning issues'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <AlertTriangle className="w-5 h-5 text-yellow-400" />
                     <span className="text-sm text-muted-foreground">Warning</span>
@@ -331,13 +404,21 @@ export function Workloads() {
                   <div className="text-3xl font-bold text-yellow-400">{stats.warning}</div>
                   <div className="text-xs text-muted-foreground">warning issues</div>
                 </div>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${stats.totalDeployments > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    if (apps.length > 0 && apps[0]) {
+                      drillToNamespace(apps[0].cluster, apps[0].namespace)
+                    }
+                  }}
+                  title={`${stats.totalDeployments} deployments across ${stats.total} namespaces`}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <ListChecks className="w-5 h-5 text-blue-400" />
-                    <span className="text-sm text-muted-foreground">Total</span>
+                    <span className="text-sm text-muted-foreground">Deployments</span>
                   </div>
-                  <div className="text-3xl font-bold text-foreground">{stats.totalPodIssues + stats.totalDeploymentIssues}</div>
-                  <div className="text-xs text-muted-foreground">total issues</div>
+                  <div className="text-3xl font-bold text-foreground">{stats.totalDeployments}</div>
+                  <div className="text-xs text-muted-foreground">total deployments</div>
                 </div>
               </>
             )}
@@ -397,24 +478,31 @@ export function Workloads() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-12 gap-4">
                 {cards.map(card => {
                   const CardComponent = CARD_COMPONENTS[card.card_type]
                   if (!CardComponent) {
                     console.warn(`Unknown card type: ${card.card_type}`)
                     return null
                   }
+                  const cardWidth = card.position?.w || 4
                   return (
-                    <CardWrapper
+                    <div
                       key={card.id}
-                      cardId={card.id}
-                      cardType={card.card_type}
-                      title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      onConfigure={() => handleConfigureCard(card.id)}
-                      onRemove={() => handleRemoveCard(card.id)}
+                      style={{ gridColumn: `span ${cardWidth}` }}
                     >
-                      <CardComponent config={card.config} />
-                    </CardWrapper>
+                      <CardWrapper
+                        cardId={card.id}
+                        cardType={card.card_type}
+                        title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        cardWidth={cardWidth}
+                        onConfigure={() => handleConfigureCard(card.id)}
+                        onRemove={() => handleRemoveCard(card.id)}
+                        onWidthChange={(newWidth) => handleWidthChange(card.id, newWidth)}
+                      >
+                        <CardComponent config={card.config} />
+                      </CardWrapper>
+                    </div>
                   )
                 })}
               </div>
@@ -447,8 +535,8 @@ export function Workloads() {
       />
 
       {/* Workloads List */}
-      {isLoading ? (
-        // Loading skeletons for workloads list
+      {showSkeletons ? (
+        // Loading skeletons for workloads list (only when no cached data)
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="glass p-4 rounded-lg border-l-4 border-l-gray-500/50">
@@ -467,9 +555,9 @@ export function Workloads() {
         </div>
       ) : apps.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-6xl mb-4">✨</div>
-          <p className="text-lg text-foreground">All systems healthy!</p>
-          <p className="text-sm text-muted-foreground">No application issues detected across your clusters</p>
+          <div className="text-6xl mb-4">📦</div>
+          <p className="text-lg text-foreground">No workloads found</p>
+          <p className="text-sm text-muted-foreground">No deployments detected across your clusters</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -493,10 +581,14 @@ export function Workloads() {
                 </div>
 
                 <div className="flex items-center gap-6">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-foreground">{app.deploymentCount}</div>
+                    <div className="text-xs text-muted-foreground">Deployments</div>
+                  </div>
                   {app.deploymentIssues > 0 && (
                     <div className="text-center">
                       <div className="text-lg font-bold text-orange-400">{app.deploymentIssues}</div>
-                      <div className="text-xs text-muted-foreground">Deployment Issues</div>
+                      <div className="text-xs text-muted-foreground">Issues</div>
                     </div>
                   )}
                   {app.podIssues > 0 && (
@@ -505,9 +597,7 @@ export function Workloads() {
                       <div className="text-xs text-muted-foreground">Pod Issues</div>
                     </div>
                   )}
-                  <div className="text-primary text-sm">
-                    Drill down →
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
             </div>
@@ -524,13 +614,16 @@ export function Workloads() {
             .map((cluster) => (
             <div key={cluster.name} className="glass p-3 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
-                <StatusIndicator status={cluster.healthy ? 'healthy' : 'error'} size="sm" />
+                <StatusIndicator
+                  status={cluster.reachable === false ? 'unreachable' : cluster.healthy ? 'healthy' : 'error'}
+                  size="sm"
+                />
                 <span className="font-medium text-foreground text-sm truncate">
                   {cluster.context || cluster.name.split('/').pop()}
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                {cluster.healthy ? (cluster.podCount || 0) : '-'} pods • {cluster.healthy ? (cluster.nodeCount || 0) : '-'} nodes
+                {cluster.reachable !== false ? (cluster.podCount ?? '-') : '-'} pods • {cluster.reachable !== false ? (cluster.nodeCount ?? '-') : '-'} nodes
               </div>
             </div>
           ))}

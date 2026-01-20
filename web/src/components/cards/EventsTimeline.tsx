@@ -68,13 +68,19 @@ function groupEventsByTime(events: Array<{ type: string; lastSeen?: string; firs
 
 export function EventsTimeline() {
   const { events, isLoading, isRefreshing, lastUpdated } = useEvents(undefined, undefined, 100)
-  const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
+  const { selectedClusters, isAllClustersSelected, clusterInfoMap } = useGlobalFilters()
 
-  // Filter events by selected clusters
+  // Filter events by selected clusters AND exclude offline/unreachable clusters
   const filteredEvents = useMemo(() => {
-    if (isAllClustersSelected) return events
-    return events.filter(e => e.cluster && selectedClusters.includes(e.cluster))
-  }, [events, selectedClusters, isAllClustersSelected])
+    // First filter to only events from reachable clusters
+    const reachableEvents = events.filter(e => {
+      if (!e.cluster) return true // Include events without cluster info
+      const clusterInfo = clusterInfoMap[e.cluster]
+      return !clusterInfo || clusterInfo.reachable !== false
+    })
+    if (isAllClustersSelected) return reachableEvents
+    return reachableEvents.filter(e => e.cluster && selectedClusters.includes(e.cluster))
+  }, [events, selectedClusters, isAllClustersSelected, clusterInfoMap])
 
   // Check if we have real data (events with timestamps)
   const hasRealData = filteredEvents.length > 0 && filteredEvents.some(e => e.lastSeen || e.firstSeen)
@@ -149,6 +155,7 @@ export function EventsTimeline() {
             No events in the last hour
           </div>
         ) : (
+          <div style={{ width: '100%', minHeight: 160, height: 160 }}>
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={timeSeriesData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
               <defs>
@@ -184,7 +191,7 @@ export function EventsTimeline() {
                 labelStyle={{ color: '#888' }}
               />
               <Area
-                type="monotone"
+                type="stepAfter"
                 dataKey="warnings"
                 stackId="1"
                 stroke="#f97316"
@@ -193,7 +200,7 @@ export function EventsTimeline() {
                 name="Warnings"
               />
               <Area
-                type="monotone"
+                type="stepAfter"
                 dataKey="normal"
                 stackId="1"
                 stroke="#22c55e"
@@ -203,6 +210,7 @@ export function EventsTimeline() {
               />
             </AreaChart>
           </ResponsiveContainer>
+          </div>
         )}
       </div>
 

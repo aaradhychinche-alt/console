@@ -94,7 +94,7 @@ export function ComputeOverview() {
         <div
           className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 cursor-pointer hover:bg-blue-500/20 transition-colors"
           onClick={drillToResources}
-          title={hasRealData ? `${stats.totalCPUs} CPU cores allocatable across all nodes - Click for details` : 'No data available - clusters may be unreachable'}
+          title={hasRealData ? `${stats.totalCPUs} CPU cores allocatable across all nodes - Click for details` : 'No data available - clusters may be offline'}
         >
           <div className="flex items-center gap-2 mb-1">
             <Cpu className="w-4 h-4 text-blue-400" />
@@ -109,7 +109,7 @@ export function ComputeOverview() {
         <div
           className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 cursor-pointer hover:bg-green-500/20 transition-colors"
           onClick={drillToResources}
-          title={hasRealData ? `${formatMemoryStat(stats.totalMemoryGB)} memory allocatable across all nodes - Click for details` : 'No data available - clusters may be unreachable'}
+          title={hasRealData ? `${formatMemoryStat(stats.totalMemoryGB)} memory allocatable across all nodes - Click for details` : 'No data available - clusters may be offline'}
         >
           <div className="flex items-center gap-2 mb-1">
             <MemoryStick className="w-4 h-4 text-green-400" />

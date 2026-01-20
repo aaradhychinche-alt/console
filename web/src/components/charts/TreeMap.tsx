@@ -118,7 +118,8 @@ export function TreeMap({
       {title && (
         <h4 className="text-sm font-medium text-muted-foreground mb-2">{title}</h4>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <div style={{ minHeight: height, width: '100%' }}>
+      <ResponsiveContainer width="100%" height={height} minHeight={height}>
         <Treemap
           data={coloredData}
           dataKey="value"
@@ -138,6 +139,7 @@ export function TreeMap({
           />
         </Treemap>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }
@@ -177,7 +179,8 @@ export function NestedTreeMap({
       {title && (
         <h4 className="text-sm font-medium text-muted-foreground mb-2">{title}</h4>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <div style={{ minHeight: height, width: '100%' }}>
+      <ResponsiveContainer width="100%" height={height} minHeight={height}>
         <Treemap
           data={[coloredData]}
           dataKey="value"
@@ -196,6 +199,7 @@ export function NestedTreeMap({
           />
         </Treemap>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }

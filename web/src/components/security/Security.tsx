@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Shield, ShieldAlert, ShieldCheck, ShieldX, Users, Key, Lock, Eye, Clock, AlertTriangle, CheckCircle2, XCircle, ChevronRight, Plus, Layout, LayoutGrid, ChevronDown, RefreshCw, Activity } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Shield, ShieldAlert, ShieldCheck, ShieldX, Users, Key, Lock, Eye, Clock, AlertTriangle, CheckCircle2, XCircle, ChevronRight, Plus, Layout, LayoutGrid, ChevronDown, RefreshCw, Activity, Hourglass } from 'lucide-react'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useShowCards } from '../../hooks/useShowCards'
 import { StatusIndicator } from '../charts/StatusIndicator'
@@ -19,6 +20,7 @@ interface SecurityCard {
   card_type: string
   config: Record<string, unknown>
   title?: string
+  position?: { w: number; h: number }
 }
 
 const SECURITY_CARDS_KEY = 'kubestellar-security-cards'
@@ -177,13 +179,13 @@ function getMockComplianceData(): ComplianceCheck[] {
 }
 
 export function Security() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
     filterBySeverity,
     customFilter,
   } = useGlobalFilters()
-
   // Card state
   const [cards, setCards] = useState<SecurityCard[]>(() => loadSecurityCards())
   const [showStats, setShowStats] = useState(true)
@@ -203,6 +205,14 @@ export function Security() {
   useEffect(() => {
     saveSecurityCards(cards)
   }, [cards])
+
+  // Handle addCard URL param - open modal and clear param
+  useEffect(() => {
+    if (searchParams.get('addCard') === 'true') {
+      setShowAddCard(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Trigger refresh on mount (ensures data is fresh when navigating to this page)
   useEffect(() => {
@@ -261,6 +271,12 @@ export function Security() {
       c.id === cardId ? { ...c, config } : c
     ))
     setConfiguringCard(null)
+  }, [])
+
+  const handleWidthChange = useCallback((cardId: string, newWidth: number) => {
+    setCards(prev => prev.map(c =>
+      c.id === cardId ? { ...c, position: { ...(c.position || { w: 4, h: 2 }), w: newWidth } } : c
+    ))
   }, [])
 
   const applyTemplate = useCallback((template: DashboardTemplate) => {
@@ -462,32 +478,39 @@ export function Security() {
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Shield className="w-6 h-6 text-purple-400" />
-              Security
-            </h1>
-            <p className="text-muted-foreground">RBAC, compliance, and security policies across your clusters</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <Shield className="w-6 h-6 text-purple-400" />
+                Security
+              </h1>
+              <p className="text-muted-foreground">RBAC, compliance, and security policies across your clusters</p>
+            </div>
+            {isRefreshing && (
+              <span className="flex items-center gap-1 text-xs text-amber-400 animate-pulse" title="Updating...">
+                <Hourglass className="w-3 h-3" />
+                <span>Updating</span>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            <label htmlFor="security-auto-refresh" className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
+            <label htmlFor="security-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
               <input
                 type="checkbox"
                 id="security-auto-refresh"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border w-3.5 h-3.5"
               />
-              Auto-refresh
+              Auto
             </label>
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           </div>
         </div>
@@ -513,7 +536,11 @@ export function Security() {
 
         {showStats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="glass p-4 rounded-lg">
+            <div
+              className={`glass p-4 rounded-lg ${stats.high > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+              onClick={() => { if (stats.high > 0) { setSeverityFilter('high'); setActiveTab('issues') } }}
+              title={stats.high > 0 ? `${stats.high} high severity issue${stats.high !== 1 ? 's' : ''} - Click to view` : 'No high severity issues'}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <ShieldAlert className="w-5 h-5 text-red-400" />
                 <span className="text-sm text-muted-foreground">High Severity</span>
@@ -521,7 +548,11 @@ export function Security() {
               <div className="text-3xl font-bold text-red-400">{stats.high}</div>
               <div className="text-xs text-muted-foreground">security issues</div>
             </div>
-            <div className="glass p-4 rounded-lg">
+            <div
+              className={`glass p-4 rounded-lg ${stats.medium > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+              onClick={() => { if (stats.medium > 0) { setSeverityFilter('medium'); setActiveTab('issues') } }}
+              title={stats.medium > 0 ? `${stats.medium} medium severity issue${stats.medium !== 1 ? 's' : ''} - Click to view` : 'No medium severity issues'}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <ShieldX className="w-5 h-5 text-yellow-400" />
                 <span className="text-sm text-muted-foreground">Medium Severity</span>
@@ -529,7 +560,11 @@ export function Security() {
               <div className="text-3xl font-bold text-yellow-400">{stats.medium}</div>
               <div className="text-xs text-muted-foreground">security issues</div>
             </div>
-            <div className="glass p-4 rounded-lg">
+            <div
+              className={`glass p-4 rounded-lg ${stats.rbacTotal > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+              onClick={() => { if (stats.rbacTotal > 0) setActiveTab('rbac') }}
+              title={stats.rbacTotal > 0 ? `${stats.rbacTotal} RBAC binding${stats.rbacTotal !== 1 ? 's' : ''} - Click to view` : 'No RBAC bindings'}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <Users className="w-5 h-5 text-blue-400" />
                 <span className="text-sm text-muted-foreground">RBAC Bindings</span>
@@ -537,7 +572,11 @@ export function Security() {
               <div className="text-3xl font-bold text-foreground">{stats.rbacTotal}</div>
               <div className="text-xs text-muted-foreground">total bindings</div>
             </div>
-            <div className="glass p-4 rounded-lg">
+            <div
+              className="glass p-4 rounded-lg cursor-pointer hover:bg-secondary/50 transition-colors"
+              onClick={() => setActiveTab('compliance')}
+              title={`${stats.complianceScore}% compliance score - Click to view details`}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <ShieldCheck className="w-5 h-5 text-green-400" />
                 <span className="text-sm text-muted-foreground">Compliance</span>
@@ -636,24 +675,31 @@ export function Security() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-12 gap-4">
                 {cards.map(card => {
                   const CardComponent = CARD_COMPONENTS[card.card_type]
                   if (!CardComponent) {
                     console.warn(`Unknown card type: ${card.card_type}`)
                     return null
                   }
+                  const cardWidth = card.position?.w || 4
                   return (
-                    <CardWrapper
+                    <div
                       key={card.id}
-                      cardId={card.id}
-                      cardType={card.card_type}
-                      title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      onConfigure={() => handleConfigureCard(card.id)}
-                      onRemove={() => handleRemoveCard(card.id)}
+                      style={{ gridColumn: `span ${cardWidth}` }}
                     >
-                      <CardComponent config={card.config} />
-                    </CardWrapper>
+                      <CardWrapper
+                        cardId={card.id}
+                        cardType={card.card_type}
+                        title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        cardWidth={cardWidth}
+                        onConfigure={() => handleConfigureCard(card.id)}
+                        onRemove={() => handleRemoveCard(card.id)}
+                        onWidthChange={(newWidth) => handleWidthChange(card.id, newWidth)}
+                      >
+                        <CardComponent config={card.config} />
+                      </CardWrapper>
+                    </div>
                   )
                 })}
               </div>

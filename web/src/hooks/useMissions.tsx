@@ -9,6 +9,8 @@ export interface MissionMessage {
   timestamp: Date
 }
 
+export type MissionFeedback = 'positive' | 'negative' | null
+
 export interface Mission {
   id: string
   title: string
@@ -21,22 +23,27 @@ export interface Mission {
   createdAt: Date
   updatedAt: Date
   context?: Record<string, unknown>
+  feedback?: MissionFeedback
 }
 
 interface MissionContextValue {
   missions: Mission[]
   activeMission: Mission | null
   isSidebarOpen: boolean
+  isSidebarMinimized: boolean
 
   // Actions
   startMission: (params: StartMissionParams) => string
   sendMessage: (missionId: string, content: string) => void
   cancelMission: (missionId: string) => void
   dismissMission: (missionId: string) => void
+  rateMission: (missionId: string, feedback: MissionFeedback) => void
   setActiveMission: (missionId: string | null) => void
   toggleSidebar: () => void
   openSidebar: () => void
   closeSidebar: () => void
+  minimizeSidebar: () => void
+  expandSidebar: () => void
 }
 
 interface StartMissionParams {
@@ -56,6 +63,7 @@ export function MissionProvider({ children }: { children: ReactNode }) {
   const [missions, setMissions] = useState<Mission[]>([])
   const [activeMissionId, setActiveMissionId] = useState<string | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRequests = useRef<Map<string, string>>(new Map()) // requestId -> missionId
@@ -303,6 +311,15 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     }
   }, [activeMissionId])
 
+  // Rate a mission (thumbs up/down feedback)
+  const rateMission = useCallback((missionId: string, feedback: MissionFeedback) => {
+    setMissions(prev => prev.map(m =>
+      m.id === missionId ? { ...m, feedback, updatedAt: new Date() } : m
+    ))
+    // TODO: Send feedback to analytics endpoint when available
+    console.log(`[Missions] Feedback for ${missionId}: ${feedback}`)
+  }, [])
+
   // Set active mission
   const setActiveMission = useCallback((missionId: string | null) => {
     setActiveMissionId(missionId)
@@ -313,8 +330,13 @@ export function MissionProvider({ children }: { children: ReactNode }) {
 
   // Sidebar controls
   const toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), [])
-  const openSidebar = useCallback(() => setIsSidebarOpen(true), [])
+  const openSidebar = useCallback(() => {
+    setIsSidebarOpen(true)
+    setIsSidebarMinimized(false) // Expand when opening
+  }, [])
   const closeSidebar = useCallback(() => setIsSidebarOpen(false), [])
+  const minimizeSidebar = useCallback(() => setIsSidebarMinimized(true), [])
+  const expandSidebar = useCallback(() => setIsSidebarMinimized(false), [])
 
   // Get active mission object
   const activeMission = missions.find(m => m.id === activeMissionId) || null
@@ -331,14 +353,18 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       missions,
       activeMission,
       isSidebarOpen,
+      isSidebarMinimized,
       startMission,
       sendMessage,
       cancelMission,
       dismissMission,
+      rateMission,
       setActiveMission,
       toggleSidebar,
       openSidebar,
       closeSidebar,
+      minimizeSidebar,
+      expandSidebar,
     }}>
       {children}
     </MissionContext.Provider>

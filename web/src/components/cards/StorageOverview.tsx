@@ -86,7 +86,7 @@ export function StorageOverview() {
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div
           className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 cursor-default"
-          title={hasRealData ? `Total storage capacity: ${formatStorageStat(stats.totalStorageGB)} across ${stats.clustersWithStorage} cluster${stats.clustersWithStorage !== 1 ? 's' : ''}` : 'No data available - clusters may be unreachable'}
+          title={hasRealData ? `Total storage capacity: ${formatStorageStat(stats.totalStorageGB)} across ${stats.clustersWithStorage} cluster${stats.clustersWithStorage !== 1 ? 's' : ''}` : 'No data available - clusters may be offline'}
         >
           <div className="flex items-center gap-2 mb-1">
             <Database className="w-4 h-4 text-purple-400" />

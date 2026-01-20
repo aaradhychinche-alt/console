@@ -39,6 +39,15 @@ function saveEventCards(cards: EventCard[]) {
   localStorage.setItem(EVENTS_CARDS_KEY, JSON.stringify(cards))
 }
 
+// Module-level cache for events stats (persists across navigation)
+interface EventsStatsCache {
+  total: number
+  warnings: number
+  normal: number
+  recentCount: number
+}
+let eventsStatsCache: EventsStatsCache | null = null
+
 type EventFilter = 'all' | 'warning' | 'normal'
 type ViewTab = 'overview' | 'timeline' | 'list'
 
@@ -418,6 +427,23 @@ export function Events() {
     }
   }, [globalFilteredAllEvents, globalFilteredWarningEvents])
 
+  // Update module-level cache when we have real data
+  useEffect(() => {
+    if (!isRefreshing && stats.total > 0) {
+      eventsStatsCache = {
+        total: stats.total,
+        warnings: stats.warnings,
+        normal: stats.normal,
+        recentCount: stats.recentCount,
+      }
+    }
+  }, [isRefreshing, stats.total, stats.warnings, stats.normal, stats.recentCount])
+
+  // Use cached stats when stats are 0 but we have cached data (e.g., during initial load after navigation)
+  const displayStats = (stats.total === 0 && eventsStatsCache && eventsStatsCache.total > 0)
+    ? { ...stats, ...eventsStatsCache }
+    : stats
+
   // Group events by time
   const groupedEvents = useMemo(() => {
     const groups: Record<string, typeof filteredEvents> = {
@@ -484,24 +510,23 @@ export function Events() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <label htmlFor="events-auto-refresh" className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
+            <label htmlFor="events-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
               <input
                 type="checkbox"
                 id="events-auto-refresh"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border w-3.5 h-3.5"
               />
-              Auto-refresh
+              Auto
             </label>
             <button
               onClick={handleRefresh}
               disabled={isFetching}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           </div>
         </div>
@@ -532,7 +557,7 @@ export function Events() {
                 <Bell className="w-5 h-5 text-purple-400" />
                 <span className="text-sm text-muted-foreground">Total</span>
               </div>
-              <div className="text-3xl font-bold text-foreground">{formatStat(stats.total)}</div>
+              <div className="text-3xl font-bold text-foreground">{formatStat(displayStats.total)}</div>
               <div className="text-xs text-muted-foreground">events</div>
             </div>
             <div className="glass p-4 rounded-lg">
@@ -540,7 +565,7 @@ export function Events() {
                 <AlertTriangle className="w-5 h-5 text-yellow-400" />
                 <span className="text-sm text-muted-foreground">Warnings</span>
               </div>
-              <div className="text-3xl font-bold text-yellow-400">{formatStat(stats.warnings)}</div>
+              <div className="text-3xl font-bold text-yellow-400">{formatStat(displayStats.warnings)}</div>
               <div className="text-xs text-muted-foreground">warning events</div>
             </div>
             <div className="glass p-4 rounded-lg">
@@ -548,7 +573,7 @@ export function Events() {
                 <CheckCircle2 className="w-5 h-5 text-green-400" />
                 <span className="text-sm text-muted-foreground">Normal</span>
               </div>
-              <div className="text-3xl font-bold text-green-400">{formatStat(stats.normal)}</div>
+              <div className="text-3xl font-bold text-green-400">{formatStat(displayStats.normal)}</div>
               <div className="text-xs text-muted-foreground">normal events</div>
             </div>
             <div className="glass p-4 rounded-lg">
@@ -556,7 +581,7 @@ export function Events() {
                 <Clock className="w-5 h-5 text-blue-400" />
                 <span className="text-sm text-muted-foreground">Recent</span>
               </div>
-              <div className="text-3xl font-bold text-blue-400">{formatStat(stats.recentCount)}</div>
+              <div className="text-3xl font-bold text-blue-400">{formatStat(displayStats.recentCount)}</div>
               <div className="text-xs text-muted-foreground">in last hour</div>
             </div>
           </div>
@@ -568,7 +593,7 @@ export function Events() {
         {[
           { id: 'overview', label: 'Overview', icon: Activity },
           { id: 'timeline', label: 'Timeline', icon: Clock },
-          { id: 'list', label: 'All Events', icon: Bell, count: stats.total },
+          { id: 'list', label: 'All Events', icon: Bell, count: displayStats.total },
         ].map(tab => {
           const Icon = tab.icon
           return (

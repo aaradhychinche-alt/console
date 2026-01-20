@@ -21,6 +21,8 @@ import {
   Hammer,
   PanelRightClose,
   PanelRightOpen,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useMissions, Mission, MissionStatus } from '../../hooks/useMissions'
@@ -113,7 +115,7 @@ function MissionListItem({ mission, isActive, onClick, onDismiss, isCollapsed, o
 }
 
 function MissionChat({ mission }: { mission: Mission }) {
-  const { sendMessage, cancelMission, dismissMission } = useMissions()
+  const { sendMessage, cancelMission, dismissMission, rateMission } = useMissions()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -225,15 +227,47 @@ function MissionChat({ mission }: { mission: Mission }) {
             </button>
           </div>
         ) : mission.status === 'completed' || mission.status === 'failed' ? (
-          <div className="flex items-center justify-between">
-            <span className={cn('text-sm', config.color)}>{config.label}</span>
-            <button
-              onClick={() => dismissMission(mission.id)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <Trash2 className="w-3 h-3" />
-              Dismiss
-            </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className={cn('text-sm', config.color)}>{config.label}</span>
+              <button
+                onClick={() => dismissMission(mission.id)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Trash2 className="w-3 h-3" />
+                Dismiss
+              </button>
+            </div>
+            {/* Feedback buttons */}
+            <div className="flex items-center justify-center gap-4 pt-2 border-t border-border/50">
+              <span className="text-xs text-muted-foreground">Was this helpful?</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => rateMission(mission.id, 'positive')}
+                  className={cn(
+                    'p-1.5 rounded-lg transition-colors',
+                    mission.feedback === 'positive'
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'hover:bg-secondary text-muted-foreground hover:text-green-400'
+                  )}
+                  title="Helpful"
+                >
+                  <ThumbsUp className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => rateMission(mission.id, 'negative')}
+                  className={cn(
+                    'p-1.5 rounded-lg transition-colors',
+                    mission.feedback === 'negative'
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'hover:bg-secondary text-muted-foreground hover:text-red-400'
+                  )}
+                  title="Not helpful"
+                >
+                  <ThumbsDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="flex gap-2">
@@ -261,8 +295,7 @@ function MissionChat({ mission }: { mission: Mission }) {
 }
 
 export function MissionSidebar() {
-  const { missions, activeMission, isSidebarOpen, setActiveMission, closeSidebar, dismissMission } = useMissions()
-  const [isMinimized, setIsMinimized] = useState(false)
+  const { missions, activeMission, isSidebarOpen, isSidebarMinimized, setActiveMission, closeSidebar, dismissMission, minimizeSidebar, expandSidebar } = useMissions()
   const [collapsedMissions, setCollapsedMissions] = useState<Set<string>>(new Set())
 
   // Count missions needing attention
@@ -289,11 +322,11 @@ export function MissionSidebar() {
   }
 
   // Minimized sidebar view (thin strip)
-  if (isMinimized) {
+  if (isSidebarMinimized) {
     return (
       <div className="fixed top-16 right-0 bottom-0 w-12 bg-card/95 backdrop-blur-sm border-l border-border z-40 flex flex-col items-center py-4">
         <button
-          onClick={() => setIsMinimized(false)}
+          onClick={expandSidebar}
           className="p-2 hover:bg-secondary rounded transition-colors mb-4"
           title="Expand sidebar"
         >
@@ -333,7 +366,7 @@ export function MissionSidebar() {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setIsMinimized(true)}
+            onClick={minimizeSidebar}
             className="p-1 hover:bg-secondary rounded transition-colors"
             title="Minimize sidebar"
           >
@@ -400,7 +433,8 @@ export function MissionSidebarToggle() {
 
   const runningCount = missions.filter(m => m.status === 'running').length
 
-  if (isSidebarOpen || missions.length === 0) {
+  // Always show toggle when sidebar is closed (even with no missions)
+  if (isSidebarOpen) {
     return null
   }
 
@@ -413,6 +447,7 @@ export function MissionSidebarToggle() {
           ? 'bg-purple-500 text-white animate-pulse'
           : 'bg-card border border-border text-foreground hover:bg-secondary'
       )}
+      title="Open AI Missions"
     >
       <Bot className="w-5 h-5" />
       {runningCount > 0 && (
@@ -420,8 +455,10 @@ export function MissionSidebarToggle() {
       )}
       {needsAttention > 0 ? (
         <span className="text-sm font-medium">{needsAttention} needs attention</span>
-      ) : (
+      ) : missions.length > 0 ? (
         <span className="text-sm">{missions.length} mission{missions.length !== 1 ? 's' : ''}</span>
+      ) : (
+        <span className="text-sm">AI Missions</span>
       )}
       <ChevronRight className="w-4 h-4" />
     </button>

@@ -8,6 +8,8 @@ interface GaugeProps {
     warning: number
     critical: number
   }
+  /** When true, high values are good (green) and low values are bad (red) - useful for health/readiness displays */
+  invertColors?: boolean
 }
 
 export function Gauge({
@@ -17,11 +19,20 @@ export function Gauge({
   unit = '%',
   size = 'md',
   thresholds = { warning: 70, critical: 90 },
+  invertColors = false,
 }: GaugeProps) {
   const percentage = Math.min((value / max) * 100, 100)
   const rotation = (percentage / 100) * 180 - 90 // -90 to 90 degrees
 
   const getColor = () => {
+    if (invertColors) {
+      // Inverted: high is good (green), low is bad (red)
+      // For health displays: 100% = green, 50% = yellow, 0% = red
+      if (percentage >= 100) return { stroke: '#22c55e', text: 'text-green-400' }
+      if (percentage >= 50) return { stroke: '#eab308', text: 'text-yellow-400' }
+      return { stroke: '#ef4444', text: 'text-red-400' }
+    }
+    // Normal: high is bad (red), low is good (green)
     if (percentage >= thresholds.critical) return { stroke: '#ef4444', text: 'text-red-400' }
     if (percentage >= thresholds.warning) return { stroke: '#eab308', text: 'text-yellow-400' }
     return { stroke: '#22c55e', text: 'text-green-400' }

@@ -8,7 +8,6 @@ const CARD_CATALOG = {
     { type: 'cluster_metrics', title: 'Cluster Metrics', description: 'CPU, memory, and pod metrics over time', visualization: 'timeseries' },
     { type: 'cluster_focus', title: 'Cluster Focus', description: 'Single cluster detailed view', visualization: 'status' },
     { type: 'cluster_comparison', title: 'Cluster Comparison', description: 'Side-by-side cluster metrics', visualization: 'bar' },
-    { type: 'cluster_network', title: 'Cluster Network', description: 'API server and network info', visualization: 'status' },
     { type: 'cluster_costs', title: 'Cluster Costs', description: 'Resource cost estimation', visualization: 'bar' },
     { type: 'upgrade_status', title: 'Cluster Upgrade Status', description: 'Available cluster upgrades', visualization: 'status' },
   ],
@@ -27,7 +26,7 @@ const CARD_CATALOG = {
     { type: 'gpu_overview', title: 'GPU Overview', description: 'Total GPUs across clusters', visualization: 'gauge' },
     { type: 'gpu_status', title: 'GPU Status', description: 'GPU utilization by state', visualization: 'donut' },
     { type: 'gpu_inventory', title: 'GPU Inventory', description: 'Detailed GPU list', visualization: 'table' },
-    { type: 'gpu_utilization', title: 'GPU Utilization Trend', description: 'GPU allocation over time with donut chart', visualization: 'timeseries' },
+    { type: 'gpu_workloads', title: 'GPU Workloads', description: 'Pods running on GPU nodes or in NVIDIA namespaces', visualization: 'table' },
   ],
   'Storage': [
     { type: 'storage_overview', title: 'Storage Overview', description: 'Total storage capacity and PVC summary', visualization: 'status' },
@@ -130,6 +129,13 @@ function generateCardSuggestions(query: string): CardSuggestion[] {
         description: 'GPUs with problems',
         visualization: 'events',
         config: { filter: 'gpu_issues' },
+      },
+      {
+        type: 'gpu_workloads',
+        title: 'GPU Workloads',
+        description: 'Pods running on GPU nodes',
+        visualization: 'table',
+        config: {},
       },
     ]
   }
@@ -656,6 +662,17 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = originalOverflow
+      }
+    }
+  }, [isOpen])
+
   const handleGenerate = async () => {
     if (!query.trim()) return
 
@@ -732,9 +749,12 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
 
   const handleAddBrowseCards = () => {
     const cardsToAdd: CardSuggestion[] = []
+    const addedTypes = new Set<string>() // Track added types to prevent duplicates
     for (const cards of Object.values(CARD_CATALOG)) {
       for (const card of cards) {
-        if (selectedBrowseCards.has(card.type)) {
+        // Only add if selected AND not already added (prevents duplicates from multiple categories)
+        if (selectedBrowseCards.has(card.type) && !addedTypes.has(card.type)) {
+          addedTypes.add(card.type)
           cardsToAdd.push({
             type: card.type,
             title: card.title,

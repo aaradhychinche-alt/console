@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { Cpu, MemoryStick, Server, Layers, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, Hourglass } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
@@ -38,6 +38,7 @@ function saveComputeCards(cards: ComputeCard[]) {
 
 export function Compute() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const { clusters, isLoading, isRefreshing, lastUpdated, refetch } = useClusters()
   const {
     selectedClusters: globalSelectedClusters,
@@ -72,10 +73,10 @@ export function Compute() {
     }
   }, [searchParams, setSearchParams])
 
-  // Trigger refresh on mount (ensures data is fresh when navigating to this page)
+  // Trigger refresh when navigating to this page (location.key changes on each navigation)
   useEffect(() => {
     refetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -222,24 +223,23 @@ export function Compute() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <label htmlFor="compute-auto-refresh" className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
+            <label htmlFor="compute-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
               <input
                 type="checkbox"
                 id="compute-auto-refresh"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border w-3.5 h-3.5"
               />
-              Auto-refresh
+              Auto
             </label>
             <button
               onClick={handleRefresh}
               disabled={isFetching}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           </div>
         </div>

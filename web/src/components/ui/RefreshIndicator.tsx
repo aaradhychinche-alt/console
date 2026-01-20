@@ -1,4 +1,4 @@
-import { RefreshCw, Clock } from 'lucide-react'
+import { Hourglass, Clock } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { formatLastSeen } from '../../lib/errorClassifier'
 
@@ -6,7 +6,7 @@ interface RefreshIndicatorProps {
   isRefreshing: boolean
   lastUpdated?: Date | null
   className?: string
-  size?: 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md'
   showLabel?: boolean
   staleThresholdMinutes?: number
 }
@@ -16,7 +16,7 @@ interface RefreshIndicatorProps {
  *
  * States:
  * - Idle: Shows clock icon with "Updated Xs ago"
- * - Refreshing: Shows spinning refresh icon
+ * - Refreshing: Shows hourglass icon with "Updating" label
  * - Stale: Shows amber clock icon with warning styling
  */
 export function RefreshIndicator({
@@ -30,8 +30,8 @@ export function RefreshIndicator({
   const isStale = lastUpdated &&
     (Date.now() - lastUpdated.getTime()) > staleThresholdMinutes * 60 * 1000
 
-  const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'
-  const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs'
+  const iconSize = size === 'xs' ? 'w-2.5 h-2.5' : size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'
+  const textSize = size === 'xs' ? 'text-[9px]' : size === 'sm' ? 'text-[10px]' : 'text-xs'
 
   const tooltip = lastUpdated
     ? `Last updated: ${lastUpdated.toLocaleTimeString()}`
@@ -41,14 +41,14 @@ export function RefreshIndicator({
     return (
       <span
         className={cn(
-          'inline-flex items-center gap-1 text-muted-foreground',
+          'inline-flex items-center gap-0.5 text-muted-foreground',
           textSize,
           className
         )}
-        title="Refreshing..."
+        title="Updating..."
       >
-        <RefreshCw className={cn(iconSize, 'animate-spin')} />
-        {showLabel && <span>Refreshing</span>}
+        <Hourglass className={cn(iconSize, 'animate-pulse')} />
+        {showLabel && <span>Updating</span>}
       </span>
     )
   }
@@ -56,7 +56,7 @@ export function RefreshIndicator({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1',
+        'inline-flex items-center gap-0.5',
         isStale ? 'text-amber-400' : 'text-muted-foreground',
         textSize,
         className

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, memo } from 'react'
-import { Plus, GripVertical, Layout, AlertTriangle, X } from 'lucide-react'
+import { useState, useEffect, useCallback, memo, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
+import { Plus, GripVertical, Layout, AlertTriangle, X, RefreshCw } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -22,6 +23,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { api } from '../../lib/api'
 import { useDashboards } from '../../hooks/useDashboards'
+import { useClusters } from '../../hooks/useMCP'
 import { useCardHistory } from '../../hooks/useCardHistory'
 import { useDashboardContext } from '../../hooks/useDashboardContext'
 import { DashboardDropZone } from './DashboardDropZone'
@@ -34,6 +36,15 @@ import { ConfigureCardModal } from './ConfigureCardModal'
 import { CardRecommendations } from './CardRecommendations'
 import { TemplatesModal } from './TemplatesModal'
 import { DashboardTemplate } from './templates'
+
+// Module-level cache for dashboard data (survives navigation)
+interface CachedDashboard {
+  dashboard: DashboardData | null
+  cards: Card[]
+  timestamp: number
+}
+let dashboardCache: CachedDashboard | null = null
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 interface Card {
   id: string
@@ -52,12 +63,14 @@ interface DashboardData {
 }
 
 export function Dashboard() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // Initialize from cache if available (progressive disclosure - no skeletons on navigation)
+  const [dashboard, setDashboard] = useState<DashboardData | null>(() => dashboardCache?.dashboard || null)
+  const [isLoading, setIsLoading] = useState(() => !dashboardCache) // Only show loading if no cache
+  const location = useLocation()
   const [isReplaceCardOpen, setIsReplaceCardOpen] = useState(false)
   const [isConfigureCardOpen, setIsConfigureCardOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
-  const [localCards, setLocalCards] = useState<Card[]>([])
+  const [localCards, setLocalCards] = useState<Card[]>(() => dashboardCache?.cards || [])
   const [demoBannerDismissed, setDemoBannerDismissed] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -81,6 +94,36 @@ export function Dashboard() {
   const { dashboards, moveCardToDashboard, createDashboard } = useDashboards()
   const { showToast } = useToast()
   const { recordCardRemoved, recordCardAdded, recordCardReplaced, recordCardConfigured } = useCardHistory()
+
+  // Cluster data for refresh functionality - most cards depend on this
+  const { isRefreshing, lastUpdated, refetch } = useClusters()
+
+  // Auto-refresh state (persisted in localStorage)
+  const [autoRefresh, setAutoRefresh] = useState(() => {
+    const stored = localStorage.getItem('dashboard-auto-refresh')
+    return stored !== null ? stored === 'true' : true // default to true
+  })
+  const autoRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Persist auto-refresh setting
+  useEffect(() => {
+    localStorage.setItem('dashboard-auto-refresh', String(autoRefresh))
+  }, [autoRefresh])
+
+  // Auto-refresh interval
+  useEffect(() => {
+    if (autoRefresh && !isLoading) {
+      autoRefreshIntervalRef.current = setInterval(() => {
+        refetch()
+      }, 30000) // 30 seconds
+    }
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current)
+        autoRefreshIntervalRef.current = null
+      }
+    }
+  }, [autoRefresh, isLoading, refetch])
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -163,9 +206,22 @@ export function Dashboard() {
     }
   }
 
+  // Load dashboard on mount and when navigating back to the page
   useEffect(() => {
-    loadDashboard()
-  }, [])
+    // If we have cached data, do a background refresh (no loading state)
+    if (dashboardCache && Date.now() - dashboardCache.timestamp < CACHE_TTL) {
+      loadDashboard(true)
+    } else {
+      loadDashboard(false)
+    }
+  }, [location.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep cache in sync when cards are modified locally
+  useEffect(() => {
+    if (dashboardCache && localCards.length > 0) {
+      dashboardCache = { ...dashboardCache, cards: localCards, timestamp: Date.now() }
+    }
+  }, [localCards])
 
   // Handle pending restore card from CardHistory
   useEffect(() => {
@@ -203,20 +259,60 @@ export function Dashboard() {
     }
   }, [pendingOpenAddCardModal, isLoading, openAddCardModal, setPendingOpenAddCardModal])
 
-  const loadDashboard = async () => {
+  // Helper to check if a card ID is a local-only (not persisted) card
+  const isLocalOnlyCard = (cardId: string) => {
+    return cardId.startsWith('new-') ||
+           cardId.startsWith('template-') ||
+           cardId.startsWith('restored-') ||
+           cardId.startsWith('ai-') ||
+           cardId.startsWith('rec-') ||
+           cardId.startsWith('demo-')
+  }
+
+  const loadDashboard = async (isBackground: boolean = false) => {
+    if (!isBackground) {
+      setIsLoading(true)
+    }
     try {
       const { data: dashboards } = await api.get<DashboardData[]>('/api/dashboards')
       if (dashboards && dashboards.length > 0) {
         const defaultDashboard = dashboards.find((d) => d.is_default) || dashboards[0]
         const { data } = await api.get<DashboardData>(`/api/dashboards/${defaultDashboard.id}`)
+        const apiCards = data.cards.length > 0 ? data.cards : getDemoCards()
         setDashboard(data)
-        setLocalCards(data.cards.length > 0 ? data.cards : getDemoCards())
+
+        // During background refresh, preserve local-only cards (not yet persisted to backend)
+        if (isBackground) {
+          setLocalCards((prevCards) => {
+            // Keep local-only cards that aren't in the API response
+            const localOnlyCards = prevCards.filter(c => isLocalOnlyCard(c.id))
+            // Merge: local-only cards first, then API cards
+            return [...localOnlyCards, ...apiCards]
+          })
+        } else {
+          setLocalCards(apiCards)
+        }
+        // Update cache
+        dashboardCache = { dashboard: data, cards: apiCards, timestamp: Date.now() }
       } else {
-        setLocalCards(getDemoCards())
+        // No dashboards from API - preserve local cards during background refresh
+        if (isBackground) {
+          // Keep existing cards during background refresh
+          return
+        }
+        const cards = getDemoCards()
+        setLocalCards(cards)
+        // Update cache with demo cards
+        dashboardCache = { dashboard: null, cards, timestamp: Date.now() }
       }
     } catch (error) {
       console.error('Failed to load dashboard:', error)
-      setLocalCards(getDemoCards())
+      // Only set demo cards if not a background refresh (keep existing data)
+      if (!isBackground) {
+        const cards = getDemoCards()
+        setLocalCards(cards)
+        dashboardCache = { dashboard: null, cards, timestamp: Date.now() }
+      }
     } finally {
       setIsLoading(false)
     }
@@ -427,10 +523,36 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
-        <div className="text-center">
-          <div className="spinner w-12 h-12 mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading dashboard...</p>
+      <div className="pt-16">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <div className="h-8 w-48 bg-secondary rounded animate-pulse mb-2" />
+            <div className="h-4 w-64 bg-secondary/50 rounded animate-pulse" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-28 bg-secondary rounded animate-pulse" />
+            <div className="h-10 w-28 bg-secondary rounded animate-pulse" />
+          </div>
+        </div>
+        {/* Card grid skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="glass rounded-lg p-4">
+              {/* Card header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="h-5 w-32 bg-secondary rounded animate-pulse" />
+                <div className="h-5 w-8 bg-secondary rounded animate-pulse" />
+              </div>
+              {/* Card content */}
+              <div className="space-y-3">
+                <div className="h-4 w-full bg-secondary/50 rounded animate-pulse" />
+                <div className="h-4 w-3/4 bg-secondary/50 rounded animate-pulse" />
+                <div className="h-24 w-full bg-secondary/30 rounded animate-pulse" />
+                <div className="h-4 w-1/2 bg-secondary/50 rounded animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -448,19 +570,48 @@ export function Dashboard() {
             Your personalized multi-cluster overview
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {/* Refresh controls */}
+          <div className="flex items-center gap-3">
+            <label htmlFor="dashboard-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
+              <input
+                type="checkbox"
+                id="dashboard-auto-refresh"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="rounded border-border bg-secondary w-3.5 h-3.5"
+              />
+              Auto
+            </label>
+            <button
+              onClick={() => refetch()}
+              disabled={isRefreshing}
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
+              title="Refresh all data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          {lastUpdated && (
+            <span className="text-xs text-muted-foreground">
+              Updated {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
+          {/* Divider */}
+          <div className="h-6 w-px bg-border" />
+          {/* Action buttons - matching other dashboards */}
           <button
             onClick={openTemplatesModal}
-            className="btn-secondary flex items-center gap-2"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-lg transition-colors"
           >
-            <Layout className="w-4 h-4" />
+            <Layout className="w-3.5 h-3.5" />
             Templates
           </button>
           <button
             onClick={openAddCardModal}
-            className="btn-primary flex items-center gap-2"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded-lg transition-colors"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             Add Card
           </button>
         </div>
@@ -482,7 +633,7 @@ export function Dashboard() {
             <span className="text-sm text-yellow-300 font-medium">Demo Data in Use</span>
             <span className="text-sm text-yellow-400/80 ml-2">
               {demoDataCardCount} card{demoDataCardCount !== 1 ? 's are' : ' is'} displaying simulated data.
-              Cards with demo data have a dashed yellow border.
+              Look for the <span className="px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 text-xs">Demo</span> badge in the card header.
             </span>
           </div>
           <button

@@ -8,13 +8,20 @@ import {
   UserPlus,
   Trash2,
   ChevronRight,
+  ChevronDown,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Hourglass,
+  Layers,
+  Server,
+  WifiOff
 } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { api } from '../../lib/api'
+
+type GroupByMode = 'cluster' | 'type'
 
 interface NamespaceDetails {
   name: string
@@ -42,6 +49,9 @@ export function NamespaceManager() {
   // Note: We don't check permissions upfront - the API will return auth errors for inaccessible clusters
   const [allNamespaces, setAllNamespaces] = useState<NamespaceDetails[]>([])
   const [loading, setLoading] = useState(false)
+  // Track which clusters are still loading (for progressive loading indicator)
+  const [loadingClusters, setLoadingClusters] = useState<Set<string>>(new Set())
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNamespace, setSelectedNamespace] = useState<NamespaceDetails | null>(null)
   const [accessEntries, setAccessEntries] = useState<NamespaceAccessEntry[]>([])
@@ -50,6 +60,9 @@ export function NamespaceManager() {
   const [showGrantAccessModal, setShowGrantAccessModal] = useState(false)
   const [namespaceToDelete, setNamespaceToDelete] = useState<NamespaceDetails | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Group by cluster by default for better organization
+  const [groupBy, setGroupBy] = useState<GroupByMode>('cluster')
+  const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set())
 
   // Track if we've fetched to prevent infinite loops
   const hasFetchedRef = useRef(false)
@@ -73,7 +86,7 @@ export function NamespaceManager() {
   }, [allNamespaces, targetClusters])
 
   // Fetch namespaces from all available clusters and cache them
-  // Filter changes will just filter the cached data without refetching
+  // Uses progressive loading - updates UI as each cluster completes
   const fetchNamespaces = useCallback(async (force = false) => {
     // Determine which clusters to fetch
     const clustersToFetch = force
@@ -106,56 +119,77 @@ export function NamespaceManager() {
     hasFetchedRef.current = true
     lastFetchKeyRef.current = fetchKey
     setLoading(true)
+    setLoadingClusters(new Set(clustersToFetch))
     setError(null)
 
     const failedClusters: string[] = []
 
-    // Fetch namespaces from clusters that need fetching
-    await Promise.all(
-      clustersToFetch.map(async (cluster) => {
-        try {
-          // Use MCP pods endpoint to get namespace information
-          const response = await api.get<{ pods: Array<{ namespace: string; status: string }> }>(
-            `/api/mcp/pods?cluster=${encodeURIComponent(cluster)}&limit=1000`
-          )
-
-          // Extract unique namespaces from pods
-          const nsSet = new Set<string>()
-          response.data.pods?.forEach(pod => {
-            if (pod.namespace) nsSet.add(pod.namespace)
-          })
-
-          // Convert to NamespaceDetails and cache
-          const clusterNamespaces: NamespaceDetails[] = []
-          nsSet.forEach(ns => {
-            clusterNamespaces.push({
-              name: ns,
-              cluster,
-              status: 'Active',
-              createdAt: new Date().toISOString(),
-            })
-          })
-          namespaceCache.set(cluster, clusterNamespaces)
-        } catch (err) {
-          // Don't fail completely, just note which clusters failed
-          failedClusters.push(cluster)
-          // Still cache empty array to prevent repeated failed fetches
-          if (!namespaceCache.has(cluster)) {
-            namespaceCache.set(cluster, [])
-          }
-        }
-      })
-    )
-
-    // Build allNamespaces from cache (includes both new and existing cached data)
-    const newAllNamespaces: NamespaceDetails[] = []
-    for (const cluster of allClusterNames) {
-      const cached = namespaceCache.get(cluster)
-      if (cached) newAllNamespaces.push(...cached)
+    // Helper to update state progressively
+    const updateNamespacesFromCache = () => {
+      const newAllNamespaces: NamespaceDetails[] = []
+      for (const cluster of allClusterNames) {
+        const cached = namespaceCache.get(cluster)
+        if (cached) newAllNamespaces.push(...cached)
+      }
+      setAllNamespaces(newAllNamespaces)
     }
-    setAllNamespaces(newAllNamespaces)
 
-    if (failedClusters.length > 0 && newAllNamespaces.length === 0) {
+    // Fetch namespaces from clusters progressively (not waiting for all)
+    const fetchPromises = clustersToFetch.map(async (cluster) => {
+      try {
+        // Use MCP pods endpoint to get namespace information
+        const response = await api.get<{ pods: Array<{ namespace: string; status: string }> }>(
+          `/api/mcp/pods?cluster=${encodeURIComponent(cluster)}&limit=1000`
+        )
+
+        // Extract unique namespaces from pods
+        const nsSet = new Set<string>()
+        response.data.pods?.forEach(pod => {
+          if (pod.namespace) nsSet.add(pod.namespace)
+        })
+
+        // Convert to NamespaceDetails and cache
+        const clusterNamespaces: NamespaceDetails[] = []
+        nsSet.forEach(ns => {
+          clusterNamespaces.push({
+            name: ns,
+            cluster,
+            status: 'Active',
+            createdAt: new Date().toISOString(),
+          })
+        })
+        namespaceCache.set(cluster, clusterNamespaces)
+
+        // Update UI progressively as each cluster completes
+        setLoadingClusters(prev => {
+          const next = new Set(prev)
+          next.delete(cluster)
+          return next
+        })
+        updateNamespacesFromCache()
+      } catch (err) {
+        // Don't fail completely, just note which clusters failed
+        failedClusters.push(cluster)
+        // Still cache empty array to prevent repeated failed fetches
+        if (!namespaceCache.has(cluster)) {
+          namespaceCache.set(cluster, [])
+        }
+        // Update loading state even on failure
+        setLoadingClusters(prev => {
+          const next = new Set(prev)
+          next.delete(cluster)
+          return next
+        })
+      }
+    })
+
+    // Wait for all to complete before marking fully done
+    await Promise.all(fetchPromises)
+
+    // Final update from cache
+    updateNamespacesFromCache()
+
+    if (failedClusters.length > 0 && allNamespaces.length === 0) {
       setError(`Failed to fetch namespaces from: ${failedClusters.join(', ')}`)
     } else if (failedClusters.length > 0) {
       // Partial success - show warning but don't set as error
@@ -163,7 +197,9 @@ export function NamespaceManager() {
     }
 
     setLoading(false)
-  }, [allClusterNames])
+    setLoadingClusters(new Set())
+    setLastUpdated(new Date())
+  }, [allClusterNames, allNamespaces.length])
 
   const fetchAccess = useCallback(async (namespace: NamespaceDetails) => {
     setAccessLoading(true)
@@ -187,6 +223,14 @@ export function NamespaceManager() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clusters.length])
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchNamespaces(true)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [fetchNamespaces])
 
   useEffect(() => {
     if (selectedNamespace) {
@@ -291,10 +335,22 @@ export function NamespaceManager() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {loading && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Hourglass className="w-3 h-3 animate-pulse" />
+              updating...
+            </span>
+          )}
+          {lastUpdated && !loading && (
+            <span className="text-xs text-muted-foreground">
+              Updated {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
           <button
             onClick={() => fetchNamespaces(true)}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-muted-foreground hover:text-white transition-colors disabled:opacity-50"
+            title="Refresh namespace data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -320,77 +376,206 @@ export function NamespaceManager() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search namespaces..."
-          className="w-full pl-10 pr-4 py-2 rounded-lg bg-secondary border border-border text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-        />
+      {/* Search and Group By Toggle */}
+      <div className="flex gap-4 mb-6">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search namespaces..."
+            className="w-full pl-10 pr-4 py-2 rounded-lg bg-secondary border border-border text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+          />
+        </div>
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/30">
+          <button
+            onClick={() => setGroupBy('cluster')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+              groupBy === 'cluster'
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'text-muted-foreground hover:text-white'
+            }`}
+            title="Group by cluster"
+          >
+            <Server className="w-4 h-4" />
+            By Cluster
+          </button>
+          <button
+            onClick={() => setGroupBy('type')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+              groupBy === 'type'
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'text-muted-foreground hover:text-white'
+            }`}
+            title="Group by type (user/system)"
+          >
+            <Layers className="w-4 h-4" />
+            By Type
+          </button>
+        </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 flex gap-6 overflow-hidden">
         {/* Namespace list */}
         <div className="flex-1 overflow-y-auto space-y-4">
-          {/* User namespaces */}
-          {userNamespaces.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-                User Namespaces ({userNamespaces.length})
-              </h3>
-              <div className="space-y-2">
-                {userNamespaces.map(ns => (
-                  <NamespaceCard
-                    key={`${ns.cluster}-${ns.name}`}
-                    namespace={ns}
-                    isSelected={selectedNamespace?.name === ns.name && selectedNamespace?.cluster === ns.cluster}
-                    onSelect={() => setSelectedNamespace(ns)}
-                    onDelete={() => handleDeleteNamespace(ns)}
-                  />
-                ))}
-              </div>
-            </div>
+          {groupBy === 'cluster' ? (
+            // Group by Cluster view
+            <>
+              {targetClusters.map(clusterName => {
+                const cluster = clusters.find(c => c.name === clusterName)
+                const isUnreachable = cluster?.reachable === false
+                const clusterNamespaces = filteredNamespaces
+                  .filter(ns => ns.cluster === clusterName)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                const isCollapsed = collapsedClusters.has(clusterName)
+                const isClusterLoading = loadingClusters.has(clusterName)
+                const hasData = namespaceCache.has(clusterName) && !isClusterLoading
+
+                return (
+                  <div key={clusterName}>
+                    {/* Cluster header - always show */}
+                    <button
+                      onClick={() => {
+                        setCollapsedClusters(prev => {
+                          const next = new Set(prev)
+                          if (next.has(clusterName)) {
+                            next.delete(clusterName)
+                          } else {
+                            next.add(clusterName)
+                          }
+                          return next
+                        })
+                      }}
+                      className="flex items-center gap-2 w-full text-left mb-2 group"
+                      title={isCollapsed ? 'Expand cluster' : isUnreachable ? `Cluster offline - check network connection` : 'Collapse cluster'}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-white transition-colors" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-white transition-colors" />
+                      )}
+                      <ClusterBadge cluster={clusterName} size="sm" />
+                      {isUnreachable && (
+                        <span title="Cluster offline">
+                          <WifiOff className="w-4 h-4 text-yellow-400" />
+                        </span>
+                      )}
+                      <span className="text-sm text-muted-foreground">
+                        {isUnreachable ? (
+                          <span className="text-yellow-400">offline</span>
+                        ) : isClusterLoading ? (
+                          <span className="flex items-center gap-1.5">
+                            <Hourglass className="w-3 h-3 animate-pulse" />
+                            loading...
+                          </span>
+                        ) : (
+                          `${clusterNamespaces.length} namespace${clusterNamespaces.length !== 1 ? 's' : ''}`
+                        )}
+                      </span>
+                    </button>
+
+                    {/* Cluster namespaces or skeleton */}
+                    {!isCollapsed && (
+                      <div className="space-y-2 ml-6">
+                        {isUnreachable ? (
+                          // Show offline message for offline clusters
+                          <div className="flex items-center gap-2 py-2 px-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                            <WifiOff className="w-4 h-4 text-yellow-400" />
+                            <span className="text-sm text-yellow-400">Cluster offline - cannot fetch namespaces</span>
+                          </div>
+                        ) : isClusterLoading && !hasData ? (
+                          // Show skeleton for loading clusters (only on initial load, not refresh)
+                          [1, 2, 3].map((i) => (
+                            <NamespaceCardSkeleton key={`${clusterName}-skeleton-${i}`} />
+                          ))
+                        ) : clusterNamespaces.length > 0 ? (
+                          clusterNamespaces.map(ns => {
+                            const isSystem = ns.name.startsWith('kube-') ||
+                              ns.name.startsWith('openshift-') ||
+                              ns.name === 'default'
+                            return (
+                              <NamespaceCard
+                                key={`${ns.cluster}-${ns.name}`}
+                                namespace={ns}
+                                isSelected={selectedNamespace?.name === ns.name && selectedNamespace?.cluster === ns.cluster}
+                                onSelect={() => setSelectedNamespace(ns)}
+                                onDelete={!isSystem ? () => handleDeleteNamespace(ns) : undefined}
+                                isSystem={isSystem}
+                                showCluster={false}
+                              />
+                            )
+                          })
+                        ) : hasData ? (
+                          <p className="text-sm text-muted-foreground py-2">No namespaces found</p>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          ) : (
+            // Group by Type view (user/system)
+            <>
+              {/* User namespaces */}
+              {userNamespaces.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                    User Namespaces ({userNamespaces.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {userNamespaces.map(ns => (
+                      <NamespaceCard
+                        key={`${ns.cluster}-${ns.name}`}
+                        namespace={ns}
+                        isSelected={selectedNamespace?.name === ns.name && selectedNamespace?.cluster === ns.cluster}
+                        onSelect={() => setSelectedNamespace(ns)}
+                        onDelete={() => handleDeleteNamespace(ns)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* System namespaces */}
+              {systemNamespaces.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                    System Namespaces ({systemNamespaces.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {systemNamespaces.map(ns => (
+                      <NamespaceCard
+                        key={`${ns.cluster}-${ns.name}`}
+                        namespace={ns}
+                        isSelected={selectedNamespace?.name === ns.name && selectedNamespace?.cluster === ns.cluster}
+                        onSelect={() => setSelectedNamespace(ns)}
+                        isSystem
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Skeleton loading */}
+              {loading && filteredNamespaces.length === 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                    Loading Namespaces...
+                  </h3>
+                  <div className="space-y-2">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <NamespaceCardSkeleton key={i} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
-          {/* System namespaces */}
-          {systemNamespaces.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-                System Namespaces ({systemNamespaces.length})
-              </h3>
-              <div className="space-y-2">
-                {systemNamespaces.map(ns => (
-                  <NamespaceCard
-                    key={`${ns.cluster}-${ns.name}`}
-                    namespace={ns}
-                    isSelected={selectedNamespace?.name === ns.name && selectedNamespace?.cluster === ns.cluster}
-                    onSelect={() => setSelectedNamespace(ns)}
-                    isSystem
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Skeleton loading */}
-          {loading && filteredNamespaces.length === 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-                Loading Namespaces...
-              </h3>
-              <div className="space-y-2">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <NamespaceCardSkeleton key={i} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {filteredNamespaces.length === 0 && !loading && (
+          {filteredNamespaces.length === 0 && !loading && loadingClusters.size === 0 && (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
               <Folder className="w-12 h-12 mb-3 opacity-50" />
               <p>No namespaces found</p>
@@ -504,9 +689,10 @@ interface NamespaceCardProps {
   onSelect: () => void
   onDelete?: () => void
   isSystem?: boolean
+  showCluster?: boolean
 }
 
-function NamespaceCard({ namespace, isSelected, onSelect, onDelete, isSystem }: NamespaceCardProps) {
+function NamespaceCard({ namespace, isSelected, onSelect, onDelete, isSystem, showCluster = true }: NamespaceCardProps) {
   return (
     <div
       onClick={onSelect}
@@ -536,7 +722,7 @@ function NamespaceCard({ namespace, isSelected, onSelect, onDelete, isSystem }: 
           Created {new Date(namespace.createdAt).toLocaleDateString()}
         </p>
       </div>
-      <ClusterBadge cluster={namespace.cluster} size="sm" />
+      {showCluster && <ClusterBadge cluster={namespace.cluster} size="sm" />}
       {!isSystem && onDelete && (
         <button
           onClick={(e) => {

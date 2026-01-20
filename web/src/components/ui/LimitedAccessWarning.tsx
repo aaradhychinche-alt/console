@@ -33,10 +33,10 @@ export function LimitedAccessWarning({
     if (message) return message
     if (hasError) return 'Using demo data'
     if (unreachableCount > 0 && totalCount) {
-      return `${unreachableCount} of ${totalCount} clusters unreachable`
+      return `${unreachableCount} of ${totalCount} clusters offline`
     }
     if (unreachableCount > 0) {
-      return `${unreachableCount} cluster${unreachableCount > 1 ? 's' : ''} unreachable`
+      return `${unreachableCount} cluster${unreachableCount > 1 ? 's' : ''} offline`
     }
     return 'Limited access'
   }

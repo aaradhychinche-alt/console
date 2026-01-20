@@ -11,8 +11,9 @@ import {
   Cell,
   PieChart,
   Pie,
+  ReferenceLine,
 } from 'recharts'
-import { useGPUNodes } from '../../hooks/useMCP'
+import { useGPUNodes, useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 
 interface GPUPoint {
@@ -24,17 +25,38 @@ interface GPUPoint {
 
 export function GPUUtilization() {
   const { nodes: gpuNodes, isLoading } = useGPUNodes()
+  const { clusters } = useClusters()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
+
+  // Filter by selected clusters AND exclude offline/unreachable clusters
+  const filteredClusters = useMemo(() => {
+    const reachableClusters = clusters.filter(c => c.reachable !== false)
+    if (isAllClustersSelected) return reachableClusters
+    return reachableClusters.filter(c => selectedClusters.includes(c.name))
+  }, [clusters, selectedClusters, isAllClustersSelected])
+
+  // Get names of reachable clusters for node filtering
+  const reachableClusterNames = useMemo(() => {
+    return new Set(clusters.filter(c => c.reachable !== false).map(c => c.name))
+  }, [clusters])
+
+  const hasReachableClusters = filteredClusters.some(c => c.nodeCount !== undefined && c.nodeCount > 0)
 
   // Track historical data points
   const historyRef = useRef<GPUPoint[]>([])
   const [history, setHistory] = useState<GPUPoint[]>([])
 
-  // Filter by selected clusters
+  // Filter by selected clusters AND exclude nodes from offline/unreachable clusters
   const filteredNodes = useMemo(() => {
-    if (isAllClustersSelected) return gpuNodes
-    return gpuNodes.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
-  }, [gpuNodes, selectedClusters, isAllClustersSelected])
+    // First filter to only nodes from reachable clusters
+    const reachableNodes = gpuNodes.filter(n => {
+      // Extract cluster name from the node's cluster field (may be prefixed)
+      const clusterName = n.cluster.split('/')[0]
+      return reachableClusterNames.has(clusterName)
+    })
+    if (isAllClustersSelected) return reachableNodes
+    return reachableNodes.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
+  }, [gpuNodes, selectedClusters, isAllClustersSelected, reachableClusterNames])
 
   // Calculate current stats
   const currentStats = useMemo(() => {
@@ -104,7 +126,7 @@ export function GPUUtilization() {
     { name: 'Available', value: currentStats.available, color: '#22c55e' },
   ]
 
-  if (isLoading && history.length === 0) {
+  if (isLoading && history.length === 0 && hasReachableClusters) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading GPU data...</div>
@@ -112,8 +134,8 @@ export function GPUUtilization() {
     )
   }
 
-  // No GPUs available
-  if (!isLoading && currentStats.total === 0) {
+  // No reachable clusters or no GPUs available
+  if (!hasReachableClusters || (!isLoading && currentStats.total === 0)) {
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
@@ -123,7 +145,7 @@ export function GPUUtilization() {
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-          No GPUs detected in selected clusters
+          {!hasReachableClusters ? 'No reachable clusters' : 'No GPUs detected in selected clusters'}
         </div>
       </div>
     )
@@ -148,7 +170,7 @@ export function GPUUtilization() {
       {/* Stats and pie chart row */}
       <div className="flex items-center gap-4 mb-4">
         {/* Donut chart */}
-        <div className="w-20 h-20 relative">
+        <div className="w-20 h-20 relative" style={{ minWidth: 80, minHeight: 80 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -199,6 +221,7 @@ export function GPUUtilization() {
             Collecting data...
           </div>
         ) : (
+          <div style={{ width: '100%', minHeight: 100, height: 100 }}>
           <ResponsiveContainer width="100%" height={100}>
             <AreaChart data={history} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
               <defs>
@@ -230,8 +253,14 @@ export function GPUUtilization() {
                 }}
                 labelStyle={{ color: '#888' }}
               />
+              <ReferenceLine
+                y={currentStats.total}
+                stroke="#666"
+                strokeDasharray="3 3"
+                label={{ value: 'Total', position: 'right', fill: '#888', fontSize: 9 }}
+              />
               <Area
-                type="monotone"
+                type="stepAfter"
                 dataKey="allocated"
                 stroke="#9333ea"
                 strokeWidth={2}
@@ -240,6 +269,7 @@ export function GPUUtilization() {
               />
             </AreaChart>
           </ResponsiveContainer>
+          </div>
         )}
       </div>
 

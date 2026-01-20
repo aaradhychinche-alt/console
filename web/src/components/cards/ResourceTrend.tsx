@@ -33,10 +33,11 @@ export function ResourceTrend() {
   const historyRef = useRef<ResourcePoint[]>([])
   const [history, setHistory] = useState<ResourcePoint[]>([])
 
-  // Filter by selected clusters
+  // Filter by selected clusters AND exclude offline/unreachable clusters
   const filteredClusters = useMemo(() => {
-    if (isAllClustersSelected) return clusters
-    return clusters.filter(c => selectedClusters.includes(c.name))
+    const reachableClusters = clusters.filter(c => c.reachable !== false)
+    if (isAllClustersSelected) return reachableClusters
+    return reachableClusters.filter(c => selectedClusters.includes(c.name))
   }, [clusters, selectedClusters, isAllClustersSelected])
 
   // Calculate current totals
@@ -48,6 +49,9 @@ export function ResourceTrend() {
       nodes: filteredClusters.reduce((sum, c) => sum + (c.nodeCount || 0), 0),
     }
   }, [filteredClusters])
+
+  // Check if we have any reachable clusters with real data
+  const hasReachableClusters = filteredClusters.some(c => c.reachable !== false && c.nodeCount !== undefined && c.nodeCount > 0)
 
   // Check if we have real data
   const hasRealData = !isLoading && filteredClusters.length > 0 &&
@@ -174,33 +178,33 @@ export function ResourceTrend() {
 
       {/* Stats row */}
       <div className="grid grid-cols-4 gap-2 mb-4">
-        <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+        <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20" title={hasReachableClusters ? `${currentTotals.cpuCores} CPU cores total` : 'No reachable clusters'}>
           <div className="flex items-center gap-1 mb-1">
             <Cpu className="w-3 h-3 text-blue-400" />
             <span className="text-xs text-blue-400">CPUs</span>
           </div>
-          <span className="text-sm font-bold text-foreground">{currentTotals.cpuCores}</span>
+          <span className="text-sm font-bold text-foreground">{hasReachableClusters ? currentTotals.cpuCores : '-'}</span>
         </div>
-        <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20">
+        <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20" title={hasReachableClusters ? `${currentTotals.memoryGB.toFixed(0)} GB memory total` : 'No reachable clusters'}>
           <div className="flex items-center gap-1 mb-1">
             <MemoryStick className="w-3 h-3 text-green-400" />
             <span className="text-xs text-green-400">Mem</span>
           </div>
-          <span className="text-sm font-bold text-foreground">{currentTotals.memoryGB.toFixed(0)}G</span>
+          <span className="text-sm font-bold text-foreground">{hasReachableClusters ? `${currentTotals.memoryGB.toFixed(0)}G` : '-'}</span>
         </div>
-        <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+        <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20" title={hasReachableClusters ? `${currentTotals.pods} pods running` : 'No reachable clusters'}>
           <div className="flex items-center gap-1 mb-1">
             <Box className="w-3 h-3 text-purple-400" />
             <span className="text-xs text-purple-400">Pods</span>
           </div>
-          <span className="text-sm font-bold text-foreground">{currentTotals.pods}</span>
+          <span className="text-sm font-bold text-foreground">{hasReachableClusters ? currentTotals.pods : '-'}</span>
         </div>
-        <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+        <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20" title={hasReachableClusters ? `${currentTotals.nodes} nodes total` : 'No reachable clusters'}>
           <div className="flex items-center gap-1 mb-1">
             <Server className="w-3 h-3 text-yellow-400" />
             <span className="text-xs text-yellow-400">Nodes</span>
           </div>
-          <span className="text-sm font-bold text-foreground">{currentTotals.nodes}</span>
+          <span className="text-sm font-bold text-foreground">{hasReachableClusters ? currentTotals.nodes : '-'}</span>
         </div>
       </div>
 
@@ -211,6 +215,7 @@ export function ResourceTrend() {
             No resource data available
           </div>
         ) : (
+          <div style={{ width: '100%', minHeight: 160, height: 160 }}>
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={history} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -239,19 +244,21 @@ export function ResourceTrend() {
                 wrapperStyle={{ fontSize: '10px' }}
                 iconType="line"
               />
-              {lines.map((line) => (
+              {lines.map((line, idx) => (
                 <Line
                   key={line.dataKey}
-                  type="monotone"
+                  type="natural"
                   dataKey={line.dataKey}
                   stroke={line.color}
                   strokeWidth={2}
+                  strokeDasharray={idx === 1 ? "5 5" : undefined}
                   dot={false}
                   name={line.name}
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
+          </div>
         )}
       </div>
     </div>

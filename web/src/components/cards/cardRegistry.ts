@@ -15,6 +15,7 @@ import { ResourceCapacity } from './ResourceCapacity'
 import { GPUInventory } from './GPUInventory'
 import { GPUStatus } from './GPUStatus'
 import { GPUOverview } from './GPUOverview'
+import { GPUWorkloads } from './GPUWorkloads'
 import { SecurityIssues } from './SecurityIssues'
 // Live data trend cards
 import { EventsTimeline } from './EventsTimeline'
@@ -86,6 +87,7 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
   gpu_inventory: GPUInventory,
   gpu_status: GPUStatus,
   gpu_overview: GPUOverview,
+  gpu_workloads: GPUWorkloads,
   security_issues: SecurityIssues,
   // Live data trend cards
   events_timeline: EventsTimeline,
@@ -149,8 +151,6 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
  * Used to show a demo banner when these cards are present.
  */
 export const DEMO_DATA_CARDS = new Set([
-  'app_status',
-  'deployment_status',
   'argocd_applications',
   'argocd_health',
   'argocd_sync_status',

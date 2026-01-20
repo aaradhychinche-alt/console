@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 export interface SidebarItem {
   id: string
@@ -18,6 +18,23 @@ export interface SidebarConfig {
   sections: SidebarItem[]
   showClusterStatus: boolean
   collapsed: boolean
+}
+
+// Shared state store for sidebar config
+let sharedConfig: SidebarConfig | null = null
+const listeners = new Set<() => void>()
+
+function notifyListeners() {
+  listeners.forEach(listener => listener())
+}
+
+function getSnapshot(): SidebarConfig | null {
+  return sharedConfig
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }
 
 const DEFAULT_PRIMARY_NAV: SidebarItem[] = [
@@ -101,37 +118,59 @@ function migrateConfig(stored: SidebarConfig): SidebarConfig {
   return stored
 }
 
+// Initialize shared config from localStorage (called once)
+function initSharedConfig(): SidebarConfig {
+  if (sharedConfig) return sharedConfig
+
+  // Try to load from current storage key
+  let stored = localStorage.getItem(STORAGE_KEY)
+
+  // Migrate from old storage key if needed
+  if (!stored) {
+    const oldStored = localStorage.getItem(OLD_STORAGE_KEY)
+    if (oldStored) {
+      stored = oldStored
+      // Remove old key after migration
+      localStorage.removeItem(OLD_STORAGE_KEY)
+    }
+  }
+
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored)
+      // Migrate config to ensure all default routes exist
+      sharedConfig = migrateConfig(parsed)
+    } catch {
+      sharedConfig = DEFAULT_CONFIG
+    }
+  } else {
+    sharedConfig = DEFAULT_CONFIG
+  }
+
+  return sharedConfig
+}
+
+// Update shared config and notify all listeners
+function updateSharedConfig(newConfig: SidebarConfig) {
+  sharedConfig = newConfig
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(newConfig))
+  notifyListeners()
+}
+
 export function useSidebarConfig() {
-  const [config, setConfig] = useState<SidebarConfig>(() => {
-    // Try to load from current storage key
-    let stored = localStorage.getItem(STORAGE_KEY)
+  // Initialize on first use
+  if (!sharedConfig) {
+    initSharedConfig()
+  }
 
-    // Migrate from old storage key if needed
-    if (!stored) {
-      const oldStored = localStorage.getItem(OLD_STORAGE_KEY)
-      if (oldStored) {
-        stored = oldStored
-        // Remove old key after migration
-        localStorage.removeItem(OLD_STORAGE_KEY)
-      }
-    }
+  // Subscribe to shared state changes
+  const config = useSyncExternalStore(subscribe, getSnapshot) || DEFAULT_CONFIG
 
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        // Migrate config to ensure all default routes exist
-        return migrateConfig(parsed)
-      } catch {
-        return DEFAULT_CONFIG
-      }
-    }
-    return DEFAULT_CONFIG
-  })
-
-  // Persist to localStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-  }, [config])
+  // Wrapper to update shared state
+  const setConfig = useCallback((updater: SidebarConfig | ((prev: SidebarConfig) => SidebarConfig)) => {
+    const newConfig = typeof updater === 'function' ? updater(sharedConfig || DEFAULT_CONFIG) : updater
+    updateSharedConfig(newConfig)
+  }, [])
 
   const addItem = useCallback((item: Omit<SidebarItem, 'id' | 'order'>, target: 'primary' | 'secondary' | 'sections') => {
     setConfig((prev) => {

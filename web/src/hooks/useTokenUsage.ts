@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 export interface TokenUsage {
   used: number
@@ -14,7 +14,7 @@ export type TokenAlertLevel = 'normal' | 'warning' | 'critical' | 'stopped'
 const SETTINGS_KEY = 'kubestellar-token-settings'
 const SETTINGS_CHANGED_EVENT = 'kubestellar-token-settings-changed'
 const LOCAL_AGENT_URL = 'http://127.0.0.1:8585'
-const POLL_INTERVAL = 2000 // Poll every 2 seconds for real-time updates
+const POLL_INTERVAL = 30000 // Poll every 30 seconds
 
 const DEFAULT_SETTINGS = {
   limit: 5000000, // 5M tokens (realistic for Claude usage)
@@ -23,64 +23,99 @@ const DEFAULT_SETTINGS = {
   stopThreshold: 1.0, // 100%
 }
 
+// Singleton state - shared across all hook instances
+let sharedUsage: TokenUsage = {
+  used: 0,
+  ...DEFAULT_SETTINGS,
+  resetDate: getNextResetDate(),
+}
+let pollStarted = false
+let subscribers = new Set<(usage: TokenUsage) => void>()
+
+// Initialize from localStorage
+if (typeof window !== 'undefined') {
+  const settings = localStorage.getItem(SETTINGS_KEY)
+  if (settings) {
+    const parsedSettings = JSON.parse(settings)
+    sharedUsage = { ...sharedUsage, ...parsedSettings }
+  }
+}
+
+// Notify all subscribers
+function notifySubscribers() {
+  subscribers.forEach(fn => fn(sharedUsage))
+}
+
+// Update shared usage (only notifies if actually changed)
+function updateSharedUsage(updates: Partial<TokenUsage>, forceNotify = false) {
+  const prevUsage = sharedUsage
+  sharedUsage = { ...sharedUsage, ...updates }
+
+  // Only notify if value actually changed (prevents UI flashing on background polls)
+  const hasChanged = forceNotify ||
+    prevUsage.used !== sharedUsage.used ||
+    prevUsage.limit !== sharedUsage.limit ||
+    prevUsage.warningThreshold !== sharedUsage.warningThreshold ||
+    prevUsage.criticalThreshold !== sharedUsage.criticalThreshold ||
+    prevUsage.stopThreshold !== sharedUsage.stopThreshold
+
+  if (hasChanged) {
+    notifySubscribers()
+  }
+}
+
+// Fetch token usage from local agent (singleton - only runs once)
+async function fetchTokenUsage() {
+  try {
+    const response = await fetch(`${LOCAL_AGENT_URL}/health`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    })
+    if (response.ok) {
+      const data = await response.json()
+      if (data.claude?.tokenUsage?.today) {
+        const todayTokens = data.claude.tokenUsage.today
+        updateSharedUsage({ used: todayTokens.output })
+      }
+    }
+  } catch {
+    // Local agent not available, keep current usage
+  }
+}
+
+// Start singleton polling
+function startPolling() {
+  if (pollStarted) return
+  pollStarted = true
+
+  // Initial fetch
+  fetchTokenUsage()
+
+  // Poll at interval
+  setInterval(fetchTokenUsage, POLL_INTERVAL)
+}
+
 export function useTokenUsage() {
-  const [usage, setUsage] = useState<TokenUsage>(() => {
-    if (typeof window !== 'undefined') {
-      const settings = localStorage.getItem(SETTINGS_KEY)
-      const parsedSettings = settings ? JSON.parse(settings) : DEFAULT_SETTINGS
-      return {
-        used: 0,
-        ...parsedSettings,
-        resetDate: getNextResetDate(),
-      }
-    }
-    return {
-      used: 0,
-      ...DEFAULT_SETTINGS,
-      resetDate: getNextResetDate(),
-    }
-  })
+  const [usage, setUsage] = useState<TokenUsage>(sharedUsage)
 
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Poll local agent for real-time token usage
-  const fetchTokenUsage = useCallback(async () => {
-    try {
-      const response = await fetch(`${LOCAL_AGENT_URL}/health`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        if (data.claude?.tokenUsage?.today) {
-          // Use today's output tokens - stable and increases throughout the day
-          const todayTokens = data.claude.tokenUsage.today
-          // Output tokens are the primary metric (what Claude generates)
-          setUsage(prev => ({
-            ...prev,
-            used: todayTokens.output,
-          }))
-        }
-      }
-    } catch {
-      // Local agent not available, keep current usage
-    }
-  }, [])
-
-  // Start polling on mount
+  // Subscribe to shared state updates
   useEffect(() => {
-    // Initial fetch
-    fetchTokenUsage()
+    // Start polling (only happens once across all instances)
+    startPolling()
 
-    // Set up polling interval
-    pollIntervalRef.current = setInterval(fetchTokenUsage, POLL_INTERVAL)
+    // Subscribe to updates
+    const handleUpdate = (newUsage: TokenUsage) => {
+      setUsage(newUsage)
+    }
+    subscribers.add(handleUpdate)
+
+    // Set initial state
+    setUsage(sharedUsage)
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
+      subscribers.delete(handleUpdate)
     }
-  }, [fetchTokenUsage])
+  }, [])
 
   // Listen for settings changes from other components
   useEffect(() => {
@@ -88,7 +123,7 @@ export function useTokenUsage() {
       const settings = localStorage.getItem(SETTINGS_KEY)
       if (settings) {
         const parsedSettings = JSON.parse(settings)
-        setUsage(prev => ({ ...prev, ...parsedSettings }))
+        updateSharedUsage(parsedSettings)
       }
     }
     window.addEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChange)
@@ -111,40 +146,31 @@ export function useTokenUsage() {
 
   // Add tokens used
   const addTokens = useCallback((tokens: number) => {
-    setUsage((prev) => ({
-      ...prev,
-      used: prev.used + tokens,
-    }))
+    updateSharedUsage({ used: sharedUsage.used + tokens })
   }, [])
 
   // Update settings
   const updateSettings = useCallback(
     (settings: Partial<Omit<TokenUsage, 'used' | 'resetDate'>>) => {
-      setUsage((prev) => ({
-        ...prev,
-        ...settings,
-      }))
-      localStorage.setItem(
-        SETTINGS_KEY,
-        JSON.stringify({
-          limit: settings.limit ?? usage.limit,
-          warningThreshold: settings.warningThreshold ?? usage.warningThreshold,
-          criticalThreshold: settings.criticalThreshold ?? usage.criticalThreshold,
-          stopThreshold: settings.stopThreshold ?? usage.stopThreshold,
-        })
-      )
+      const newSettings = {
+        limit: settings.limit ?? sharedUsage.limit,
+        warningThreshold: settings.warningThreshold ?? sharedUsage.warningThreshold,
+        criticalThreshold: settings.criticalThreshold ?? sharedUsage.criticalThreshold,
+        stopThreshold: settings.stopThreshold ?? sharedUsage.stopThreshold,
+      }
+      updateSharedUsage(newSettings)
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings))
       window.dispatchEvent(new Event(SETTINGS_CHANGED_EVENT))
     },
-    [usage]
+    []
   )
 
   // Reset usage
   const resetUsage = useCallback(() => {
-    setUsage((prev) => ({
-      ...prev,
+    updateSharedUsage({
       used: 0,
       resetDate: getNextResetDate(),
-    }))
+    })
   }, [])
 
   // Check if AI features should be disabled

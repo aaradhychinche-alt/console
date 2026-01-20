@@ -94,7 +94,7 @@ const CARD_BEHAVIORS: Record<string, Array<{ key: string; label: string; descrip
   upgrade_status: [
     { key: 'autoRefresh', label: 'Auto-refresh', description: 'Check for version updates periodically', default: true },
     { key: 'showOnlyUpgradeable', label: 'Show upgradeable only', description: 'Only show clusters with available upgrades', default: false },
-    { key: 'hideUnreachable', label: 'Hide unreachable', description: 'Hide clusters that cannot be contacted', default: false },
+    { key: 'hideUnreachable', label: 'Hide offline', description: 'Hide clusters that cannot be contacted', default: false },
     { key: 'alertOnNewUpgrade', label: 'Alert on new upgrade', description: 'Notify when a new upgrade becomes available', default: false },
   ],
   // GPU Cards

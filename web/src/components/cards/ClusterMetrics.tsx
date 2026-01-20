@@ -45,10 +45,11 @@ export function ClusterMetrics() {
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('cpu')
 
-  // Filter clusters based on global selection
+  // Filter clusters based on global selection AND exclude offline/unreachable clusters
   const clusters = useMemo(() => {
-    if (isAllClustersSelected) return rawClusters
-    return rawClusters.filter(c => selectedClusters.includes(c.name))
+    const reachableClusters = rawClusters.filter(c => c.reachable !== false)
+    if (isAllClustersSelected) return reachableClusters
+    return reachableClusters.filter(c => selectedClusters.includes(c.name))
   }, [rawClusters, selectedClusters, isAllClustersSelected])
 
   // Calculate real current values from cluster data

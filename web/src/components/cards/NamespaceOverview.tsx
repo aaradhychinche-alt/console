@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Layers, Box, Activity, AlertTriangle, RefreshCw, Server } from 'lucide-react'
 import { useClusters, usePodIssues, useDeploymentIssues, useNamespaces } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
 
@@ -21,6 +22,7 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
     isAllClustersSelected,
     customFilter,
   } = useGlobalFilters()
+  const { drillToPod, drillToDeployment } = useDrillDownActions()
 
   // Apply global filters
   const clusters = useMemo(() => {
@@ -88,6 +90,7 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
         <button
           onClick={() => refetch()}
           className="p-1 hover:bg-secondary rounded transition-colors"
+          title="Refresh namespace data"
         >
           <RefreshCw className="w-4 h-4 text-muted-foreground" />
         </button>
@@ -102,6 +105,7 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
             setSelectedNamespace('')
           }}
           className="flex-1 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm text-foreground"
+          title="Select a cluster to view namespace details"
         >
           <option value="">Select cluster...</option>
           {clusters.map(c => (
@@ -113,6 +117,7 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
           onChange={(e) => setSelectedNamespace(e.target.value)}
           disabled={!selectedCluster}
           className="flex-1 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm text-foreground disabled:opacity-50"
+          title={selectedCluster ? "Select a namespace to view details" : "Select a cluster first"}
         >
           <option value="">Select namespace...</option>
           {namespaces.map(ns => (
@@ -128,7 +133,7 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
       ) : (
         <>
           {/* Scope badge */}
-          <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+          <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 cursor-default" title={`Viewing namespace ${selectedNamespace} in cluster ${selectedCluster}`}>
             <ClusterBadge cluster={selectedCluster} />
             <span className="text-blue-400">/</span>
             <span className="text-sm font-medium text-blue-300">{selectedNamespace}</span>
@@ -136,16 +141,24 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
 
           {/* Stats */}
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="p-3 rounded-lg bg-secondary/30">
+            <div
+              className={`p-3 rounded-lg ${podIssues.length > 0 ? 'bg-red-500/10 border border-red-500/20 cursor-pointer hover:bg-red-500/20' : 'bg-secondary/30 cursor-default'} transition-colors`}
+              onClick={() => podIssues.length > 0 && podIssues[0] && drillToPod(selectedCluster, podIssues[0].namespace, podIssues[0].name)}
+              title={podIssues.length > 0 ? `${podIssues.length} pod issue${podIssues.length !== 1 ? 's' : ''} - Click to view first issue` : 'No pod issues detected'}
+            >
               <div className="flex items-center gap-2 mb-1">
-                <Box className="w-4 h-4 text-green-400" />
+                <Box className={`w-4 h-4 ${podIssues.length > 0 ? 'text-red-400' : 'text-green-400'}`} />
                 <span className="text-xs text-muted-foreground">Pods with Issues</span>
               </div>
               <span className="text-2xl font-bold text-foreground">{podIssues.length}</span>
             </div>
-            <div className="p-3 rounded-lg bg-secondary/30">
+            <div
+              className={`p-3 rounded-lg ${deploymentIssues.length > 0 ? 'bg-orange-500/10 border border-orange-500/20 cursor-pointer hover:bg-orange-500/20' : 'bg-secondary/30 cursor-default'} transition-colors`}
+              onClick={() => deploymentIssues.length > 0 && deploymentIssues[0] && drillToDeployment(selectedCluster, deploymentIssues[0].namespace, deploymentIssues[0].name)}
+              title={deploymentIssues.length > 0 ? `${deploymentIssues.length} deployment issue${deploymentIssues.length !== 1 ? 's' : ''} - Click to view first issue` : 'No deployment issues detected'}
+            >
               <div className="flex items-center gap-2 mb-1">
-                <Activity className="w-4 h-4 text-orange-400" />
+                <Activity className={`w-4 h-4 ${deploymentIssues.length > 0 ? 'text-orange-400' : 'text-green-400'}`} />
                 <span className="text-xs text-muted-foreground">Deployment Issues</span>
               </div>
               <span className="text-2xl font-bold text-foreground">{deploymentIssues.length}</span>
@@ -155,7 +168,7 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
           {/* Issues list */}
           <div className="flex-1 space-y-2 overflow-y-auto">
             {podIssues.length === 0 && deploymentIssues.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="flex flex-col items-center justify-center h-full text-center" title="All pods and deployments in this namespace are healthy">
                 <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center mb-2">
                   <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -167,7 +180,12 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
             ) : (
               <>
                 {deploymentIssues.slice(0, 3).map((issue, idx) => (
-                  <div key={`dep-${idx}`} className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                  <div
+                    key={`dep-${idx}`}
+                    className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20 cursor-pointer hover:bg-orange-500/20 transition-colors"
+                    onClick={() => drillToDeployment(selectedCluster, issue.namespace, issue.name)}
+                    title={`${issue.name}: ${issue.readyReplicas}/${issue.replicas} replicas ready - Click to view details`}
+                  >
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-orange-400" />
                       <span className="text-sm text-foreground">{issue.name}</span>
@@ -178,7 +196,12 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
                   </div>
                 ))}
                 {podIssues.slice(0, 3).map((issue, idx) => (
-                  <div key={`pod-${idx}`} className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div
+                    key={`pod-${idx}`}
+                    className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 cursor-pointer hover:bg-red-500/20 transition-colors"
+                    onClick={() => drillToPod(selectedCluster, issue.namespace, issue.name)}
+                    title={`Pod ${issue.name} in ${issue.status} state - Click to view details`}
+                  >
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-red-400" />
                       <span className="text-sm text-foreground truncate">{issue.name}</span>

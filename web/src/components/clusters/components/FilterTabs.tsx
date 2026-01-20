@@ -65,7 +65,7 @@ export function FilterTabs({
         title="Clusters that cannot be contacted - check network connection"
       >
         <WifiOff className="w-3.5 h-3.5" />
-        Unreachable ({stats.unreachable})
+        Offline ({stats.unreachable})
       </button>
 
       {/* Sort selector */}

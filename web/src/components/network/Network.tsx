@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Globe, Network as NetworkIcon, Shield, Workflow, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Globe, Network as NetworkIcon, Shield, Workflow, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, Hourglass } from 'lucide-react'
 import { useServices } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useShowCards } from '../../hooks/useShowCards'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { Skeleton } from '../ui/Skeleton'
 import { CardWrapper } from '../cards/CardWrapper'
 import { CARD_COMPONENTS } from '../cards/cardRegistry'
@@ -16,6 +18,7 @@ interface NetworkCard {
   card_type: string
   config: Record<string, unknown>
   title?: string
+  position?: { w: number; h: number }
 }
 
 const NETWORK_CARDS_KEY = 'kubestellar-network-cards'
@@ -34,11 +37,13 @@ function saveNetworkCards(cards: NetworkCard[]) {
 }
 
 export function Network() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { services, isLoading: servicesLoading, isRefreshing: servicesRefreshing, lastUpdated, refetch } = useServices()
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
   } = useGlobalFilters()
+  const { drillToService } = useDrillDownActions()
 
   // Card state
   const [cards, setCards] = useState<NetworkCard[]>(() => loadNetworkCards())
@@ -58,6 +63,14 @@ export function Network() {
   useEffect(() => {
     saveNetworkCards(cards)
   }, [cards])
+
+  // Handle addCard URL param - open modal and clear param
+  useEffect(() => {
+    if (searchParams.get('addCard') === 'true') {
+      setShowAddCard(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -102,6 +115,12 @@ export function Network() {
     setConfiguringCard(null)
   }, [])
 
+  const handleWidthChange = useCallback((cardId: string, newWidth: number) => {
+    setCards(prev => prev.map(c =>
+      c.id === cardId ? { ...c, position: { ...(c.position || { w: 4, h: 2 }), w: newWidth } } : c
+    ))
+  }, [])
+
   const applyTemplate = useCallback((template: DashboardTemplate) => {
     const newCards: NetworkCard[] = template.cards.map(card => ({
       id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -137,32 +156,39 @@ export function Network() {
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Globe className="w-6 h-6 text-purple-400" />
-              Network
-            </h1>
-            <p className="text-muted-foreground">Monitor network resources across clusters</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <Globe className="w-6 h-6 text-purple-400" />
+                Network
+              </h1>
+              <p className="text-muted-foreground">Monitor network resources across clusters</p>
+            </div>
+            {servicesRefreshing && (
+              <span className="flex items-center gap-1 text-xs text-amber-400 animate-pulse" title="Updating...">
+                <Hourglass className="w-3 h-3" />
+                <span>Updating</span>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            <label htmlFor="network-auto-refresh" className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
+            <label htmlFor="network-auto-refresh" className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground" title="Auto-refresh every 30s">
               <input
                 type="checkbox"
                 id="network-auto-refresh"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border w-3.5 h-3.5"
               />
-              Auto-refresh
+              Auto
             </label>
             <button
               onClick={handleRefresh}
               disabled={isFetching}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-foreground hover:bg-secondary transition-colors text-sm disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           </div>
         </div>
@@ -205,7 +231,15 @@ export function Network() {
             ) : (
               // Real data
               <>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${filteredServices.length > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    if (filteredServices.length > 0 && filteredServices[0]) {
+                      drillToService(filteredServices[0].cluster || 'default', filteredServices[0].namespace || 'default', filteredServices[0].name)
+                    }
+                  }}
+                  title={filteredServices.length > 0 ? `${filteredServices.length} total services - Click to view details` : 'No services found'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <Workflow className="w-5 h-5 text-blue-400" />
                     <span className="text-sm text-muted-foreground">Services</span>
@@ -213,7 +247,14 @@ export function Network() {
                   <div className="text-3xl font-bold text-foreground">{filteredServices.length}</div>
                   <div className="text-xs text-muted-foreground">total services</div>
                 </div>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${loadBalancers > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    const svc = filteredServices.find(s => s.type === 'LoadBalancer')
+                    if (svc) drillToService(svc.cluster || 'default', svc.namespace || 'default', svc.name)
+                  }}
+                  title={loadBalancers > 0 ? `${loadBalancers} LoadBalancer service${loadBalancers !== 1 ? 's' : ''} - Click to view details` : 'No LoadBalancer services'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <Globe className="w-5 h-5 text-green-400" />
                     <span className="text-sm text-muted-foreground">LoadBalancers</span>
@@ -221,7 +262,14 @@ export function Network() {
                   <div className="text-3xl font-bold text-green-400">{loadBalancers}</div>
                   <div className="text-xs text-muted-foreground">external access</div>
                 </div>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${nodePortServices > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    const svc = filteredServices.find(s => s.type === 'NodePort')
+                    if (svc) drillToService(svc.cluster || 'default', svc.namespace || 'default', svc.name)
+                  }}
+                  title={nodePortServices > 0 ? `${nodePortServices} NodePort service${nodePortServices !== 1 ? 's' : ''} - Click to view details` : 'No NodePort services'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <NetworkIcon className="w-5 h-5 text-yellow-400" />
                     <span className="text-sm text-muted-foreground">NodePort</span>
@@ -229,7 +277,14 @@ export function Network() {
                   <div className="text-3xl font-bold text-yellow-400">{nodePortServices}</div>
                   <div className="text-xs text-muted-foreground">node-level access</div>
                 </div>
-                <div className="glass p-4 rounded-lg">
+                <div
+                  className={`glass p-4 rounded-lg ${clusterIPServices > 0 ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  onClick={() => {
+                    const svc = filteredServices.find(s => s.type === 'ClusterIP')
+                    if (svc) drillToService(svc.cluster || 'default', svc.namespace || 'default', svc.name)
+                  }}
+                  title={clusterIPServices > 0 ? `${clusterIPServices} ClusterIP service${clusterIPServices !== 1 ? 's' : ''} - Click to view details` : 'No ClusterIP services'}
+                >
                   <div className="flex items-center gap-2 mb-2">
                     <Shield className="w-5 h-5 text-purple-400" />
                     <span className="text-sm text-muted-foreground">ClusterIP</span>
@@ -295,24 +350,31 @@ export function Network() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-12 gap-4">
                 {cards.map(card => {
                   const CardComponent = CARD_COMPONENTS[card.card_type]
                   if (!CardComponent) {
                     console.warn(`Unknown card type: ${card.card_type}`)
                     return null
                   }
+                  const cardWidth = card.position?.w || 4
                   return (
-                    <CardWrapper
+                    <div
                       key={card.id}
-                      cardId={card.id}
-                      cardType={card.card_type}
-                      title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      onConfigure={() => handleConfigureCard(card.id)}
-                      onRemove={() => handleRemoveCard(card.id)}
+                      style={{ gridColumn: `span ${cardWidth}` }}
                     >
+                      <CardWrapper
+                        cardId={card.id}
+                        cardType={card.card_type}
+                        title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        cardWidth={cardWidth}
+                        onConfigure={() => handleConfigureCard(card.id)}
+                        onRemove={() => handleRemoveCard(card.id)}
+                        onWidthChange={(newWidth) => handleWidthChange(card.id, newWidth)}
+                      >
                       <CardComponent config={card.config} />
                     </CardWrapper>
+                    </div>
                   )
                 })}
               </div>
