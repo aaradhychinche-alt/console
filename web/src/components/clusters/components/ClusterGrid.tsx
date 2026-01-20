@@ -1,9 +1,9 @@
 import { memo } from 'react'
-import { Pencil, Globe, User, ShieldAlert, ChevronRight, Star, WifiOff, RefreshCw } from 'lucide-react'
+import { Pencil, Globe, User, ShieldAlert, ChevronRight, Star, WifiOff, RefreshCw, ExternalLink } from 'lucide-react'
 import { ClusterInfo } from '../../../hooks/useMCP'
 import { StatusIndicator } from '../../charts/StatusIndicator'
 import { isClusterUnreachable, isClusterLoading } from '../utils'
-import { CloudProviderIcon, detectCloudProvider, getProviderLabel, getProviderColor } from '../../ui/CloudProviderIcon'
+import { CloudProviderIcon, detectCloudProvider, getProviderLabel, getProviderColor, getConsoleUrl } from '../../ui/CloudProviderIcon'
 
 interface GPUInfo {
   total: number
@@ -64,6 +64,9 @@ export const ClusterGrid = memo(function ClusterGrid({
 
         // Theme accent color (purple by default)
         const themeColor = '#9333ea' // purple-500
+
+        // Get console URL for cloud providers
+        const consoleUrl = getConsoleUrl(provider, cluster.name, cluster.server)
 
         return (
           <div
@@ -209,6 +212,21 @@ export const ClusterGrid = memo(function ClusterGrid({
             </div>
 
             <div className="mt-4 pt-4 border-t border-border relative z-10">
+              {consoleUrl && (
+                <div className="flex justify-center mb-3">
+                  <a
+                    href={consoleUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/70 hover:bg-secondary text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    title={`Open ${providerLabel} console`}
+                  >
+                    <span>console</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Source: {cluster.source || 'kubeconfig'}</span>
                 <span title="View details"><ChevronRight className="w-4 h-4 text-primary" /></span>

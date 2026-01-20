@@ -222,6 +222,50 @@ export function getProviderBorderClass(provider: CloudProvider): string {
   }
 }
 
+// Get console URL for cloud providers
+export function getConsoleUrl(provider: CloudProvider, clusterName: string, apiServerUrl?: string): string | null {
+  const serverUrl = apiServerUrl?.toLowerCase() || ''
+
+  switch (provider) {
+    case 'eks': {
+      const urlRegionMatch = serverUrl.match(/\.([a-z]{2}-[a-z]+-\d)\.eks\.amazonaws\.com/)
+      if (urlRegionMatch) {
+        return `https://${urlRegionMatch[1]}.console.aws.amazon.com/eks/home?region=${urlRegionMatch[1]}#/clusters`
+      }
+      const nameRegionMatch = clusterName.match(/([a-z]{2}-[a-z]+-\d)/)
+      if (nameRegionMatch) {
+        return `https://${nameRegionMatch[1]}.console.aws.amazon.com/eks/home?region=${nameRegionMatch[1]}#/clusters`
+      }
+      return 'https://console.aws.amazon.com/eks/home#/clusters'
+    }
+    case 'gke':
+      return 'https://console.cloud.google.com/kubernetes/list/overview'
+    case 'aks':
+      return 'https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.ContainerService%2FmanagedClusters'
+    case 'openshift': {
+      // Handle URLs with or without protocol prefix
+      const apiMatch = apiServerUrl?.match(/(?:https?:\/\/)?api\.([^:\/]+)/)
+      if (apiMatch) {
+        return `https://console-openshift-console.apps.${apiMatch[1]}`
+      }
+      return null
+    }
+    case 'oci': {
+      const regionMatch = serverUrl.match(/\.([a-z]+-[a-z]+-\d)\.clusters\.oci/)
+      if (regionMatch) {
+        return `https://cloud.oracle.com/containers/clusters?region=${regionMatch[1]}`
+      }
+      return 'https://cloud.oracle.com/containers/clusters?region=us-ashburn-1'
+    }
+    case 'alibaba':
+      return 'https://cs.console.aliyun.com/#/k8s/cluster/list'
+    case 'digitalocean':
+      return 'https://cloud.digitalocean.com/kubernetes/clusters'
+    default:
+      return null
+  }
+}
+
 // Provider detection from cluster name, API server URL, user, and optionally namespaces
 // Priority: 1. Namespace-based (most accurate), 2. Name-based, 3. User-based, 4. URL-based
 export function detectCloudProvider(

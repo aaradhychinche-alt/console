@@ -21,7 +21,8 @@ function getConsoleUrlForProvider(provider: string, clusterName: string, apiServ
   switch (provider) {
     case 'openshift': {
       // OpenShift: api.xxx -> console-openshift-console.apps.xxx
-      const apiMatch = apiServerUrl?.match(/https?:\/\/api\.([^:\/]+)/)
+      // Handle URLs with or without protocol prefix
+      const apiMatch = apiServerUrl?.match(/(?:https?:\/\/)?api\.([^:\/]+)/)
       if (apiMatch) {
         return `https://console-openshift-console.apps.${apiMatch[1]}`
       }
@@ -238,10 +239,12 @@ After I approve, help me execute the repairs step by step.`,
             <h2 className="text-xl font-semibold text-foreground">{clusterName.split('/').pop()}</h2>
             {(() => {
               // Use cached distribution if available, otherwise detect from name/server
+              // Prefer clusterInfo.server over health.apiServer since it's more reliably populated
+              const serverUrl = clusterInfo?.server || health?.apiServer
               const detectedProvider = clusterInfo?.distribution as CloudProviderType ||
-                detectCloudProviderShared(clusterName, health?.apiServer, clusterInfo?.namespaces, clusterUser)
+                detectCloudProviderShared(clusterName, serverUrl, clusterInfo?.namespaces, clusterUser)
               // Get console URL based on detected provider
-              const consoleUrl = getConsoleUrlForProvider(detectedProvider, clusterName, health?.apiServer)
+              const consoleUrl = getConsoleUrlForProvider(detectedProvider, clusterName, serverUrl)
               const providerInfo = getProviderInfo(detectedProvider === 'kubernetes' ? 'unknown' : detectedProvider as CloudProvider)
               const providerLabel = getProviderLabel(detectedProvider)
               return (

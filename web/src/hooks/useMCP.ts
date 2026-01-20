@@ -2481,20 +2481,33 @@ function getDemoSecurityIssues(): SecurityIssue[] {
 // Demo data fallbacks
 function getDemoClusters(): ClusterInfo[] {
   return [
-    { name: 'kind-local', context: 'kind-local', healthy: true, source: 'kubeconfig', nodeCount: 1, podCount: 15 },
-    { name: 'vllm-d', context: 'vllm-d', healthy: true, source: 'kubeconfig', nodeCount: 8, podCount: 124 },
-    { name: 'prod-east', context: 'prod-east', healthy: true, source: 'kubeconfig', nodeCount: 12, podCount: 89 },
-    { name: 'staging', context: 'staging', healthy: false, source: 'kubeconfig', nodeCount: 3, podCount: 42 },
+    { name: 'kind-local', context: 'kind-local', healthy: true, source: 'kubeconfig', nodeCount: 1, podCount: 15, cpuCores: 4, memoryGB: 8, storageGB: 50 },
+    { name: 'vllm-d', context: 'vllm-d', healthy: true, source: 'kubeconfig', nodeCount: 8, podCount: 124, cpuCores: 256, memoryGB: 2048, storageGB: 8000 },
+    { name: 'prod-east', context: 'prod-east', healthy: true, source: 'kubeconfig', nodeCount: 12, podCount: 89, cpuCores: 96, memoryGB: 384, storageGB: 2000 },
+    { name: 'staging', context: 'staging', healthy: false, source: 'kubeconfig', nodeCount: 3, podCount: 42, cpuCores: 12, memoryGB: 48, storageGB: 200 },
   ]
 }
 
 function getDemoHealth(cluster?: string): ClusterHealth {
+  // Return cluster-specific demo health data
+  const clusterMetrics: Record<string, { nodeCount: number; podCount: number; cpuCores: number; memoryGB: number; storageGB: number }> = {
+    'kind-local': { nodeCount: 1, podCount: 15, cpuCores: 4, memoryGB: 8, storageGB: 50 },
+    'vllm-d': { nodeCount: 8, podCount: 124, cpuCores: 256, memoryGB: 2048, storageGB: 8000 },
+    'prod-east': { nodeCount: 12, podCount: 89, cpuCores: 96, memoryGB: 384, storageGB: 2000 },
+    'staging': { nodeCount: 3, podCount: 42, cpuCores: 12, memoryGB: 48, storageGB: 200 },
+  }
+  const metrics = clusterMetrics[cluster || ''] || { nodeCount: 3, podCount: 45, cpuCores: 24, memoryGB: 96, storageGB: 500 }
   return {
     cluster: cluster || 'default',
-    healthy: true,
-    nodeCount: 3,
-    readyNodes: 3,
-    podCount: 45,
+    healthy: cluster !== 'staging',
+    nodeCount: metrics.nodeCount,
+    readyNodes: metrics.nodeCount,
+    podCount: metrics.podCount,
+    cpuCores: metrics.cpuCores,
+    memoryGB: metrics.memoryGB,
+    memoryBytes: metrics.memoryGB * 1024 * 1024 * 1024,
+    storageGB: metrics.storageGB,
+    storageBytes: metrics.storageGB * 1024 * 1024 * 1024,
     issues: [],
   }
 }
