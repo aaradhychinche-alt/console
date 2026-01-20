@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, memo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Plus, GripVertical, Layout, AlertTriangle, X, RefreshCw } from 'lucide-react'
+import { GripVertical, AlertTriangle, X, RefreshCw } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -36,6 +36,7 @@ import { ConfigureCardModal } from './ConfigureCardModal'
 import { CardRecommendations } from './CardRecommendations'
 import { MissionSuggestions } from './MissionSuggestions'
 import { TemplatesModal } from './TemplatesModal'
+import { FloatingDashboardActions } from './FloatingDashboardActions'
 import { DashboardTemplate } from './templates'
 
 // Module-level cache for dashboard data (survives navigation)
@@ -227,11 +228,12 @@ export function Dashboard() {
   // Handle pending restore card from CardHistory
   useEffect(() => {
     if (pendingRestoreCard && !isLoading) {
+      const size = getDefaultCardSize(pendingRestoreCard.cardType)
       const newCard: Card = {
         id: `restored-${Date.now()}`,
         card_type: pendingRestoreCard.cardType,
         config: pendingRestoreCard.config || {},
-        position: { x: 0, y: 0, w: 4, h: 3 },
+        position: { x: 0, y: 0, ...size },
         title: pendingRestoreCard.cardTitle,
       }
       // Record the card addition in history
@@ -332,13 +334,24 @@ export function Dashboard() {
     visualization: string
     config: Record<string, unknown>
   }>) => {
-    const newCards: Card[] = suggestions.map((s, index) => ({
-      id: `new-${Date.now()}-${index}`,
-      card_type: mapVisualizationToCardType(s.visualization, s.type),
-      config: s.config,
-      position: { x: 0, y: 0, w: 4, h: 3 },
-      title: s.title,
-    }))
+    const newCards: Card[] = suggestions.map((s, index) => {
+      const cardType = mapVisualizationToCardType(s.visualization, s.type)
+      const size = getDefaultCardSize(cardType)
+      // Debug: log card dimensions when adding
+      console.log('[AddCard Debug]', {
+        originalType: s.type,
+        visualization: s.visualization,
+        resolvedType: cardType,
+        size,
+      })
+      return {
+        id: `new-${Date.now()}-${index}`,
+        card_type: cardType,
+        config: s.config,
+        position: { x: 0, y: 0, ...size },
+        title: s.title,
+      }
+    })
     // Record each card addition in history
     newCards.forEach((card) => {
       recordCardAdded(card.id, card.card_type, card.title, card.config, dashboard?.id, dashboard?.name)
@@ -475,11 +488,12 @@ export function Dashboard() {
   }, [localCards, dashboard, recordCardConfigured])
 
   const handleAddRecommendedCard = useCallback((cardType: string, config?: Record<string, unknown>, title?: string) => {
+    const size = getDefaultCardSize(cardType)
     const newCard: Card = {
       id: `rec-${Date.now()}`,
       card_type: cardType,
       config: config || {},
-      position: { x: 0, y: 0, w: 4, h: 3 },
+      position: { x: 0, y: 0, ...size },
       title,
     }
     // Record in history
@@ -490,11 +504,12 @@ export function Dashboard() {
 
   // Create a new card from AI configuration
   const handleCreateCardFromAI = useCallback((cardType: string, config: Record<string, unknown>, title?: string) => {
+    const size = getDefaultCardSize(cardType)
     const newCard: Card = {
       id: `ai-${Date.now()}`,
       card_type: cardType,
       config: config || {},
-      position: { x: 0, y: 0, w: 4, h: 3 },
+      position: { x: 0, y: 0, ...size },
       title,
     }
     // Record in history
@@ -605,23 +620,6 @@ export function Dashboard() {
               Updated {lastUpdated.toLocaleTimeString()}
             </span>
           )}
-          {/* Divider */}
-          <div className="h-6 w-px bg-border" />
-          {/* Action buttons - matching other dashboards */}
-          <button
-            onClick={openTemplatesModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-lg transition-colors"
-          >
-            <Layout className="w-3.5 h-3.5" />
-            Templates
-          </button>
-          <button
-            onClick={openAddCardModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Card
-          </button>
         </div>
       </div>
 
@@ -699,6 +697,12 @@ export function Dashboard() {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Floating action buttons for Add Card and Templates */}
+      <FloatingDashboardActions
+        onAddCard={openAddCardModal}
+        onOpenTemplates={openTemplatesModal}
+      />
 
       {/* Add Card Modal */}
       <AddCardModal
@@ -860,6 +864,24 @@ function mapVisualizationToCardType(visualization: string, type: string): string
     sparkline: 'cluster_metrics',
   }
   return mapping[visualization] || type
+}
+
+// Get recommended default size for specific card types
+function getDefaultCardSize(cardType: string): { w: number; h: number } {
+  const largeSizeCards: Record<string, { w: number; h: number }> = {
+    // Full-width tall cards
+    cluster_resource_tree: { w: 12, h: 6 },
+    // Wide cards
+    event_stream: { w: 6, h: 3 },
+    helm_history: { w: 6, h: 3 },
+    namespace_events: { w: 6, h: 3 },
+    // Medium-tall cards
+    gpu_inventory: { w: 6, h: 3 },
+    gpu_workloads: { w: 6, h: 3 },
+    pvc_status: { w: 8, h: 3 },
+    service_status: { w: 8, h: 3 },
+  }
+  return largeSizeCards[cardType] || { w: 4, h: 3 }
 }
 
 function getDemoCards(): Card[] {

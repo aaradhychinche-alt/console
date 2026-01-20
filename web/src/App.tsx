@@ -12,6 +12,9 @@ import { Compute } from './components/compute/Compute'
 import { Network } from './components/network/Network'
 import { Security } from './components/security/Security'
 import { GitOps } from './components/gitops/GitOps'
+import { Alerts } from './components/alerts/Alerts'
+import { Cost } from './components/cost/Cost'
+import { Compliance } from './components/compliance/Compliance'
 import { GPUReservations } from './components/gpu/GPUReservations'
 import { CardHistory } from './components/history/CardHistory'
 import { CardHistoryEntry } from './hooks/useCardHistory'
@@ -199,6 +202,42 @@ function App() {
               <OnboardedRoute>
                 <Layout>
                   <GitOps />
+                </Layout>
+              </OnboardedRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alerts"
+          element={
+            <ProtectedRoute>
+              <OnboardedRoute>
+                <Layout>
+                  <Alerts />
+                </Layout>
+              </OnboardedRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/cost"
+          element={
+            <ProtectedRoute>
+              <OnboardedRoute>
+                <Layout>
+                  <Cost />
+                </Layout>
+              </OnboardedRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/compliance"
+          element={
+            <ProtectedRoute>
+              <OnboardedRoute>
+                <Layout>
+                  <Compliance />
                 </Layout>
               </OnboardedRoute>
             </ProtectedRoute>

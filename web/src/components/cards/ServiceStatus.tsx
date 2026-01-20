@@ -3,6 +3,7 @@ import { Layers, Globe, Server, ExternalLink, Search } from 'lucide-react'
 import { useServices } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 type SortByOption = 'type' | 'name' | 'namespace' | 'ports'
 
@@ -66,8 +67,8 @@ export function ServiceStatus() {
     return filtered
   }, [services, selectedClusters, isAllClustersSelected, searchQuery])
 
-  // Sort and limit
-  const displayServices = useMemo(() => {
+  // Sort services
+  const sortedServices = useMemo(() => {
     const sorted = [...filteredServices].sort((a, b) => {
       let result = 0
       switch (sortBy) {
@@ -88,10 +89,20 @@ export function ServiceStatus() {
       }
       return sortDirection === 'asc' ? result : -result
     })
+    return sorted
+  }, [filteredServices, sortBy, sortDirection])
 
-    if (limit === 'unlimited') return sorted
-    return sorted.slice(0, limit)
-  }, [filteredServices, sortBy, sortDirection, limit])
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: displayServices,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedServices, effectivePerPage)
 
   // Stats
   const stats = useMemo(() => ({
@@ -203,10 +214,17 @@ export function ServiceStatus() {
         )}
       </div>
 
-      {/* Footer */}
-      {filteredServices.length > displayServices.length && (
-        <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground text-center">
-          Showing {displayServices.length} of {filteredServices.length} services
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
         </div>
       )}
     </div>

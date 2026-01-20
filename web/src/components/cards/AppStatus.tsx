@@ -3,6 +3,7 @@ import { Box, CheckCircle, AlertTriangle, Clock, ChevronRight, Loader2 } from 'l
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDeployments } from '../../hooks/useMCP'
 
@@ -71,7 +72,7 @@ export function AppStatus(_props: AppStatusProps) {
     return Array.from(appMap.values())
   }, [deployments])
 
-  const apps = useMemo(() => {
+  const filteredAndSorted = useMemo(() => {
     // Apply global filters first
     let filtered = rawApps
 
@@ -103,9 +104,20 @@ export function AppStatus(_props: AppStatusProps) {
       else if (sortBy === 'clusters') result = b.clusters.length - a.clusters.length
       return sortDirection === 'asc' ? -result : result
     })
-    if (limit === 'unlimited') return sorted
-    return sorted.slice(0, limit)
-  }, [rawApps, sortBy, sortDirection, limit, globalSelectedClusters, isAllClustersSelected, customFilter])
+    return sorted
+  }, [rawApps, sortBy, sortDirection, globalSelectedClusters, isAllClustersSelected, customFilter])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: apps,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const handleAppClick = (app: AppData, cluster: string) => {
     // Drill down to the deployment in the specified cluster
@@ -196,6 +208,20 @@ export function AppStatus(_props: AppStatusProps) {
         )
       })}
       </div>
+
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
     </div>
   )
 }

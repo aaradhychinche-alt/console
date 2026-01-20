@@ -1,12 +1,20 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { RefreshCw, Zap } from 'lucide-react'
 import { useGPUNodes, useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
+import { CardControls, SortDirection } from '../ui/CardControls'
 
 interface GPUOverviewProps {
   config?: Record<string, unknown>
 }
+
+type SortByOption = 'count' | 'name'
+
+const SORT_OPTIONS = [
+  { value: 'count' as const, label: 'Count' },
+  { value: 'name' as const, label: 'Name' },
+]
 
 export function GPUOverview({ config: _config }: GPUOverviewProps) {
   const { nodes: rawNodes, isLoading, refetch } = useGPUNodes()
@@ -14,11 +22,28 @@ export function GPUOverview({ config: _config }: GPUOverviewProps) {
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const { drillToResources } = useDrillDownActions()
 
-  // Filter nodes by global cluster selection
+  const [selectedGpuType, setSelectedGpuType] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<SortByOption>('count')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  // Get all unique GPU types for filter dropdown
+  const allGpuTypes = useMemo(() => {
+    const types = new Set<string>()
+    rawNodes.forEach(n => types.add(n.gpuType))
+    return Array.from(types).sort()
+  }, [rawNodes])
+
+  // Filter nodes by global cluster selection and GPU type
   const nodes = useMemo(() => {
-    if (isAllClustersSelected) return rawNodes
-    return rawNodes.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
-  }, [rawNodes, selectedClusters, isAllClustersSelected])
+    let result = rawNodes
+    if (!isAllClustersSelected) {
+      result = result.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
+    }
+    if (selectedGpuType !== 'all') {
+      result = result.filter(n => n.gpuType === selectedGpuType)
+    }
+    return result
+  }, [rawNodes, selectedClusters, isAllClustersSelected, selectedGpuType])
 
   // Check if any selected clusters are reachable
   const filteredClusters = useMemo(() => {
@@ -57,12 +82,22 @@ export function GPUOverview({ config: _config }: GPUOverviewProps) {
   const allocatedGPUs = nodes.reduce((sum, n) => sum + n.gpuAllocated, 0)
   const gpuUtilization = totalGPUs > 0 ? (allocatedGPUs / totalGPUs) * 100 : 0
 
-  // Group by type
-  const gpuTypes = nodes.reduce((acc, n) => {
+  // Group by type and sort
+  const gpuTypesMap = nodes.reduce((acc, n) => {
     if (!acc[n.gpuType]) acc[n.gpuType] = 0
     acc[n.gpuType] += n.gpuCount
     return acc
   }, {} as Record<string, number>)
+
+  const sortedGpuTypes = Object.entries(gpuTypesMap).sort((a, b) => {
+    let compare = 0
+    if (sortBy === 'count') {
+      compare = a[1] - b[1]
+    } else {
+      compare = a[0].localeCompare(b[0])
+    }
+    return sortDirection === 'asc' ? compare : -compare
+  })
 
   const clusterCount = new Set(nodes.map(n => n.cluster)).size
 
@@ -74,14 +109,38 @@ export function GPUOverview({ config: _config }: GPUOverviewProps) {
           <Zap className="w-4 h-4 text-yellow-400" />
           <span className="text-sm font-medium text-muted-foreground">GPU Overview</span>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-          title="Refresh GPU data"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+            showLimit={false}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh GPU data"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
+
+      {/* GPU Type Filter */}
+      {allGpuTypes.length > 1 && (
+        <select
+          value={selectedGpuType}
+          onChange={(e) => setSelectedGpuType(e.target.value)}
+          className="w-full px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm text-foreground mb-3"
+        >
+          <option value="all">All GPU Types</option>
+          {allGpuTypes.map(type => (
+            <option key={type} value={type}>{type}</option>
+          ))}
+        </select>
+      )}
 
       {/* Main gauge */}
       <div className="flex justify-center mb-4" title={`GPU Utilization: ${allocatedGPUs} of ${totalGPUs} GPUs allocated (${gpuUtilization.toFixed(0)}%)`}>
@@ -148,11 +207,11 @@ export function GPUOverview({ config: _config }: GPUOverviewProps) {
       </div>
 
       {/* GPU Types */}
-      {Object.keys(gpuTypes).length > 0 && (
+      {sortedGpuTypes.length > 0 && (
         <div className="flex-1">
           <p className="text-xs text-muted-foreground mb-2">GPU Types</p>
           <div className="space-y-1">
-            {Object.entries(gpuTypes).map(([type, count]) => (
+            {sortedGpuTypes.map(([type, count]) => (
               <div
                 key={type}
                 className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 rounded px-1 transition-colors"

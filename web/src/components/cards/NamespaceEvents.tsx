@@ -4,6 +4,8 @@ import { useClusters, useWarningEvents, useNamespaces } from '../../hooks/useMCP
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface NamespaceEventsProps {
   config?: {
@@ -12,11 +14,23 @@ interface NamespaceEventsProps {
   }
 }
 
+type SortByOption = 'time' | 'type' | 'object' | 'count'
+
+const SORT_OPTIONS = [
+  { value: 'time' as const, label: 'Time' },
+  { value: 'type' as const, label: 'Type' },
+  { value: 'object' as const, label: 'Object' },
+  { value: 'count' as const, label: 'Count' },
+]
+
 export function NamespaceEvents({ config }: NamespaceEventsProps) {
   const { clusters: allClusters, isLoading: clustersLoading, refetch: refetchClusters } = useClusters()
   const { events: allEvents, isLoading: eventsLoading, refetch: refetchEvents } = useWarningEvents()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [selectedNamespace, setSelectedNamespace] = useState<string>(config?.namespace || '')
+  const [sortBy, setSortBy] = useState<SortByOption>('time')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -45,8 +59,8 @@ export function NamespaceEvents({ config }: NamespaceEventsProps) {
   // Fetch namespaces for the selected cluster
   const { namespaces } = useNamespaces(selectedCluster || undefined)
 
-  // Filter events by cluster and namespace
-  const filteredEvents = useMemo(() => {
+  // Filter and sort events by cluster and namespace
+  const sortedEvents = useMemo(() => {
     let events = allEvents
     if (selectedCluster) {
       events = events.filter(e => e.cluster === selectedCluster)
@@ -54,8 +68,42 @@ export function NamespaceEvents({ config }: NamespaceEventsProps) {
     if (selectedNamespace) {
       events = events.filter(e => e.namespace === selectedNamespace)
     }
-    return events.slice(0, 10)
-  }, [allEvents, selectedCluster, selectedNamespace])
+
+    // Sort events
+    const sorted = [...events].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'time':
+          const timeA = a.lastSeen ? new Date(a.lastSeen).getTime() : 0
+          const timeB = b.lastSeen ? new Date(b.lastSeen).getTime() : 0
+          compare = timeA - timeB
+          break
+        case 'type':
+          compare = a.type.localeCompare(b.type)
+          break
+        case 'object':
+          compare = a.object.localeCompare(b.object)
+          break
+        case 'count':
+          compare = a.count - b.count
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+    return sorted
+  }, [allEvents, selectedCluster, selectedNamespace, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: filteredEvents,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedEvents, effectivePerPage)
 
   const isLoading = clustersLoading || eventsLoading
 
@@ -106,18 +154,30 @@ export function NamespaceEvents({ config }: NamespaceEventsProps) {
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-orange-400" />
           <span className="text-sm font-medium text-muted-foreground">Namespace Events</span>
-          {filteredEvents.length > 0 && (
+          {totalItems > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">
-              {filteredEvents.length}
+              {totalItems}
             </span>
           )}
         </div>
-        <button
-          onClick={() => { refetchClusters(); refetchEvents(); }}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => { refetchClusters(); refetchEvents(); }}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh events"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Selectors */}
@@ -206,9 +266,23 @@ export function NamespaceEvents({ config }: NamespaceEventsProps) {
         )}
       </div>
 
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
+
       {/* Footer */}
       <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-        Showing warning events{selectedNamespace ? ` in ${selectedNamespace}` : ''}
+        {totalItems} warning events{selectedNamespace ? ` in ${selectedNamespace}` : ''}
       </div>
     </div>
   )

@@ -745,6 +745,99 @@ func (h *MCPHandlers) GetServiceAccounts(c *fiber.Ctx) error {
 	return c.Status(503).JSON(fiber.Map{"error": "No cluster access available"})
 }
 
+// GetPVCs returns PersistentVolumeClaims from clusters
+func (h *MCPHandlers) GetPVCs(c *fiber.Ctx) error {
+	cluster := c.Query("cluster")
+	namespace := c.Query("namespace")
+
+	if h.k8sClient != nil {
+		if cluster == "" {
+			clusters, err := h.k8sClient.ListClusters(c.Context())
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+			}
+
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			var allPVCs []k8s.PVC
+			clusterTimeout := 5 * time.Second
+
+			for _, cl := range clusters {
+				wg.Add(1)
+				go func(clusterName string) {
+					defer wg.Done()
+					ctx, cancel := context.WithTimeout(c.Context(), clusterTimeout)
+					defer cancel()
+
+					pvcs, err := h.k8sClient.GetPVCs(ctx, clusterName, namespace)
+					if err == nil && len(pvcs) > 0 {
+						mu.Lock()
+						allPVCs = append(allPVCs, pvcs...)
+						mu.Unlock()
+					}
+				}(cl.Name)
+			}
+
+			wg.Wait()
+			return c.JSON(fiber.Map{"pvcs": allPVCs, "source": "k8s"})
+		}
+
+		pvcs, err := h.k8sClient.GetPVCs(c.Context(), cluster, namespace)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"pvcs": pvcs, "source": "k8s"})
+	}
+
+	return c.Status(503).JSON(fiber.Map{"error": "No cluster access available"})
+}
+
+// GetPVs returns PersistentVolumes from clusters
+func (h *MCPHandlers) GetPVs(c *fiber.Ctx) error {
+	cluster := c.Query("cluster")
+
+	if h.k8sClient != nil {
+		if cluster == "" {
+			clusters, err := h.k8sClient.ListClusters(c.Context())
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+			}
+
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			var allPVs []k8s.PV
+			clusterTimeout := 5 * time.Second
+
+			for _, cl := range clusters {
+				wg.Add(1)
+				go func(clusterName string) {
+					defer wg.Done()
+					ctx, cancel := context.WithTimeout(c.Context(), clusterTimeout)
+					defer cancel()
+
+					pvs, err := h.k8sClient.GetPVs(ctx, clusterName)
+					if err == nil && len(pvs) > 0 {
+						mu.Lock()
+						allPVs = append(allPVs, pvs...)
+						mu.Unlock()
+					}
+				}(cl.Name)
+			}
+
+			wg.Wait()
+			return c.JSON(fiber.Map{"pvs": allPVs, "source": "k8s"})
+		}
+
+		pvs, err := h.k8sClient.GetPVs(c.Context(), cluster)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"pvs": pvs, "source": "k8s"})
+	}
+
+	return c.Status(503).JSON(fiber.Map{"error": "No cluster access available"})
+}
+
 // GetPodLogs returns logs from a pod
 func (h *MCPHandlers) GetPodLogs(c *fiber.Ctx) error {
 	cluster := c.Query("cluster")

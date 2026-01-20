@@ -3,6 +3,7 @@ import { Server, CheckCircle, XCircle, WifiOff, Cpu, RefreshCw, Loader2, Externa
 import { useClusters, useGPUNodes, ClusterInfo } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 import { Skeleton, SkeletonStats, SkeletonList } from '../ui/Skeleton'
 import { RefreshIndicator } from '../ui/RefreshIndicator'
 import { ClusterStatusDot, getClusterState, ClusterState } from '../ui/ClusterStatusBadge'
@@ -95,8 +96,8 @@ export function ClusterHealth() {
     return map
   }, [gpuNodes])
 
-  // Filter by global cluster selection, then sort and limit
-  const clusters = useMemo(() => {
+  // Filter by global cluster selection, then sort
+  const filteredAndSorted = useMemo(() => {
     // Apply global cluster filter
     const filtered = isAllClustersSelected
       ? rawClusters
@@ -112,9 +113,20 @@ export function ClusterHealth() {
       else if (sortBy === 'pods') result = (b.podCount || 0) - (a.podCount || 0)
       return sortDirection === 'asc' ? result : -result
     })
-    if (limit === 'unlimited') return sorted
-    return sorted.slice(0, limit)
-  }, [rawClusters, sortBy, sortDirection, limit, selectedClusters, isAllClustersSelected])
+    return sorted
+  }, [rawClusters, sortBy, sortDirection, selectedClusters, isAllClustersSelected])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: clusters,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   // Stats based on filtered clusters
   const filteredForStats = isAllClustersSelected
@@ -309,6 +321,20 @@ export function ClusterHealth() {
           )
         })}
       </div>
+
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
 
       {/* Footer totals */}
       <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">

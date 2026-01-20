@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react'
-import { GitBranch, CheckCircle, XCircle, RefreshCw, Clock, AlertTriangle, ChevronRight } from 'lucide-react'
+import { GitBranch, CheckCircle, XCircle, RefreshCw, Clock, AlertTriangle, ChevronRight, ExternalLink, AlertCircle } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { Skeleton } from '../ui/Skeleton'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface ArgoCDApplicationsProps {
   config?: {
@@ -95,6 +97,15 @@ function getMockArgoApplications(clusters: string[]): ArgoApplication[] {
   return apps
 }
 
+type SortByOption = 'syncStatus' | 'healthStatus' | 'name' | 'namespace'
+
+const SORT_OPTIONS = [
+  { value: 'syncStatus' as const, label: 'Sync Status' },
+  { value: 'healthStatus' as const, label: 'Health' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'namespace' as const, label: 'Namespace' },
+]
+
 const syncStatusConfig = {
   Synced: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/20' },
   OutOfSync: { icon: RefreshCw, color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
@@ -113,13 +124,16 @@ export function ArgoCDApplications({ config }: ArgoCDApplicationsProps) {
   const { clusters, isLoading, refetch } = useClusters()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'outOfSync' | 'unhealthy'>('all')
+  const [sortBy, setSortBy] = useState<SortByOption>('syncStatus')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
 
   const filteredClusters = useMemo(() => {
     if (isAllClustersSelected) return clusters.map(c => c.name)
     return selectedClusters
   }, [clusters, selectedClusters, isAllClustersSelected])
 
-  const applications = useMemo(() => {
+  const filteredAndSorted = useMemo(() => {
     const allApps = getMockArgoApplications(filteredClusters)
 
     // Filter by config
@@ -138,15 +152,49 @@ export function ArgoCDApplications({ config }: ArgoCDApplicationsProps) {
       filtered = filtered.filter(a => a.healthStatus !== 'Healthy')
     }
 
-    return filtered
-  }, [filteredClusters, config, selectedFilter])
+    // Sort
+    const syncOrder: Record<string, number> = { OutOfSync: 0, Unknown: 1, Synced: 2 }
+    const healthOrder: Record<string, number> = { Degraded: 0, Missing: 1, Progressing: 2, Unknown: 3, Healthy: 4 }
+    const sorted = [...filtered].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'syncStatus':
+          compare = (syncOrder[a.syncStatus] ?? 5) - (syncOrder[b.syncStatus] ?? 5)
+          break
+        case 'healthStatus':
+          compare = (healthOrder[a.healthStatus] ?? 5) - (healthOrder[b.healthStatus] ?? 5)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'namespace':
+          compare = a.namespace.localeCompare(b.namespace)
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+
+    return sorted
+  }, [filteredClusters, config, selectedFilter, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: applications,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const stats = useMemo(() => ({
-    synced: applications.filter(a => a.syncStatus === 'Synced').length,
-    outOfSync: applications.filter(a => a.syncStatus === 'OutOfSync').length,
-    healthy: applications.filter(a => a.healthStatus === 'Healthy').length,
-    unhealthy: applications.filter(a => a.healthStatus !== 'Healthy').length,
-  }), [applications])
+    synced: filteredAndSorted.filter(a => a.syncStatus === 'Synced').length,
+    outOfSync: filteredAndSorted.filter(a => a.syncStatus === 'OutOfSync').length,
+    healthy: filteredAndSorted.filter(a => a.healthStatus === 'Healthy').length,
+    unhealthy: filteredAndSorted.filter(a => a.healthStatus !== 'Healthy').length,
+  }), [filteredAndSorted])
 
   if (isLoading) {
     return (
@@ -167,24 +215,60 @@ export function ArgoCDApplications({ config }: ArgoCDApplicationsProps) {
   return (
     <div className="h-full flex flex-col min-h-card content-loaded">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-orange-400" />
           <span className="text-sm font-medium text-muted-foreground">ArgoCD Applications</span>
+          <span className="px-1.5 py-0.5 text-[10px] rounded bg-amber-500/20 text-amber-400">Demo</span>
           <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-            {applications.length}
+            {totalItems}
           </span>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://argo-cd.readthedocs.io/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1 hover:bg-secondary rounded transition-colors text-muted-foreground hover:text-purple-400"
+            title="ArgoCD Documentation"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh applications"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      {/* Integration notice */}
+      <div className="flex items-start gap-2 p-2 mb-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-xs">
+        <AlertCircle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-orange-400 font-medium">ArgoCD Integration</p>
+          <p className="text-muted-foreground">
+            Install ArgoCD to manage GitOps workflows.{' '}
+            <a href="https://argo-cd.readthedocs.io/en/stable/getting_started/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
+              Install guide →
+            </a>
+          </p>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-4 gap-2 mb-3">
         <div className="text-center p-2 rounded-lg bg-green-500/10 cursor-pointer hover:bg-green-500/20"
              onClick={() => setSelectedFilter('all')}>
           <p className="text-lg font-bold text-green-400">{stats.synced}</p>
@@ -256,6 +340,20 @@ export function ArgoCDApplications({ config }: ArgoCDApplicationsProps) {
           )
         })}
       </div>
+
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
     </div>
   )
 }

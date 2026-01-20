@@ -5,6 +5,7 @@ import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface GPUWorkloadsProps {
   config?: Record<string, unknown>
@@ -19,26 +20,89 @@ const SORT_OPTIONS = [
   { value: 'cluster' as const, label: 'Cluster' },
 ]
 
-// NVIDIA-related namespace patterns
-const NVIDIA_NAMESPACE_PATTERNS = [
+// Check if pod labels/annotations indicate GPU affinity or GPU-related workload
+function hasGPUAffinity(labels?: Record<string, string>, annotations?: Record<string, string>): boolean {
+  const gpuLabels = [
+    'nvidia.com/gpu',
+    'nvidia.com/gpu.product',
+    'nvidia.com/gpu.count',
+    'amd.com/gpu',
+    'gpu.intel.com/i915',
+    'accelerator',
+  ]
+
+  const gpuAnnotationPatterns = [
+    /nvidia/i,
+    /gpu/i,
+    /cuda/i,
+  ]
+
+  // Check labels
+  if (labels) {
+    for (const key of Object.keys(labels)) {
+      if (gpuLabels.some(gl => key.includes(gl)) || /gpu/i.test(key)) {
+        return true
+      }
+    }
+  }
+
+  // Check annotations for GPU-related content
+  if (annotations) {
+    for (const [key, value] of Object.entries(annotations)) {
+      if (gpuAnnotationPatterns.some(p => p.test(key) || p.test(value))) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+// Normalize cluster name for matching (handle kubeconfig/xxx format)
+function normalizeClusterName(cluster: string): string {
+  if (!cluster) return ''
+  // If it's a path like "kubeconfig/cluster-name", extract just the cluster name
+  const parts = cluster.split('/')
+  return parts[parts.length - 1] || cluster
+}
+
+// GPU/ML-related namespace patterns - fallback for identifying GPU workloads
+const GPU_NAMESPACE_PATTERNS = [
   /^nvidia/i,
   /^gpu-operator/i,
   /^gpu/i,
+  /gpu/i,           // Any namespace containing "gpu"
   /dcgm/i,
   /^vllm/i,
+  /vllm/i,          // Any namespace containing "vllm"
   /^ml-/i,
   /^ai-/i,
   /^inference/i,
+  /^llm/i,
+  /^ollama/i,
+  /^kubeai/i,
+  /^ray/i,          // Ray clusters
+  /^kubeflow/i,     // Kubeflow
+  /^mlflow/i,       // MLflow
+  /^triton/i,       // NVIDIA Triton
+  /^tensorrt/i,     // TensorRT
+  /^pytorch/i,      // PyTorch
+  /^tensorflow/i,   // TensorFlow
+  /^huggingface/i,  // HuggingFace
+  /^transformers/i, // Transformers
+  /^model/i,        // Model serving namespaces
+  /^training/i,     // Training namespaces
+  /^serving/i,      // Serving namespaces
 ]
 
-function isNvidiaNamespace(namespace: string): boolean {
-  return NVIDIA_NAMESPACE_PATTERNS.some(pattern => pattern.test(namespace))
+function isGPURelatedNamespace(namespace: string): boolean {
+  return GPU_NAMESPACE_PATTERNS.some(pattern => pattern.test(namespace))
 }
 
 export function GPUWorkloads({ config: _config }: GPUWorkloadsProps) {
   const { nodes: gpuNodes, isLoading: gpuLoading, refetch: refetchGPU } = useGPUNodes()
   const { pods: allPods, isLoading: podsLoading, refetch: refetchPods } = useAllPods()
-  const { clusters } = useClusters()
+  useClusters() // Keep hook for cache warming
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const { drillToPod } = useDrillDownActions()
 
@@ -48,63 +112,75 @@ export function GPUWorkloads({ config: _config }: GPUWorkloadsProps) {
 
   const isLoading = gpuLoading || podsLoading
 
-  // Get names of reachable clusters for filtering
-  const reachableClusterNames = useMemo(() => {
-    return new Set(clusters.filter(c => c.reachable !== false).map(c => c.name))
-  }, [clusters])
-
-  // Get clusters with GPUs (only from reachable clusters)
-  const gpuClusters = useMemo(() => {
-    const gpuClusterSet = new Set<string>()
-    gpuNodes.forEach(node => {
-      // Only include if the cluster is reachable
-      if (reachableClusterNames.has(node.cluster)) {
-        gpuClusterSet.add(node.cluster)
-      }
-    })
-    return gpuClusterSet
-  }, [gpuNodes, reachableClusterNames])
-
-  // Get GPU node names for filtering (only from reachable clusters)
-  const gpuNodeNames = useMemo(() => {
-    return new Set(
-      gpuNodes
-        .filter(n => reachableClusterNames.has(n.cluster))
-        .map(n => n.name)
-    )
-  }, [gpuNodes, reachableClusterNames])
-
-  // Filter pods that are either:
-  // 1. Running on GPU nodes
-  // 2. In NVIDIA-related namespaces
-  // 3. In clusters that have GPUs
-  // AND exclude pods from unreachable clusters
+  // Filter pods that are running on GPU nodes
+  // This is the most accurate way to identify GPU workloads
   const gpuWorkloads = useMemo(() => {
+    // Build a map of GPU node names by normalized cluster name for robust lookup
+    const gpuNodesByCluster = new Map<string, Set<string>>()
+    // Also build a global set of all GPU node names for fallback matching
+    const allGPUNodeNames = new Set<string>()
+
+    gpuNodes.forEach(node => {
+      const normalizedCluster = normalizeClusterName(node.cluster)
+      if (!gpuNodesByCluster.has(normalizedCluster)) {
+        gpuNodesByCluster.set(normalizedCluster, new Set())
+      }
+      gpuNodesByCluster.get(normalizedCluster)!.add(node.name)
+      allGPUNodeNames.add(node.name)
+    })
+
+    // Helper to check if pod is on a GPU node
+    const checkIsOnGPUNode = (pod: typeof allPods[0]) => {
+      if (!pod.node) return false
+
+      // First try cluster-specific lookup
+      if (pod.cluster) {
+        const normalizedPodCluster = normalizeClusterName(pod.cluster)
+        const nodeSet = gpuNodesByCluster.get(normalizedPodCluster)
+        if (nodeSet?.has(pod.node)) return true
+      }
+
+      // Fallback: check if pod's node matches any GPU node name across all clusters
+      // This handles edge cases where cluster names might not match exactly
+      return allGPUNodeNames.has(pod.node)
+    }
+
     let filtered = allPods.filter(pod => {
-      // Must be from a reachable cluster
-      if (!pod.cluster || !reachableClusterNames.has(pod.cluster)) return false
+      // Must have a cluster
+      if (!pod.cluster) return false
 
-      // Must be in a GPU cluster
-      if (!gpuClusters.has(pod.cluster)) return false
+      // Primary check: is this pod running on a GPU node?
+      // This is the most reliable indicator of GPU workload
+      if (checkIsOnGPUNode(pod)) return true
 
-      // Either on a GPU node or in NVIDIA namespace
-      const isOnGPUNode = pod.node && gpuNodeNames.has(pod.node)
-      const isInNvidiaNamespace = isNvidiaNamespace(pod.namespace || '')
+      // Secondary check: does the pod have GPU-related affinity/labels?
+      // This catches pods configured for GPU even if not yet scheduled
+      if (hasGPUAffinity(pod.labels, pod.annotations)) return true
 
-      return isOnGPUNode || isInNvidiaNamespace
+      // Tertiary check: is the pod in a GPU-related namespace?
+      // This is a fallback heuristic for when node info isn't available
+      if (isGPURelatedNamespace(pod.namespace || '')) return true
+
+      return false
     })
 
     // Apply global cluster filter
     if (!isAllClustersSelected) {
-      filtered = filtered.filter(pod =>
-        selectedClusters.some(c => (pod.cluster || '').includes(c) || c.includes(pod.cluster || ''))
-      )
+      filtered = filtered.filter(pod => {
+        const normalizedPodCluster = normalizeClusterName(pod.cluster || '')
+        return selectedClusters.some(c => {
+          const normalizedSelectedCluster = normalizeClusterName(c)
+          return normalizedPodCluster === normalizedSelectedCluster ||
+                 normalizedPodCluster.includes(normalizedSelectedCluster) ||
+                 normalizedSelectedCluster.includes(normalizedPodCluster)
+        })
+      })
     }
 
     return filtered
-  }, [allPods, gpuClusters, gpuNodeNames, selectedClusters, isAllClustersSelected, reachableClusterNames])
+  }, [allPods, gpuNodes, selectedClusters, isAllClustersSelected])
 
-  // Sort and limit workloads
+  // Sort workloads
   const sortedWorkloads = useMemo(() => {
     const statusOrder: Record<string, number> = {
       CrashLoopBackOff: 0,
@@ -129,10 +205,20 @@ export function GPUWorkloads({ config: _config }: GPUWorkloadsProps) {
       }
       return sortDirection === 'asc' ? result : -result
     })
+    return sorted
+  }, [gpuWorkloads, sortBy, sortDirection])
 
-    if (limit === 'unlimited') return sorted
-    return sorted.slice(0, limit)
-  }, [gpuWorkloads, sortBy, sortDirection, limit])
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: displayWorkloads,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedWorkloads, effectivePerPage)
 
   const handleRefresh = () => {
     refetchGPU()
@@ -260,12 +346,12 @@ export function GPUWorkloads({ config: _config }: GPUWorkloadsProps) {
 
       {/* Workload list */}
       <div className="flex-1 space-y-2 overflow-y-auto">
-        {sortedWorkloads.length === 0 ? (
+        {displayWorkloads.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No GPU workloads found
           </div>
         ) : (
-          sortedWorkloads.map((pod) => {
+          displayWorkloads.map((pod) => {
             const statusDisplay = getStatusDisplay(pod.status)
             const clusterName = pod.cluster?.split('/').pop() || pod.cluster || 'unknown'
 
@@ -305,6 +391,20 @@ export function GPUWorkloads({ config: _config }: GPUWorkloadsProps) {
           })
         )}
       </div>
+
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
     </div>
   )
 }

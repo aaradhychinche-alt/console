@@ -10,6 +10,7 @@ const CARD_CATALOG = {
     { type: 'cluster_comparison', title: 'Cluster Comparison', description: 'Side-by-side cluster metrics', visualization: 'bar' },
     { type: 'cluster_costs', title: 'Cluster Costs', description: 'Resource cost estimation', visualization: 'bar' },
     { type: 'upgrade_status', title: 'Cluster Upgrade Status', description: 'Available cluster upgrades', visualization: 'status' },
+    { type: 'cluster_resource_tree', title: 'Cluster Resource Tree', description: 'Hierarchical view of cluster resources with search and filters', visualization: 'table' },
   ],
   'Workloads': [
     { type: 'deployment_status', title: 'Deployment Status', description: 'Deployment health across clusters', visualization: 'donut' },
@@ -27,6 +28,7 @@ const CARD_CATALOG = {
     { type: 'gpu_status', title: 'GPU Status', description: 'GPU utilization by state', visualization: 'donut' },
     { type: 'gpu_inventory', title: 'GPU Inventory', description: 'Detailed GPU list', visualization: 'table' },
     { type: 'gpu_workloads', title: 'GPU Workloads', description: 'Pods running on GPU nodes or in NVIDIA namespaces', visualization: 'table' },
+    { type: 'gpu_usage_trend', title: 'GPU Usage Trend', description: 'GPU used vs available over time with stacked area chart', visualization: 'timeseries' },
   ],
   'Storage': [
     { type: 'storage_overview', title: 'Storage Overview', description: 'Total storage capacity and PVC summary', visualization: 'status' },
@@ -77,6 +79,19 @@ const CARD_CATALOG = {
     { type: 'klaude_issues', title: 'Klaude Issues', description: 'AI-powered issue detection and repair', visualization: 'status' },
     { type: 'klaude_kubeconfig_audit', title: 'Klaude Kubeconfig Audit', description: 'Audit kubeconfig for stale contexts', visualization: 'status' },
     { type: 'klaude_health_check', title: 'Klaude Health Check', description: 'Comprehensive AI health analysis', visualization: 'gauge' },
+  ],
+  'Alerting': [
+    { type: 'active_alerts', title: 'Active Alerts', description: 'Firing alerts with severity and quick actions', visualization: 'status' },
+    { type: 'alert_rules', title: 'Alert Rules', description: 'Manage alert rules and notification channels', visualization: 'table' },
+  ],
+  'Cost Management': [
+    { type: 'cluster_costs', title: 'Cluster Costs', description: 'Resource cost estimation by cluster with cloud provider pricing', visualization: 'bar' },
+    { type: 'opencost_overview', title: 'OpenCost', description: 'Cost allocation by namespace using OpenCost (demo)', visualization: 'bar' },
+    { type: 'kubecost_overview', title: 'Kubecost', description: 'Cost optimization and savings recommendations (demo)', visualization: 'bar' },
+  ],
+  'Policy Management': [
+    { type: 'opa_policies', title: 'OPA Gatekeeper', description: 'Policy enforcement with OPA Gatekeeper - shows installed status per cluster', visualization: 'status' },
+    { type: 'kyverno_policies', title: 'Kyverno Policies', description: 'Kubernetes-native policy management with Kyverno (demo)', visualization: 'status' },
   ],
 } as const
 
@@ -378,6 +393,33 @@ function generateCardSuggestions(query: string): CardSuggestion[] {
         title: 'Resource Usage',
         description: 'CPU and memory consumption',
         visualization: 'gauge',
+        config: {},
+      },
+    ]
+  }
+
+  // Policy-related queries
+  if (lowerQuery.includes('policy') || lowerQuery.includes('opa') || lowerQuery.includes('gatekeeper') || lowerQuery.includes('kyverno') || lowerQuery.includes('compliance')) {
+    return [
+      {
+        type: 'opa_policies',
+        title: 'OPA Gatekeeper',
+        description: 'Policy enforcement with OPA Gatekeeper',
+        visualization: 'status',
+        config: {},
+      },
+      {
+        type: 'kyverno_policies',
+        title: 'Kyverno Policies',
+        description: 'Kubernetes-native policy management',
+        visualization: 'status',
+        config: {},
+      },
+      {
+        type: 'security_issues',
+        title: 'Security Issues',
+        description: 'Security findings and vulnerabilities',
+        visualization: 'table',
         config: {},
       },
     ]
@@ -782,7 +824,7 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl mx-4 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-6xl mx-4 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
@@ -824,7 +866,7 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
         </div>
 
         {/* Content */}
-        <div className="p-4">
+        <div className="p-4 flex-1 overflow-y-auto">
           {/* Browse Tab */}
           {activeTab === 'browse' && (
             <div className="flex gap-4">
@@ -845,7 +887,7 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
                 </div>
 
                 {/* Card catalog */}
-                <div className="max-h-80 overflow-y-auto space-y-3">
+                <div className="max-h-[50vh] overflow-y-auto space-y-3">
                   {Object.entries(filteredCatalog).map(([category, cards]) => (
                     <div key={category} className="border border-border rounded-lg overflow-hidden">
                       <button
@@ -1021,7 +1063,7 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
               <p className="text-sm text-muted-foreground mb-3">
                 Suggested cards ({selectedCards.size} selected):
               </p>
-              <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto">
                 {suggestions.map((card, index) => {
                   const isAlreadyAdded = existingCardTypes.includes(card.type)
                   return (

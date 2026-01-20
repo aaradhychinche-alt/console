@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Activity, AlertTriangle, CheckCircle } from 'lucide-react'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { Activity, AlertTriangle, CheckCircle, Clock, Filter, ChevronDown, Server } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -9,7 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { useEvents } from '../../hooks/useMCP'
+import { useEvents, useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { RefreshIndicator } from '../ui/RefreshIndicator'
 
@@ -21,11 +21,19 @@ interface TimePoint {
   total: number
 }
 
+type TimeRange = '15m' | '1h' | '6h' | '24h'
+
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string; bucketMinutes: number; numBuckets: number }[] = [
+  { value: '15m', label: '15 min', bucketMinutes: 1, numBuckets: 15 },
+  { value: '1h', label: '1 hour', bucketMinutes: 5, numBuckets: 12 },
+  { value: '6h', label: '6 hours', bucketMinutes: 30, numBuckets: 12 },
+  { value: '24h', label: '24 hours', bucketMinutes: 60, numBuckets: 24 },
+]
+
 // Group events by time buckets
-function groupEventsByTime(events: Array<{ type: string; lastSeen?: string; firstSeen?: string; count: number }>, bucketMinutes = 5): TimePoint[] {
+function groupEventsByTime(events: Array<{ type: string; lastSeen?: string; firstSeen?: string; count: number }>, bucketMinutes = 5, numBuckets = 12): TimePoint[] {
   const now = Date.now()
   const bucketMs = bucketMinutes * 60 * 1000
-  const numBuckets = 12 // Last hour in 5-minute buckets
 
   // Initialize buckets
   const buckets: TimePoint[] = []
@@ -68,27 +76,78 @@ function groupEventsByTime(events: Array<{ type: string; lastSeen?: string; firs
 
 export function EventsTimeline() {
   const { events, isLoading, isRefreshing, lastUpdated } = useEvents(undefined, undefined, 100)
+  const { clusters } = useClusters()
   const { selectedClusters, isAllClustersSelected, clusterInfoMap } = useGlobalFilters()
+  const [timeRange, setTimeRange] = useState<TimeRange>('1h')
+  const [localClusterFilter, setLocalClusterFilter] = useState<string[]>([])
+  const [showClusterFilter, setShowClusterFilter] = useState(false)
+  const clusterFilterRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (clusterFilterRef.current && !clusterFilterRef.current.contains(event.target as Node)) {
+        setShowClusterFilter(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Get reachable clusters
+  const reachableClusters = useMemo(() => {
+    return clusters.filter(c => c.reachable !== false)
+  }, [clusters])
+
+  // Get available clusters for local filter (respects global filter)
+  const availableClustersForFilter = useMemo(() => {
+    if (isAllClustersSelected) return reachableClusters
+    return reachableClusters.filter(c => selectedClusters.includes(c.name))
+  }, [reachableClusters, selectedClusters, isAllClustersSelected])
+
+  // Count filtered clusters for display
+  const filteredClusterCount = useMemo(() => {
+    if (localClusterFilter.length > 0) return localClusterFilter.length
+    return availableClustersForFilter.length
+  }, [localClusterFilter, availableClustersForFilter])
+
+  const toggleClusterFilter = (clusterName: string) => {
+    setLocalClusterFilter(prev => {
+      if (prev.includes(clusterName)) {
+        return prev.filter(c => c !== clusterName)
+      }
+      return [...prev, clusterName]
+    })
+  }
 
   // Filter events by selected clusters AND exclude offline/unreachable clusters
   const filteredEvents = useMemo(() => {
     // First filter to only events from reachable clusters
-    const reachableEvents = events.filter(e => {
+    let result = events.filter(e => {
       if (!e.cluster) return true // Include events without cluster info
       const clusterInfo = clusterInfoMap[e.cluster]
       return !clusterInfo || clusterInfo.reachable !== false
     })
-    if (isAllClustersSelected) return reachableEvents
-    return reachableEvents.filter(e => e.cluster && selectedClusters.includes(e.cluster))
-  }, [events, selectedClusters, isAllClustersSelected, clusterInfoMap])
+    if (!isAllClustersSelected) {
+      result = result.filter(e => e.cluster && selectedClusters.includes(e.cluster))
+    }
+    // Apply local cluster filter
+    if (localClusterFilter.length > 0) {
+      result = result.filter(e => e.cluster && localClusterFilter.includes(e.cluster))
+    }
+    return result
+  }, [events, selectedClusters, isAllClustersSelected, clusterInfoMap, localClusterFilter])
 
   // Check if we have real data (events with timestamps)
   const hasRealData = filteredEvents.length > 0 && filteredEvents.some(e => e.lastSeen || e.firstSeen)
 
+  // Get time range config
+  const timeRangeConfig = TIME_RANGE_OPTIONS.find(t => t.value === timeRange) || TIME_RANGE_OPTIONS[1]
+
   // Group events into time buckets
   const timeSeriesData = useMemo(() => {
-    return groupEventsByTime(filteredEvents)
-  }, [filteredEvents])
+    return groupEventsByTime(filteredEvents, timeRangeConfig.bucketMinutes, timeRangeConfig.numBuckets)
+  }, [filteredEvents, timeRangeConfig.bucketMinutes, timeRangeConfig.numBuckets])
 
   // Calculate totals
   const totalWarnings = timeSeriesData.reduce((sum, d) => sum + d.warnings, 0)
@@ -106,10 +165,16 @@ export function EventsTimeline() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-medium text-foreground">Events Timeline</span>
+          {localClusterFilter.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+              <Server className="w-3 h-3" />
+              {filteredClusterCount}/{availableClustersForFilter.length}
+            </span>
+          )}
           {hasRealData && (
             <span className="text-xs text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
               Live
@@ -121,6 +186,69 @@ export function EventsTimeline() {
           lastUpdated={lastUpdated}
           size="sm"
         />
+      </div>
+
+      {/* Filter controls */}
+      <div className="flex items-center gap-2 mb-3">
+        {/* Time Range Filter */}
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-muted-foreground" />
+          <select
+            value={timeRange}
+            onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+            className="px-2 py-1 text-xs rounded-lg bg-secondary border border-border text-foreground cursor-pointer"
+            title="Select time range"
+          >
+            {TIME_RANGE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cluster Filter */}
+        {availableClustersForFilter.length > 1 && (
+          <div ref={clusterFilterRef} className="relative">
+            <button
+              onClick={() => setShowClusterFilter(!showClusterFilter)}
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                localClusterFilter.length > 0
+                  ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                  : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+              }`}
+              title="Filter by cluster"
+            >
+              <Filter className="w-3 h-3" />
+              <span>{localClusterFilter.length > 0 ? `${localClusterFilter.length} clusters` : 'All clusters'}</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showClusterFilter && (
+              <div className="absolute top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                <div className="p-1">
+                  <button
+                    onClick={() => setLocalClusterFilter([])}
+                    className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                      localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                    }`}
+                  >
+                    All clusters
+                  </button>
+                  {availableClustersForFilter.map(cluster => (
+                    <button
+                      key={cluster.name}
+                      onClick={() => toggleClusterFilter(cluster.name)}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      {cluster.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats row */}

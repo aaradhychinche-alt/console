@@ -60,12 +60,11 @@ const CARD_TYPE_LABELS: Record<string, string> = {
 // Sortable sidebar item component
 interface SortableItemProps {
   item: SidebarItem
-  canRemove: boolean
   onRemove: (id: string) => void
   renderIcon: (iconName: string, className?: string) => React.ReactNode
 }
 
-function SortableItem({ item, canRemove, onRemove, renderIcon }: SortableItemProps) {
+function SortableItem({ item, onRemove, renderIcon }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -102,10 +101,12 @@ function SortableItem({ item, canRemove, onRemove, renderIcon }: SortableItemPro
       {renderIcon(item.icon, 'w-4 h-4 text-muted-foreground')}
       <span className="flex-1 text-sm text-foreground">{item.name}</span>
       <span className="text-xs text-muted-foreground">{item.href}</span>
-      {(canRemove || item.isCustom) && (
+      {/* Allow removing any item except the main Dashboard (/) */}
+      {item.href !== '/' && (
         <button
           onClick={() => onRemove(item.id)}
           className="p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400"
+          title="Remove from sidebar"
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -132,6 +133,9 @@ const KNOWN_ROUTES: KnownRoute[] = [
   { href: '/events', name: 'Events', description: 'Real-time cluster events, warnings, and audit logs', icon: 'Activity', category: 'Core Dashboards' },
   { href: '/security', name: 'Security', description: 'Security policies, RBAC, vulnerabilities, and compliance', icon: 'Shield', category: 'Core Dashboards' },
   { href: '/gitops', name: 'GitOps', description: 'ArgoCD, Flux, Helm releases, and deployment drift detection', icon: 'GitBranch', category: 'Core Dashboards' },
+  { href: '/alerts', name: 'Alerts', description: 'Active alerts, rule management, and AI-powered diagnostics', icon: 'Bell', category: 'Core Dashboards' },
+  { href: '/cost', name: 'Cost Management', description: 'Resource costs, allocation tracking, and optimization recommendations', icon: 'DollarSign', category: 'Core Dashboards' },
+  { href: '/compliance', name: 'Compliance', description: 'Security posture, policy compliance, and audit readiness across clusters', icon: 'ShieldCheck', category: 'Core Dashboards' },
   { href: '/gpu-reservations', name: 'GPU Reservations', description: 'Schedule and manage GPU reservations with calendar and quota management', icon: 'Zap', category: 'Core Dashboards' },
   { href: '/storage', name: 'Storage', description: 'Persistent volumes, storage classes, and capacity management', icon: 'HardDrive', category: 'Core Dashboards' },
   { href: '/network', name: 'Network', description: 'Network policies, ingress, and service mesh configuration', icon: 'Network', category: 'Core Dashboards' },
@@ -313,7 +317,7 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
     return IconComponent ? <IconComponent className={className} /> : null
   }
 
-  const renderItemList = (items: SidebarItem[], canRemove = false, target: 'primary' | 'secondary') => (
+  const renderItemList = (items: SidebarItem[], target: 'primary' | 'secondary') => (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -325,7 +329,6 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
             <SortableItem
               key={item.id}
               item={item}
-              canRemove={canRemove}
               onRemove={removeItem}
               renderIcon={renderIcon}
             />
@@ -556,7 +559,7 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
               <span className="text-sm font-medium text-foreground">Primary Navigation</span>
               <span className="text-xs text-muted-foreground">({config.primaryNav.length} items)</span>
             </button>
-            {expandedSection === 'primary' && renderItemList(config.primaryNav, false, 'primary')}
+            {expandedSection === 'primary' && renderItemList(config.primaryNav, 'primary')}
           </div>
 
           {/* Secondary Navigation */}
@@ -573,7 +576,7 @@ export function SidebarCustomizer({ isOpen, onClose }: SidebarCustomizerProps) {
               <span className="text-sm font-medium text-foreground">Secondary Navigation</span>
               <span className="text-xs text-muted-foreground">({config.secondaryNav.length} items)</span>
             </button>
-            {expandedSection === 'secondary' && renderItemList(config.secondaryNav, false, 'secondary')}
+            {expandedSection === 'secondary' && renderItemList(config.secondaryNav, 'secondary')}
           </div>
 
           {/* Dashboard Cards */}

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Bell, Search, Server, Box, Activity, Command, Sun, Moon, Monitor, Coins, Globe, Filter, Check, AlertTriangle, Plus, Folder, X, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { Search, Server, Box, Activity, Command, Sun, Moon, Monitor, Coins, Globe, Filter, Check, AlertTriangle, Plus, Folder, X, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
 import { useTheme } from '../../hooks/useTheme'
 import { useTokenUsage } from '../../hooks/useTokenUsage'
@@ -12,6 +12,7 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { languages } from '../../lib/i18n'
 import { TourTrigger } from '../onboarding/Tour'
 import { UserProfileDropdown } from './UserProfileDropdown'
+import { AlertBadge } from '../ui/AlertBadge'
 import { cn } from '../../lib/cn'
 
 interface SearchResult {
@@ -677,8 +678,8 @@ export function Navbar() {
                   >
                     <span
                       className={cn(
-                        'absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm',
-                        isDemoMode ? 'translate-x-1' : 'translate-x-6'
+                        'absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm',
+                        isDemoMode ? 'translate-x-5' : 'translate-x-0'
                       )}
                     />
                   </button>
@@ -934,11 +935,8 @@ export function Navbar() {
         {/* Tour trigger */}
         <TourTrigger />
 
-        {/* Notifications */}
-        <button className="relative p-2 hover:bg-secondary rounded-lg transition-colors">
-          <Bell className="w-5 h-5 text-muted-foreground" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full" />
-        </button>
+        {/* Alerts */}
+        <AlertBadge />
 
         {/* User menu */}
         <UserProfileDropdown

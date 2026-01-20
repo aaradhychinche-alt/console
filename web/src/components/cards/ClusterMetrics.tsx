@@ -1,11 +1,20 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { TimeSeriesChart } from '../charts'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
-import { Server } from 'lucide-react'
+import { Server, Clock, Filter, ChevronDown } from 'lucide-react'
+
+type TimeRange = '15m' | '1h' | '6h' | '24h'
+
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string; points: number; intervalMs: number }[] = [
+  { value: '15m', label: '15 min', points: 15, intervalMs: 60000 },
+  { value: '1h', label: '1 hour', points: 20, intervalMs: 180000 },
+  { value: '6h', label: '6 hours', points: 24, intervalMs: 900000 },
+  { value: '24h', label: '24 hours', points: 24, intervalMs: 3600000 },
+]
 
 // Generate demo time series data with a seed for consistency per cluster
-function generateTimeSeriesData(points: number, baseValue: number, variance: number, seed: number) {
+function generateTimeSeriesData(points: number, baseValue: number, variance: number, seed: number, intervalMs: number) {
   const now = new Date()
   // Simple seeded random for consistency
   const seededRandom = (i: number) => {
@@ -13,9 +22,13 @@ function generateTimeSeriesData(points: number, baseValue: number, variance: num
     return x - Math.floor(x)
   }
   return Array.from({ length: points }, (_, i) => {
-    const time = new Date(now.getTime() - (points - i - 1) * 60000)
+    const time = new Date(now.getTime() - (points - i - 1) * intervalMs)
+    // Format based on interval
+    const timeStr = intervalMs >= 3600000
+      ? time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     return {
-      time: time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: timeStr,
       value: Math.max(0, baseValue + (seededRandom(i) - 0.5) * variance),
     }
   })
@@ -44,13 +57,45 @@ export function ClusterMetrics() {
   const { clusters: rawClusters } = useClusters()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('cpu')
+  const [timeRange, setTimeRange] = useState<TimeRange>('1h')
+  const [localClusterFilter, setLocalClusterFilter] = useState<string[]>([])
+  const [showClusterFilter, setShowClusterFilter] = useState(false)
+  const clusterFilterRef = useRef<HTMLDivElement>(null)
 
-  // Filter clusters based on global selection AND exclude offline/unreachable clusters
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (clusterFilterRef.current && !clusterFilterRef.current.contains(event.target as Node)) {
+        setShowClusterFilter(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Get reachable clusters
+  const reachableClusters = useMemo(() => {
+    return rawClusters.filter(c => c.reachable !== false)
+  }, [rawClusters])
+
+  // Filter clusters based on global selection AND local filter AND exclude offline/unreachable clusters
   const clusters = useMemo(() => {
-    const reachableClusters = rawClusters.filter(c => c.reachable !== false)
+    let filtered = reachableClusters
+    if (!isAllClustersSelected) {
+      filtered = filtered.filter(c => selectedClusters.includes(c.name))
+    }
+    // Apply local cluster filter if any selected
+    if (localClusterFilter.length > 0) {
+      filtered = filtered.filter(c => localClusterFilter.includes(c.name))
+    }
+    return filtered
+  }, [reachableClusters, selectedClusters, isAllClustersSelected, localClusterFilter])
+
+  // Get available clusters for local filter (respects global filter)
+  const availableClustersForFilter = useMemo(() => {
     if (isAllClustersSelected) return reachableClusters
     return reachableClusters.filter(c => selectedClusters.includes(c.name))
-  }, [rawClusters, selectedClusters, isAllClustersSelected])
+  }, [reachableClusters, selectedClusters, isAllClustersSelected])
 
   // Calculate real current values from cluster data
   const realValues = useMemo(() => {
@@ -64,13 +109,17 @@ export function ClusterMetrics() {
   // Check if we have real data
   const hasRealData = clusters.some(c => c.cpuCores !== undefined || c.memoryGB !== undefined)
 
+  // Get time range config
+  const timeRangeConfig = TIME_RANGE_OPTIONS.find(t => t.value === timeRange) || TIME_RANGE_OPTIONS[1]
+
   // Generate time-series data - use real values as base when available
   const data = useMemo(() => {
     const config = metricConfig[selectedMetric]
-    const points = 20
+    const points = timeRangeConfig.points
+    const intervalMs = timeRangeConfig.intervalMs
 
     if (clusters.length === 0) {
-      return generateTimeSeriesData(points, 0, 0, 0)
+      return generateTimeSeriesData(points, 0, 0, 0, intervalMs)
     }
 
     // Use real current value as base if available
@@ -79,7 +128,7 @@ export function ClusterMetrics() {
 
     // Generate simulated historical data centered around current real value
     const clusterData = clusters.map(cluster =>
-      generateTimeSeriesData(points, baseValue / clusters.length, variance / clusters.length, stringToSeed(cluster.name + selectedMetric))
+      generateTimeSeriesData(points, baseValue / clusters.length, variance / clusters.length, stringToSeed(cluster.name + selectedMetric + timeRange), intervalMs)
     )
 
     // Aggregate by summing all cluster values at each time point
@@ -90,23 +139,32 @@ export function ClusterMetrics() {
         value: totalValue,
       }
     })
-  }, [clusters, selectedMetric, hasRealData, realValues])
+  }, [clusters, selectedMetric, hasRealData, realValues, timeRange, timeRangeConfig.points, timeRangeConfig.intervalMs])
 
   const config = metricConfig[selectedMetric]
   // Use real current value if available, otherwise use last chart value
   const currentValue = hasRealData ? realValues[selectedMetric] : (data[data.length - 1]?.value || 0)
 
+  const toggleClusterFilter = (clusterName: string) => {
+    setLocalClusterFilter(prev => {
+      if (prev.includes(clusterName)) {
+        return prev.filter(c => c !== clusterName)
+      }
+      return [...prev, clusterName]
+    })
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header with metric selector */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div>
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-medium text-foreground">{config.label}</h4>
-            {!isAllClustersSelected && clusters.length > 0 && (
+            {clusters.length < availableClustersForFilter.length && clusters.length > 0 && (
               <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
                 <Server className="w-3 h-3" />
-                {clusters.length}
+                {clusters.length}/{availableClustersForFilter.length}
               </span>
             )}
             {hasRealData && (
@@ -134,6 +192,69 @@ export function ClusterMetrics() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Filter controls */}
+      <div className="flex items-center gap-2 mb-3">
+        {/* Time Range Filter */}
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-muted-foreground" />
+          <select
+            value={timeRange}
+            onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+            className="px-2 py-1 text-xs rounded-lg bg-secondary border border-border text-foreground cursor-pointer"
+            title="Select time range"
+          >
+            {TIME_RANGE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cluster Filter */}
+        {availableClustersForFilter.length > 1 && (
+          <div ref={clusterFilterRef} className="relative">
+            <button
+              onClick={() => setShowClusterFilter(!showClusterFilter)}
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                localClusterFilter.length > 0
+                  ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                  : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+              }`}
+              title="Filter by cluster"
+            >
+              <Filter className="w-3 h-3" />
+              <span>{localClusterFilter.length > 0 ? `${localClusterFilter.length} clusters` : 'All clusters'}</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showClusterFilter && (
+              <div className="absolute top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                <div className="p-1">
+                  <button
+                    onClick={() => setLocalClusterFilter([])}
+                    className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                      localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                    }`}
+                  >
+                    All clusters
+                  </button>
+                  {availableClustersForFilter.map(cluster => (
+                    <button
+                      key={cluster.name}
+                      onClick={() => toggleClusterFilter(cluster.name)}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      {cluster.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chart */}

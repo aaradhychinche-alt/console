@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
-import { Zap, TrendingUp } from 'lucide-react'
+import { Zap, TrendingUp, Clock, Filter, ChevronDown, Server } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -23,17 +23,66 @@ interface GPUPoint {
   total: number
 }
 
+type TimeRange = '15m' | '1h' | '6h' | '24h'
+
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
+  { value: '15m', label: '15 min' },
+  { value: '1h', label: '1 hour' },
+  { value: '6h', label: '6 hours' },
+  { value: '24h', label: '24 hours' },
+]
+
 export function GPUUtilization() {
   const { nodes: gpuNodes, isLoading } = useGPUNodes()
   const { clusters } = useClusters()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
+  const [timeRange, setTimeRange] = useState<TimeRange>('1h')
+  const [localClusterFilter, setLocalClusterFilter] = useState<string[]>([])
+  const [showClusterFilter, setShowClusterFilter] = useState(false)
+  const clusterFilterRef = useRef<HTMLDivElement>(null)
 
-  // Filter by selected clusters AND exclude offline/unreachable clusters
-  const filteredClusters = useMemo(() => {
-    const reachableClusters = clusters.filter(c => c.reachable !== false)
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (clusterFilterRef.current && !clusterFilterRef.current.contains(event.target as Node)) {
+        setShowClusterFilter(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Get reachable clusters
+  const reachableClusters = useMemo(() => {
+    return clusters.filter(c => c.reachable !== false)
+  }, [clusters])
+
+  // Get available clusters for local filter (respects global filter)
+  const availableClustersForFilter = useMemo(() => {
     if (isAllClustersSelected) return reachableClusters
     return reachableClusters.filter(c => selectedClusters.includes(c.name))
-  }, [clusters, selectedClusters, isAllClustersSelected])
+  }, [reachableClusters, selectedClusters, isAllClustersSelected])
+
+  // Filter by selected clusters AND local filter AND exclude offline/unreachable clusters
+  const filteredClusters = useMemo(() => {
+    let filtered = reachableClusters
+    if (!isAllClustersSelected) {
+      filtered = filtered.filter(c => selectedClusters.includes(c.name))
+    }
+    if (localClusterFilter.length > 0) {
+      filtered = filtered.filter(c => localClusterFilter.includes(c.name))
+    }
+    return filtered
+  }, [reachableClusters, selectedClusters, isAllClustersSelected, localClusterFilter])
+
+  const toggleClusterFilter = (clusterName: string) => {
+    setLocalClusterFilter(prev => {
+      if (prev.includes(clusterName)) {
+        return prev.filter(c => c !== clusterName)
+      }
+      return [...prev, clusterName]
+    })
+  }
 
   // Get names of reachable clusters for node filtering
   const reachableClusterNames = useMemo(() => {
@@ -46,17 +95,23 @@ export function GPUUtilization() {
   const historyRef = useRef<GPUPoint[]>([])
   const [history, setHistory] = useState<GPUPoint[]>([])
 
-  // Filter by selected clusters AND exclude nodes from offline/unreachable clusters
+  // Filter by selected clusters AND local filter AND exclude nodes from offline/unreachable clusters
   const filteredNodes = useMemo(() => {
     // First filter to only nodes from reachable clusters
-    const reachableNodes = gpuNodes.filter(n => {
+    let result = gpuNodes.filter(n => {
       // Extract cluster name from the node's cluster field (may be prefixed)
       const clusterName = n.cluster.split('/')[0]
       return reachableClusterNames.has(clusterName)
     })
-    if (isAllClustersSelected) return reachableNodes
-    return reachableNodes.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
-  }, [gpuNodes, selectedClusters, isAllClustersSelected, reachableClusterNames])
+    if (!isAllClustersSelected) {
+      result = result.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
+    }
+    // Apply local cluster filter
+    if (localClusterFilter.length > 0) {
+      result = result.filter(n => localClusterFilter.some(c => n.cluster.startsWith(c)))
+    }
+    return result
+  }, [gpuNodes, selectedClusters, isAllClustersSelected, reachableClusterNames, localClusterFilter])
 
   // Calculate current stats
   const currentStats = useMemo(() => {
@@ -134,16 +189,88 @@ export function GPUUtilization() {
     )
   }
 
-  // No reachable clusters or no GPUs available
+  // No reachable clusters or no GPUs available - still show filters so user can change selection
   if (!hasReachableClusters || (!isLoading && currentStats.total === 0)) {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-purple-400" />
             <span className="text-sm font-medium text-foreground">GPU Utilization</span>
+            {localClusterFilter.length > 0 && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+                <Server className="w-3 h-3" />
+                {localClusterFilter.length}/{availableClustersForFilter.length}
+              </span>
+            )}
           </div>
         </div>
+
+        {/* Filter controls - always show so user can change selection */}
+        <div className="flex items-center gap-2 mb-3">
+          {/* Time Range Filter */}
+          <div className="flex items-center gap-1">
+            <Clock className="w-3 h-3 text-muted-foreground" />
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+              className="px-2 py-1 text-xs rounded-lg bg-secondary border border-border text-foreground cursor-pointer"
+              title="Select time range"
+            >
+              {TIME_RANGE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Cluster Filter */}
+          {availableClustersForFilter.length > 1 && (
+            <div ref={clusterFilterRef} className="relative">
+              <button
+                onClick={() => setShowClusterFilter(!showClusterFilter)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                  localClusterFilter.length > 0
+                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                    : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+                }`}
+                title="Filter by cluster"
+              >
+                <Filter className="w-3 h-3" />
+                <span>{localClusterFilter.length > 0 ? `${localClusterFilter.length} clusters` : 'All clusters'}</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showClusterFilter && (
+                <div className="absolute top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                  <div className="p-1">
+                    <button
+                      onClick={() => setLocalClusterFilter([])}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      All clusters
+                    </button>
+                    {availableClustersForFilter.map(cluster => (
+                      <button
+                        key={cluster.name}
+                        onClick={() => toggleClusterFilter(cluster.name)}
+                        className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                          localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                        }`}
+                      >
+                        {cluster.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Empty state message */}
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           {!hasReachableClusters ? 'No reachable clusters' : 'No GPUs detected in selected clusters'}
         </div>
@@ -154,17 +281,85 @@ export function GPUUtilization() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-medium text-foreground">GPU Utilization</span>
+          {localClusterFilter.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+              <Server className="w-3 h-3" />
+              {localClusterFilter.length}/{availableClustersForFilter.length}
+            </span>
+          )}
           {hasRealData && (
             <span className="text-xs text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
               Live
             </span>
           )}
         </div>
-{/* No refresh indicator - useGPUNodes doesn't support it yet */}
+      </div>
+
+      {/* Filter controls */}
+      <div className="flex items-center gap-2 mb-3">
+        {/* Time Range Filter */}
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-muted-foreground" />
+          <select
+            value={timeRange}
+            onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+            className="px-2 py-1 text-xs rounded-lg bg-secondary border border-border text-foreground cursor-pointer"
+            title="Select time range"
+          >
+            {TIME_RANGE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cluster Filter */}
+        {availableClustersForFilter.length > 1 && (
+          <div ref={clusterFilterRef} className="relative">
+            <button
+              onClick={() => setShowClusterFilter(!showClusterFilter)}
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                localClusterFilter.length > 0
+                  ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                  : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+              }`}
+              title="Filter by cluster"
+            >
+              <Filter className="w-3 h-3" />
+              <span>{localClusterFilter.length > 0 ? `${localClusterFilter.length} clusters` : 'All clusters'}</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showClusterFilter && (
+              <div className="absolute top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                <div className="p-1">
+                  <button
+                    onClick={() => setLocalClusterFilter([])}
+                    className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                      localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                    }`}
+                  >
+                    All clusters
+                  </button>
+                  {availableClustersForFilter.map(cluster => (
+                    <button
+                      key={cluster.name}
+                      onClick={() => toggleClusterFilter(cluster.name)}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      {cluster.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats and pie chart row */}

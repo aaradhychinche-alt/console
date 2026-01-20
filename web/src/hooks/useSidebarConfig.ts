@@ -47,6 +47,7 @@ const DEFAULT_PRIMARY_NAV: SidebarItem[] = [
   { id: 'events', name: 'Events', icon: 'Activity', href: '/events', type: 'link', order: 6 },
   { id: 'security', name: 'Security', icon: 'Shield', href: '/security', type: 'link', order: 7 },
   { id: 'gitops', name: 'GitOps', icon: 'GitBranch', href: '/gitops', type: 'link', order: 8 },
+  { id: 'alerts', name: 'Alerts', icon: 'Bell', href: '/alerts', type: 'link', order: 9 },
 ]
 
 const DEFAULT_SECONDARY_NAV: SidebarItem[] = [

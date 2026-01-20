@@ -5,10 +5,20 @@ import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useMissions } from '../../hooks/useMissions'
 import { useLocalAgent } from '../../hooks/useLocalAgent'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface UpgradeStatusProps {
   config?: Record<string, unknown>
 }
+
+type SortByOption = 'status' | 'version' | 'cluster'
+
+const SORT_OPTIONS = [
+  { value: 'status' as const, label: 'Status' },
+  { value: 'version' as const, label: 'Version' },
+  { value: 'cluster' as const, label: 'Cluster' },
+]
 
 // Shared WebSocket for version fetching
 let versionWs: WebSocket | null = null
@@ -141,6 +151,10 @@ export function UpgradeStatus({ config: _config }: UpgradeStatusProps) {
   const { startMission } = useMissions()
   const { isConnected: agentConnected } = useLocalAgent()
   const [clusterVersions, setClusterVersions] = useState<Record<string, string>>({})
+  const [fetchCompleted, setFetchCompleted] = useState(false)
+  const [sortBy, setSortBy] = useState<SortByOption>('status')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -149,7 +163,13 @@ export function UpgradeStatus({ config: _config }: UpgradeStatusProps) {
 
   // Fetch real versions from clusters via KKC agent
   useEffect(() => {
-    if (!agentConnected || allClusters.length === 0) return
+    if (!agentConnected || allClusters.length === 0) {
+      // If not connected, mark fetch as completed so we show '-' instead of 'loading...'
+      setFetchCompleted(true)
+      return
+    }
+
+    setFetchCompleted(false)
 
     const fetchVersions = async () => {
       const versions: Record<string, string> = {}
@@ -161,10 +181,14 @@ export function UpgradeStatus({ config: _config }: UpgradeStatusProps) {
         const version = await fetchClusterVersion(cluster.name)
         if (version) {
           versions[cluster.name] = version
+        } else {
+          // Mark failed fetches so we don't show loading forever
+          versions[cluster.name] = '-'
         }
       }
 
       setClusterVersions(versions)
+      setFetchCompleted(true)
     }
 
     fetchVersions()
@@ -222,21 +246,54 @@ Please proceed step by step and ask for confirmation before making any changes.`
   }
 
   // Build version data from real cluster versions
-  const clusterVersionData = clusters.map((c) => {
-    const isUnreachable = c.healthy === false || !c.nodeCount || c.nodeCount === 0
-    const currentVersion = clusterVersions[c.name] || (isUnreachable ? '-' : 'loading...')
-    const targetVersion = getRecommendedUpgrade(currentVersion)
-    const hasUpgrade = targetVersion && targetVersion !== currentVersion && currentVersion !== '-' && currentVersion !== 'loading...'
+  const clusterVersionData = useMemo(() => {
+    const data = clusters.map((c) => {
+      const isUnreachable = c.healthy === false || !c.nodeCount || c.nodeCount === 0
+      // Show loading only while actively fetching, otherwise show version or '-'
+      const currentVersion = clusterVersions[c.name] || (isUnreachable ? '-' : (!fetchCompleted && agentConnected ? 'loading...' : '-'))
+      const targetVersion = getRecommendedUpgrade(currentVersion)
+      const hasUpgrade = targetVersion && targetVersion !== currentVersion && currentVersion !== '-' && currentVersion !== 'loading...'
 
-    return {
-      name: c.name,
-      currentVersion,
-      targetVersion: hasUpgrade ? targetVersion : currentVersion,
-      status: isUnreachable ? 'unreachable' as const : hasUpgrade ? 'available' as const : 'current' as const,
-      progress: 0,
-      isUnreachable,
-    }
-  })
+      return {
+        name: c.name,
+        currentVersion,
+        targetVersion: hasUpgrade ? targetVersion : currentVersion,
+        status: isUnreachable ? 'unreachable' as const : hasUpgrade ? 'available' as const : 'current' as const,
+        progress: 0,
+        isUnreachable,
+      }
+    })
+
+    // Sort
+    const statusOrder: Record<string, number> = { available: 0, unreachable: 1, current: 2 }
+    return data.sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'status':
+          compare = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3)
+          break
+        case 'version':
+          compare = a.currentVersion.localeCompare(b.currentVersion)
+          break
+        case 'cluster':
+          compare = a.name.localeCompare(b.name)
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+  }, [clusters, clusterVersions, agentConnected, fetchCompleted, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: displayClusters,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(clusterVersionData, effectivePerPage)
 
   const pendingUpgrades = clusterVersionData.filter((c) => c.status === 'available').length
 
@@ -245,6 +302,7 @@ Please proceed step by step and ask for confirmation before making any changes.`
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
+          <ArrowUp className="w-4 h-4 text-yellow-400" />
           <span className="text-sm font-medium text-muted-foreground">Upgrade Status</span>
           {pendingUpgrades > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
@@ -252,17 +310,29 @@ Please proceed step by step and ask for confirmation before making any changes.`
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh upgrade status"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Clusters list */}
       <div className="flex-1 space-y-2 overflow-y-auto">
-        {clusterVersionData.map((cluster) => (
+        {displayClusters.map((cluster) => (
           <div
             key={cluster.name}
             className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
@@ -300,6 +370,20 @@ Please proceed step by step and ask for confirmation before making any changes.`
           </div>
         ))}
       </div>
+
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
     </div>
   )
 }

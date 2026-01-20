@@ -300,6 +300,20 @@ export interface PVC {
   annotations?: Record<string, string>
 }
 
+export interface PV {
+  name: string
+  cluster?: string
+  status: string
+  capacity?: string
+  storageClass?: string
+  reclaimPolicy?: string
+  accessModes?: string[]
+  claimRef?: string
+  volumeMode?: string
+  age?: string
+  labels?: Record<string, string>
+}
+
 export interface MCPStatus {
   opsClient: {
     available: boolean
@@ -1269,7 +1283,7 @@ export function usePods(cluster?: string, namespace?: string, sortBy: 'restarts'
 
   useEffect(() => {
     const hasCachedData = podsCache && podsCache.key === cacheKey
-    refetch(!hasCachedData) // silent=true if we have cached data
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll for pod updates
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -1336,7 +1350,7 @@ export function useAllPods(cluster?: string, namespace?: string) {
 
   useEffect(() => {
     const hasCachedData = podsCache && podsCache.key === cacheKey
-    refetch(!hasCachedData) // silent=true if we have cached data
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll for pod updates
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -1410,7 +1424,7 @@ export function usePodIssues(cluster?: string, namespace?: string) {
 
   useEffect(() => {
     const hasCachedData = podIssuesCache && podIssuesCache.key === cacheKey
-    refetch(!hasCachedData)
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll every 30 seconds for pod issue updates
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -1485,7 +1499,7 @@ export function useEvents(cluster?: string, namespace?: string, limit = 20) {
 
   useEffect(() => {
     const hasCachedData = eventsCache && eventsCache.key === cacheKey
-    refetch(!hasCachedData)
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll every 30 seconds for events
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -1559,7 +1573,7 @@ export function useDeploymentIssues(cluster?: string, namespace?: string) {
 
   useEffect(() => {
     const hasCachedData = deploymentIssuesCache && deploymentIssuesCache.key === cacheKey
-    refetch(!hasCachedData)
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll every 30 seconds for deployment issues
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -1740,7 +1754,7 @@ export function useServices(cluster?: string, namespace?: string) {
   useEffect(() => {
     // If we have cached data, still refresh in background but don't show loading
     const hasCachedData = servicesCache && servicesCache.key === cacheKey
-    refetch(!hasCachedData) // silent=true if we have cached data
+    refetch(!!hasCachedData) // silent=true if we have cached data
 
     // Poll every 30 seconds for service updates
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
@@ -1999,13 +2013,44 @@ export function usePVCs(cluster?: string, namespace?: string) {
 
   useEffect(() => {
     const hasCachedData = pvcsCache && pvcsCache.key === cacheKey
-    refetch(!hasCachedData) // silent=true if we have cached data
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll for PVC updates
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [refetch, cacheKey])
 
   return { pvcs, isLoading, isRefreshing, lastUpdated, error, refetch: () => refetch(false) }
+}
+
+// Hook to get PVs (PersistentVolumes)
+export function usePVs(cluster?: string) {
+  const [pvs, setPVs] = useState<PV[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (cluster) params.append('cluster', cluster)
+      const { data } = await api.get<{ pvs: PV[] }>(`/api/mcp/pvs?${params}`)
+      setPVs(data.pvs || [])
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch PVs')
+      setPVs([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [cluster])
+
+  useEffect(() => {
+    refetch()
+    const interval = setInterval(refetch, REFRESH_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [refetch])
+
+  return { pvs, isLoading, error, refetch }
 }
 
 // Hook to get pod logs
@@ -2108,7 +2153,7 @@ export function useWarningEvents(cluster?: string, namespace?: string, limit = 2
 
   useEffect(() => {
     const hasCachedData = warningEventsCache && warningEventsCache.key === cacheKey
-    refetch(!hasCachedData)
+    refetch(!!hasCachedData) // silent=true if we have cached data
     // Poll every 30 seconds for events
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)

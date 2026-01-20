@@ -4,6 +4,8 @@ import { useClusters, useOperators, Operator } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface OperatorStatusProps {
   config?: {
@@ -11,9 +13,21 @@ interface OperatorStatusProps {
   }
 }
 
+type SortByOption = 'status' | 'name' | 'namespace' | 'version'
+
+const SORT_OPTIONS = [
+  { value: 'status' as const, label: 'Status' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'namespace' as const, label: 'Namespace' },
+  { value: 'version' as const, label: 'Version' },
+]
+
 export function OperatorStatus({ config }: OperatorStatusProps) {
   const { clusters: allClusters, isLoading: clustersLoading } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
+  const [sortBy, setSortBy] = useState<SortByOption>('status')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -43,8 +57,8 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
   // Fetch operators for selected cluster
   const { operators: rawOperators, isLoading: operatorsLoading, refetch } = useOperators(selectedCluster || undefined)
 
-  // Apply filters to operators
-  const operators = useMemo(() => {
+  // Apply filters and sorting to operators
+  const filteredAndSorted = useMemo(() => {
     let result = rawOperators
 
     // Apply status filter
@@ -60,8 +74,41 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
       )
     }
 
+    // Sort
+    const statusOrder: Record<string, number> = { Failed: 0, Installing: 1, Upgrading: 2, Succeeded: 3 }
+    result = [...result].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'status':
+          compare = (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'namespace':
+          compare = a.namespace.localeCompare(b.namespace)
+          break
+        case 'version':
+          compare = a.version.localeCompare(b.version)
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+
     return result
-  }, [rawOperators, filterByStatus, customFilter])
+  }, [rawOperators, filterByStatus, customFilter, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: operators,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const isLoading = clustersLoading || operatorsLoading
 
@@ -114,18 +161,30 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
         <div className="flex items-center gap-2">
           <Package className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-medium text-muted-foreground">OLM Operators</span>
-          {operators.length > 0 && (
+          {totalItems > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
-              {operators.length}
+              {totalItems}
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh operators"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Cluster selector */}
@@ -202,9 +261,23 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
             })}
           </div>
 
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
+
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-            Operator Lifecycle Manager status
+            {totalItems} operators via Operator Lifecycle Manager
           </div>
         </>
       )}

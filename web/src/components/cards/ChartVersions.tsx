@@ -4,6 +4,8 @@ import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface ChartVersionsProps {
   config?: {
@@ -19,10 +21,21 @@ interface ChartInfo {
   repository: string
 }
 
+type SortByOption = 'upgrade' | 'name' | 'repository'
+
+const SORT_OPTIONS = [
+  { value: 'upgrade' as const, label: 'Upgrade Available' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'repository' as const, label: 'Repository' },
+]
+
 export function ChartVersions({ config }: ChartVersionsProps) {
   const { clusters: allClusters, isLoading, refetch } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [showUpgradesOnly, setShowUpgradesOnly] = useState(false)
+  const [sortBy, setSortBy] = useState<SortByOption>('upgrade')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -59,10 +72,40 @@ export function ChartVersions({ config }: ChartVersionsProps) {
     { name: 'elasticsearch', installed: '8.5.1', latest: '8.5.1', hasUpgrade: false, repository: 'elastic' },
   ] : []
 
-  const charts = useMemo(() => {
-    if (!showUpgradesOnly) return allCharts
-    return allCharts.filter(c => c.hasUpgrade)
-  }, [allCharts, showUpgradesOnly])
+  const filteredAndSorted = useMemo(() => {
+    let result = showUpgradesOnly ? allCharts.filter(c => c.hasUpgrade) : allCharts
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'upgrade':
+          compare = (a.hasUpgrade ? 0 : 1) - (b.hasUpgrade ? 0 : 1)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'repository':
+          compare = a.repository.localeCompare(b.repository)
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+
+    return result
+  }, [allCharts, showUpgradesOnly, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: charts,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const upgradeCount = allCharts.filter(c => c.hasUpgrade).length
 
@@ -95,12 +138,24 @@ export function ChartVersions({ config }: ChartVersionsProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh chart versions"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Cluster selector */}
@@ -181,6 +236,20 @@ export function ChartVersions({ config }: ChartVersionsProps) {
               </div>
             ))}
           </div>
+
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">

@@ -4,6 +4,8 @@ import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface HelmHistoryProps {
   config?: {
@@ -22,10 +24,21 @@ interface HistoryEntry {
   description: string
 }
 
+type SortByOption = 'revision' | 'status' | 'updated'
+
+const SORT_OPTIONS = [
+  { value: 'revision' as const, label: 'Revision' },
+  { value: 'status' as const, label: 'Status' },
+  { value: 'updated' as const, label: 'Updated' },
+]
+
 export function HelmHistory({ config }: HelmHistoryProps) {
   const { clusters: allClusters, isLoading, refetch } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [selectedRelease, setSelectedRelease] = useState<string>(config?.release || '')
+  const [sortBy, setSortBy] = useState<SortByOption>('revision')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -57,13 +70,45 @@ export function HelmHistory({ config }: HelmHistoryProps) {
   ] : []
 
   // Mock history data
-  const history: HistoryEntry[] = selectedRelease ? [
+  const allHistory: HistoryEntry[] = selectedRelease ? [
     { revision: 5, updated: '2024-01-11T14:30:00Z', status: 'deployed', chart: 'prometheus-25.8.0', appVersion: '2.47.0', description: 'Upgrade complete' },
     { revision: 4, updated: '2024-01-08T10:15:00Z', status: 'superseded', chart: 'prometheus-25.7.0', appVersion: '2.46.0', description: 'Upgrade complete' },
     { revision: 3, updated: '2024-01-05T16:00:00Z', status: 'superseded', chart: 'prometheus-25.6.0', appVersion: '2.46.0', description: 'Upgrade complete' },
     { revision: 2, updated: '2024-01-02T09:30:00Z', status: 'superseded', chart: 'prometheus-25.5.0', appVersion: '2.45.0', description: 'Rollback to 1' },
     { revision: 1, updated: '2023-12-20T11:00:00Z', status: 'superseded', chart: 'prometheus-25.4.0', appVersion: '2.45.0', description: 'Install complete' },
   ] : []
+
+  // Sort history
+  const sortedHistory = useMemo(() => {
+    const statusOrder: Record<string, number> = { failed: 0, 'pending-upgrade': 1, 'pending-rollback': 2, deployed: 3, superseded: 4 }
+    return [...allHistory].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'revision':
+          compare = b.revision - a.revision
+          break
+        case 'status':
+          compare = (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
+          break
+        case 'updated':
+          compare = new Date(b.updated).getTime() - new Date(a.updated).getTime()
+          break
+      }
+      return sortDirection === 'asc' ? -compare : compare
+    })
+  }, [allHistory, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: history,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedHistory, effectivePerPage)
 
   const getStatusIcon = (status: HistoryEntry['status']) => {
     switch (status) {
@@ -113,18 +158,30 @@ export function HelmHistory({ config }: HelmHistoryProps) {
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-violet-400" />
           <span className="text-sm font-medium text-muted-foreground">Helm History</span>
-          {history.length > 0 && (
+          {totalItems > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400">
-              {history.length} revisions
+              {totalItems} revisions
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh history"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Selectors */}
@@ -215,9 +272,23 @@ export function HelmHistory({ config }: HelmHistoryProps) {
             </div>
           </div>
 
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
+
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-            Showing last {history.length} revisions
+            Showing {history.length} of {totalItems} revisions
           </div>
         </>
       )}

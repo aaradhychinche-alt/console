@@ -300,6 +300,8 @@ func (s *Server) setupRoutes() {
 	api.Get("/mcp/configmaps", mcpHandlers.GetConfigMaps)
 	api.Get("/mcp/secrets", mcpHandlers.GetSecrets)
 	api.Get("/mcp/serviceaccounts", mcpHandlers.GetServiceAccounts)
+	api.Get("/mcp/pvcs", mcpHandlers.GetPVCs)
+	api.Get("/mcp/pvs", mcpHandlers.GetPVs)
 	api.Get("/mcp/pods/logs", mcpHandlers.GetPodLogs)
 	api.Post("/mcp/tools/ops/call", mcpHandlers.CallOpsTool)
 	api.Post("/mcp/tools/deploy/call", mcpHandlers.CallDeployTool)

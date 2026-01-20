@@ -1,6 +1,25 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { useSearchParams, useLocation } from 'react-router-dom'
-import { HardDrive, Database, FolderArchive, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, Hourglass, X, ExternalLink } from 'lucide-react'
+import { HardDrive, Database, FolderArchive, Plus, Layout, LayoutGrid, ChevronDown, ChevronRight, RefreshCw, Activity, Hourglass, X, ExternalLink, GripVertical } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useClusters, usePVCs, PVC } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useShowCards } from '../../hooks/useShowCards'
@@ -11,6 +30,7 @@ import { CARD_COMPONENTS } from '../cards/cardRegistry'
 import { AddCardModal } from '../dashboard/AddCardModal'
 import { TemplatesModal } from '../dashboard/TemplatesModal'
 import { ConfigureCardModal } from '../dashboard/ConfigureCardModal'
+import { FloatingDashboardActions } from '../dashboard/FloatingDashboardActions'
 import { DashboardTemplate } from '../dashboard/templates'
 import { ClusterBadge } from '../ui/ClusterBadge'
 
@@ -151,17 +171,109 @@ interface StorageCard {
 
 const STORAGE_CARDS_KEY = 'kubestellar-storage-cards'
 
+// Default cards for the storage dashboard
+const DEFAULT_STORAGE_CARDS: StorageCard[] = [
+  { id: 'default-storage-overview', card_type: 'storage_overview', title: 'Storage Overview', config: {}, position: { w: 4, h: 3 } },
+  { id: 'default-pvc-status', card_type: 'pvc_status', title: 'PVC Status', config: {}, position: { w: 8, h: 3 } },
+]
+
 function loadStorageCards(): StorageCard[] {
   try {
     const stored = localStorage.getItem(STORAGE_CARDS_KEY)
-    return stored ? JSON.parse(stored) : []
+    if (stored) {
+      return JSON.parse(stored)
+    }
   } catch {
-    return []
+    // Fall through to return defaults
   }
+  return DEFAULT_STORAGE_CARDS
 }
 
 function saveStorageCards(cards: StorageCard[]) {
   localStorage.setItem(STORAGE_CARDS_KEY, JSON.stringify(cards))
+}
+
+// Sortable card component with drag handle
+interface SortableStorageCardProps {
+  card: StorageCard
+  onConfigure: () => void
+  onRemove: () => void
+  onWidthChange: (newWidth: number) => void
+  isDragging: boolean
+}
+
+const SortableStorageCard = memo(function SortableStorageCard({
+  card,
+  onConfigure,
+  onRemove,
+  onWidthChange,
+  isDragging,
+}: SortableStorageCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: card.id })
+
+  const cardWidth = card.position?.w || 4
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    gridColumn: `span ${cardWidth}`,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  const CardComponent = CARD_COMPONENTS[card.card_type]
+  if (!CardComponent) {
+    console.warn(`Unknown card type: ${card.card_type}`)
+    return null
+  }
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <CardWrapper
+        cardId={card.id}
+        cardType={card.card_type}
+        title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        cardWidth={cardWidth}
+        onConfigure={onConfigure}
+        onRemove={onRemove}
+        onWidthChange={onWidthChange}
+        dragHandle={
+          <button
+            {...attributes}
+            {...listeners}
+            className="p-1 rounded hover:bg-secondary cursor-grab active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <GripVertical className="w-4 h-4 text-muted-foreground" />
+          </button>
+        }
+      >
+        <CardComponent config={card.config} />
+      </CardWrapper>
+    </div>
+  )
+})
+
+// Drag preview for overlay
+function StorageDragPreviewCard({ card }: { card: StorageCard }) {
+  const cardWidth = card.position?.w || 4
+  return (
+    <div
+      className="glass rounded-lg p-4 shadow-xl"
+      style={{ width: `${(cardWidth / 12) * 100}%`, minWidth: 200, maxWidth: 400 }}
+    >
+      <div className="flex items-center gap-2">
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium truncate">
+          {card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 export function Storage() {
@@ -186,6 +298,36 @@ export function Storage() {
   // PVC List Modal state
   const [showPVCModal, setShowPVCModal] = useState(false)
   const [pvcModalFilter, setPVCModalFilter] = useState<'Bound' | 'Pending' | 'all'>('all')
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveId(null)
+
+    if (over && active.id !== over.id) {
+      setCards((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
 
   // Combined loading/refreshing states (useClusters has shared cache so data persists)
   const isFetching = isLoading || isRefreshing
@@ -543,38 +685,44 @@ export function Storage() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-12 gap-4">
-                {cards.map(card => {
-                  const CardComponent = CARD_COMPONENTS[card.card_type]
-                  if (!CardComponent) {
-                    console.warn(`Unknown card type: ${card.card_type}`)
-                    return null
-                  }
-                  const cardWidth = card.position?.w || 4
-                  return (
-                    <div
-                      key={card.id}
-                      style={{ gridColumn: `span ${cardWidth}` }}
-                    >
-                      <CardWrapper
-                        cardId={card.id}
-                        cardType={card.card_type}
-                        title={card.title || card.card_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        cardWidth={cardWidth}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext items={cards.map(c => c.id)} strategy={rectSortingStrategy}>
+                  <div className="grid grid-cols-12 gap-4">
+                    {cards.map(card => (
+                      <SortableStorageCard
+                        key={card.id}
+                        card={card}
                         onConfigure={() => handleConfigureCard(card.id)}
                         onRemove={() => handleRemoveCard(card.id)}
                         onWidthChange={(newWidth) => handleWidthChange(card.id, newWidth)}
-                      >
-                      <CardComponent config={card.config} />
-                    </CardWrapper>
+                        isDragging={activeId === card.id}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+                <DragOverlay>
+                  {activeId ? (
+                    <div className="opacity-80 rotate-3 scale-105">
+                      <StorageDragPreviewCard card={cards.find(c => c.id === activeId)!} />
                     </div>
-                  )
-                })}
-              </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </>
         )}
       </div>
+
+      {/* Floating action buttons */}
+      <FloatingDashboardActions
+        onAddCard={() => setShowAddCard(true)}
+        onOpenTemplates={() => setShowTemplates(true)}
+      />
 
       {/* Add Card Modal */}
       <AddCardModal

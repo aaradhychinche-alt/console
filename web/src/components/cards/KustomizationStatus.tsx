@@ -4,6 +4,8 @@ import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface KustomizationStatusProps {
   config?: {
@@ -22,10 +24,22 @@ interface Kustomization {
   revision: string
 }
 
+type SortByOption = 'status' | 'name' | 'namespace' | 'lastApplied'
+
+const SORT_OPTIONS = [
+  { value: 'status' as const, label: 'Status' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'namespace' as const, label: 'Namespace' },
+  { value: 'lastApplied' as const, label: 'Last Applied' },
+]
+
 export function KustomizationStatus({ config }: KustomizationStatusProps) {
   const { clusters: allClusters, isLoading, refetch } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [selectedNamespace, setSelectedNamespace] = useState<string>(config?.namespace || '')
+  const [sortBy, setSortBy] = useState<SortByOption>('status')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -67,11 +81,47 @@ export function KustomizationStatus({ config }: KustomizationStatusProps) {
     return Array.from(nsSet).sort()
   }, [allKustomizations])
 
-  // Filter by namespace
-  const kustomizations = useMemo(() => {
-    if (!selectedNamespace) return allKustomizations
-    return allKustomizations.filter(k => k.namespace === selectedNamespace)
-  }, [allKustomizations, selectedNamespace])
+  // Filter and sort by namespace
+  const filteredAndSorted = useMemo(() => {
+    let result = selectedNamespace
+      ? allKustomizations.filter(k => k.namespace === selectedNamespace)
+      : allKustomizations
+
+    // Sort
+    const statusOrder: Record<string, number> = { NotReady: 0, Progressing: 1, Suspended: 2, Ready: 3 }
+    result = [...result].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'status':
+          compare = (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'namespace':
+          compare = a.namespace.localeCompare(b.namespace)
+          break
+        case 'lastApplied':
+          compare = new Date(b.lastApplied).getTime() - new Date(a.lastApplied).getTime()
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+
+    return result
+  }, [allKustomizations, selectedNamespace, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: kustomizations,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const getStatusIcon = (status: Kustomization['status']) => {
     switch (status) {
@@ -102,8 +152,8 @@ export function KustomizationStatus({ config }: KustomizationStatusProps) {
     return `${Math.floor(diff / 86400000)}d ago`
   }
 
-  const readyCount = kustomizations.filter(k => k.status === 'Ready').length
-  const notReadyCount = kustomizations.filter(k => k.status === 'NotReady').length
+  const readyCount = filteredAndSorted.filter(k => k.status === 'Ready').length
+  const notReadyCount = filteredAndSorted.filter(k => k.status === 'NotReady').length
 
   if (isLoading) {
     return (
@@ -135,12 +185,24 @@ export function KustomizationStatus({ config }: KustomizationStatusProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh kustomizations"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Selectors */}
@@ -238,6 +300,20 @@ export function KustomizationStatus({ config }: KustomizationStatusProps) {
               )
             })}
           </div>
+
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">

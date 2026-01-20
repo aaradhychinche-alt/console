@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
-import { ChevronRight } from 'lucide-react'
-import { useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes } from '../../../hooks/useMCP'
+import { useMemo, useState } from 'react'
+import { ChevronRight, ChevronDown, Server, Box, Layers, Database, Network, HardDrive, Search, AlertTriangle, XCircle } from 'lucide-react'
+import { useClusterHealth, usePodIssues, useDeploymentIssues, useGPUNodes, useNodes, useNamespaces, useDeployments, useServices, usePVCs } from '../../../hooks/useMCP'
 import { useDrillDownActions } from '../../../hooks/useDrillDown'
 import { StatusIndicator } from '../../charts/StatusIndicator'
 import { Gauge } from '../../charts/Gauge'
+
+// Resource tree lens/view options
+type TreeLens = 'all' | 'issues' | 'nodes' | 'workloads' | 'storage' | 'network'
 
 interface Props {
   data: Record<string, unknown>
@@ -13,10 +16,34 @@ export function ClusterDrillDown({ data }: Props) {
   const clusterName = (data.cluster as string) || ''
   const { drillToNamespace, drillToPod, drillToGPUNode, drillToEvents } = useDrillDownActions()
 
+  // Tree view state
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['cluster', 'nodes', 'namespaces']))
+  const [searchFilter, setSearchFilter] = useState('')
+  const [activeLens, setActiveLens] = useState<TreeLens>('all')
+  const [showResourceTree, setShowResourceTree] = useState(false)
+
   const { health, isLoading } = useClusterHealth(clusterName)
   const { issues: podIssues } = usePodIssues(clusterName)
   const { issues: deploymentIssues } = useDeploymentIssues()
   const { nodes: allGPUNodes } = useGPUNodes()
+  const { nodes: allNodes } = useNodes(clusterName)
+  const { namespaces: allNamespaces } = useNamespaces(clusterName)
+  const { deployments: allDeployments } = useDeployments(clusterName)
+  const { services: allServices } = useServices(clusterName)
+  const { pvcs: allPVCs } = usePVCs(clusterName)
+
+  // Toggle section expansion
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev)
+      if (next.has(section)) {
+        next.delete(section)
+      } else {
+        next.add(section)
+      }
+      return next
+    })
+  }
 
   // Filter data for this cluster - ALL useMemo hooks must be before any early returns
   const clusterGPUNodes = useMemo(() =>
@@ -51,6 +78,82 @@ export function ClusterDrillDown({ data }: Props) {
     })
     return map
   }, [clusterGPUNodes])
+
+  // Filter resources based on search and lens
+  const filteredNodes = useMemo(() => {
+    let nodes = allNodes || []
+    if (searchFilter) {
+      nodes = nodes.filter(n => n.name.toLowerCase().includes(searchFilter.toLowerCase()))
+    }
+    if (activeLens === 'issues') {
+      nodes = nodes.filter(n => n.status !== 'Ready')
+    }
+    if (activeLens === 'nodes' || activeLens === 'all') {
+      return nodes
+    }
+    return activeLens === 'issues' ? nodes : []
+  }, [allNodes, searchFilter, activeLens])
+
+  const filteredNamespaces = useMemo(() => {
+    let ns = allNamespaces || []
+    if (searchFilter) {
+      ns = ns.filter(n => n.toLowerCase().includes(searchFilter.toLowerCase()))
+    }
+    // Filter out system namespaces unless explicitly searching
+    if (!searchFilter) {
+      ns = ns.filter(n => !n.startsWith('kube-') && n !== 'default')
+    }
+    return ns
+  }, [allNamespaces, searchFilter])
+
+  const filteredDeployments = useMemo(() => {
+    let deps = allDeployments || []
+    if (searchFilter) {
+      deps = deps.filter(d => d.name.toLowerCase().includes(searchFilter.toLowerCase()) || d.namespace.toLowerCase().includes(searchFilter.toLowerCase()))
+    }
+    if (activeLens === 'issues') {
+      deps = deps.filter(d => d.readyReplicas < d.replicas || d.status === 'failed')
+    }
+    if (activeLens === 'workloads' || activeLens === 'all' || activeLens === 'issues') {
+      return deps
+    }
+    return []
+  }, [allDeployments, searchFilter, activeLens])
+
+  const filteredServices = useMemo(() => {
+    let svcs = allServices || []
+    if (searchFilter) {
+      svcs = svcs.filter(s => s.name.toLowerCase().includes(searchFilter.toLowerCase()) || s.namespace.toLowerCase().includes(searchFilter.toLowerCase()))
+    }
+    if (activeLens === 'network' || activeLens === 'all') {
+      return svcs
+    }
+    return []
+  }, [allServices, searchFilter, activeLens])
+
+  const filteredPVCs = useMemo(() => {
+    let pvcs = allPVCs || []
+    if (searchFilter) {
+      pvcs = pvcs.filter(p => p.name.toLowerCase().includes(searchFilter.toLowerCase()) || p.namespace.toLowerCase().includes(searchFilter.toLowerCase()))
+    }
+    if (activeLens === 'issues') {
+      pvcs = pvcs.filter(p => p.status !== 'Bound')
+    }
+    if (activeLens === 'storage' || activeLens === 'all' || activeLens === 'issues') {
+      return pvcs
+    }
+    return []
+  }, [allPVCs, searchFilter, activeLens])
+
+  // Count issues for each category
+  const issueCounts = useMemo(() => ({
+    nodes: (allNodes || []).filter(n => n.status !== 'Ready').length,
+    deployments: (allDeployments || []).filter(d => d.readyReplicas < d.replicas).length,
+    pods: podIssues.length,
+    pvcs: (allPVCs || []).filter(p => p.status !== 'Bound').length,
+    total: 0, // computed below
+  }), [allNodes, allDeployments, podIssues, allPVCs])
+  issueCounts.total = issueCounts.nodes + issueCounts.deployments + issueCounts.pods + issueCounts.pvcs
 
   // Guard against missing cluster name (after ALL hooks)
   if (!clusterName) {
@@ -262,6 +365,401 @@ export function ClusterDrillDown({ data }: Props) {
           </div>
         </div>
       )}
+
+      {/* Resource Tree Section */}
+      <div className="border-t border-border pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => setShowResourceTree(!showResourceTree)}
+            className="flex items-center gap-2 text-lg font-semibold text-foreground hover:text-primary transition-colors"
+          >
+            {showResourceTree ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+            <Layers className="w-5 h-5 text-purple-400" />
+            Resource Tree
+            {issueCounts.total > 0 && (
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-red-500/20 text-red-400">
+                {issueCounts.total} issues
+              </span>
+            )}
+          </button>
+        </div>
+
+        {showResourceTree && (
+          <div className="space-y-4">
+            {/* Search and Filters */}
+            <div className="flex flex-col md:flex-row gap-3">
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Search resources..."
+                  className="w-full pl-10 pr-4 py-2 bg-secondary rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                />
+              </div>
+
+              {/* Lens/View Buttons */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'all' as TreeLens, label: 'All', icon: Layers },
+                  { id: 'issues' as TreeLens, label: 'Issues', icon: AlertTriangle, count: issueCounts.total },
+                  { id: 'nodes' as TreeLens, label: 'Nodes', icon: Server, count: filteredNodes.length },
+                  { id: 'workloads' as TreeLens, label: 'Workloads', icon: Box, count: filteredDeployments.length },
+                  { id: 'storage' as TreeLens, label: 'Storage', icon: HardDrive, count: filteredPVCs.length },
+                  { id: 'network' as TreeLens, label: 'Network', icon: Network, count: filteredServices.length },
+                ].map(lens => (
+                  <button
+                    key={lens.id}
+                    onClick={() => setActiveLens(lens.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                      activeLens === lens.id
+                        ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                        : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <lens.icon className="w-3.5 h-3.5" />
+                    {lens.label}
+                    {lens.count !== undefined && lens.count > 0 && (
+                      <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
+                        lens.id === 'issues' ? 'bg-red-500/20 text-red-400' : 'bg-secondary text-muted-foreground'
+                      }`}>
+                        {lens.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tree Content */}
+            <div className="bg-card/30 rounded-lg border border-border p-4">
+              {/* Cluster Root */}
+              <div className="relative">
+                {/* Cluster Header */}
+                <div
+                  onClick={() => toggleSection('cluster')}
+                  className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                >
+                  {expandedSections.has('cluster') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <Server className="w-4 h-4 text-cyan-400" />
+                  <span className="font-medium text-foreground">{clusterName}</span>
+                  <StatusIndicator status={health?.healthy ? 'healthy' : 'error'} />
+                </div>
+
+                {expandedSections.has('cluster') && (
+                  <div className="ml-6 border-l-2 border-cyan-500/30 pl-4 mt-2 space-y-2">
+                    {/* Nodes Branch */}
+                    {(activeLens === 'all' || activeLens === 'nodes' || activeLens === 'issues') && filteredNodes.length > 0 && (
+                      <div>
+                        <div
+                          onClick={() => toggleSection('nodes')}
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                        >
+                          {expandedSections.has('nodes') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <Server className="w-4 h-4 text-blue-400" />
+                          <span className="text-sm font-medium text-foreground">Nodes</span>
+                          <span className="text-xs text-muted-foreground">({filteredNodes.length})</span>
+                          {issueCounts.nodes > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-500/20 text-red-400">
+                              {issueCounts.nodes} not ready
+                            </span>
+                          )}
+                        </div>
+
+                        {expandedSections.has('nodes') && (
+                          <div className="ml-6 border-l-2 border-blue-500/30 pl-4 mt-1 space-y-1">
+                            {filteredNodes.slice(0, 20).map((node, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer group"
+                              >
+                                <div className={`w-2 h-2 rounded-full ${node.status === 'Ready' ? 'bg-green-400' : 'bg-red-400'}`} />
+                                <span className="text-sm text-foreground">{node.name}</span>
+                                <span className={`text-xs ${node.status === 'Ready' ? 'text-green-400' : 'text-red-400'}`}>
+                                  {node.status}
+                                </span>
+                                {node.roles?.length > 0 && (
+                                  <span className="text-xs text-muted-foreground">
+                                    [{node.roles.join(', ')}]
+                                  </span>
+                                )}
+                                <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                              </div>
+                            ))}
+                            {filteredNodes.length > 20 && (
+                              <div className="text-xs text-muted-foreground p-2">
+                                +{filteredNodes.length - 20} more nodes...
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Namespaces Branch */}
+                    {(activeLens === 'all' || activeLens === 'workloads') && filteredNamespaces.length > 0 && (
+                      <div>
+                        <div
+                          onClick={() => toggleSection('namespaces')}
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                        >
+                          {expandedSections.has('namespaces') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <Database className="w-4 h-4 text-purple-400" />
+                          <span className="text-sm font-medium text-foreground">Namespaces</span>
+                          <span className="text-xs text-muted-foreground">({filteredNamespaces.length})</span>
+                        </div>
+
+                        {expandedSections.has('namespaces') && (
+                          <div className="ml-6 border-l-2 border-purple-500/30 pl-4 mt-1 space-y-1">
+                            {filteredNamespaces.slice(0, 15).map((ns, i) => {
+                              const nsKey = `ns-${ns}`
+                              const nsPodIssues = podIssues.filter(p => p.namespace === ns).length
+                              const nsDeploymentIssues = clusterDeploymentIssues.filter(d => d.namespace === ns).length
+                              const totalIssues = nsPodIssues + nsDeploymentIssues
+
+                              return (
+                                <div key={i}>
+                                  <div
+                                    onClick={() => toggleSection(nsKey)}
+                                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                                  >
+                                    {expandedSections.has(nsKey) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                    <span className="text-sm text-foreground">{ns}</span>
+                                    {totalIssues > 0 && (
+                                      <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-500/20 text-red-400">
+                                        {totalIssues}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {expandedSections.has(nsKey) && (
+                                    <div className="ml-6 border-l-2 border-muted/30 pl-4 mt-1 space-y-1">
+                                      {/* Deployments in namespace */}
+                                      {filteredDeployments.filter(d => d.namespace === ns).slice(0, 5).map((dep, j) => (
+                                        <div
+                                          key={j}
+                                          onClick={() => drillToNamespace(clusterName, dep.namespace)}
+                                          className="flex items-center gap-2 p-1.5 rounded hover:bg-secondary/50 cursor-pointer group"
+                                        >
+                                          <Box className="w-3 h-3 text-green-400" />
+                                          <span className="text-xs text-foreground">{dep.name}</span>
+                                          <span className={`text-[10px] ${dep.readyReplicas === dep.replicas ? 'text-green-400' : 'text-yellow-400'}`}>
+                                            {dep.readyReplicas}/{dep.replicas}
+                                          </span>
+                                          <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                                        </div>
+                                      ))}
+
+                                      {/* Services in namespace */}
+                                      {filteredServices.filter(s => s.namespace === ns).slice(0, 3).map((svc, j) => (
+                                        <div
+                                          key={j}
+                                          onClick={() => drillToNamespace(clusterName, svc.namespace)}
+                                          className="flex items-center gap-2 p-1.5 rounded hover:bg-secondary/50 cursor-pointer group"
+                                        >
+                                          <Network className="w-3 h-3 text-blue-400" />
+                                          <span className="text-xs text-foreground">{svc.name}</span>
+                                          <span className="text-[10px] text-muted-foreground">{svc.type}</span>
+                                          <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                                        </div>
+                                      ))}
+
+                                      {/* View all in namespace */}
+                                      <button
+                                        onClick={() => drillToNamespace(clusterName, ns)}
+                                        className="text-xs text-purple-400 hover:text-purple-300 p-1.5 transition-colors"
+                                      >
+                                        View all in {ns} →
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {filteredNamespaces.length > 15 && (
+                              <div className="text-xs text-muted-foreground p-2">
+                                +{filteredNamespaces.length - 15} more namespaces...
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Deployments with Issues (when issues lens active) */}
+                    {activeLens === 'issues' && issueCounts.deployments > 0 && (
+                      <div>
+                        <div
+                          onClick={() => toggleSection('deployment-issues')}
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                        >
+                          {expandedSections.has('deployment-issues') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <AlertTriangle className="w-4 h-4 text-orange-400" />
+                          <span className="text-sm font-medium text-foreground">Deployment Issues</span>
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-orange-500/20 text-orange-400">
+                            {issueCounts.deployments}
+                          </span>
+                        </div>
+
+                        {expandedSections.has('deployment-issues') && (
+                          <div className="ml-6 border-l-2 border-orange-500/30 pl-4 mt-1 space-y-1">
+                            {filteredDeployments.filter(d => d.readyReplicas < d.replicas).map((dep, i) => (
+                              <div
+                                key={i}
+                                onClick={() => drillToNamespace(clusterName, dep.namespace)}
+                                className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer group"
+                              >
+                                <XCircle className="w-3 h-3 text-orange-400" />
+                                <span className="text-sm text-foreground">{dep.name}</span>
+                                <span className="text-xs text-muted-foreground">{dep.namespace}</span>
+                                <span className="text-xs text-orange-400">{dep.readyReplicas}/{dep.replicas}</span>
+                                <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Pod Issues (when issues lens active) */}
+                    {activeLens === 'issues' && issueCounts.pods > 0 && (
+                      <div>
+                        <div
+                          onClick={() => toggleSection('pod-issues')}
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                        >
+                          {expandedSections.has('pod-issues') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <AlertTriangle className="w-4 h-4 text-red-400" />
+                          <span className="text-sm font-medium text-foreground">Pod Issues</span>
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-500/20 text-red-400">
+                            {issueCounts.pods}
+                          </span>
+                        </div>
+
+                        {expandedSections.has('pod-issues') && (
+                          <div className="ml-6 border-l-2 border-red-500/30 pl-4 mt-1 space-y-1">
+                            {podIssues.slice(0, 10).map((issue, i) => (
+                              <div
+                                key={i}
+                                onClick={() => drillToPod(clusterName, issue.namespace, issue.name, { ...issue })}
+                                className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer group"
+                              >
+                                <XCircle className="w-3 h-3 text-red-400" />
+                                <span className="text-sm text-foreground">{issue.name}</span>
+                                <span className="text-xs text-muted-foreground">{issue.namespace}</span>
+                                <span className="text-xs text-red-400">{issue.status}</span>
+                                <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                              </div>
+                            ))}
+                            {podIssues.length > 10 && (
+                              <div className="text-xs text-muted-foreground p-2">
+                                +{podIssues.length - 10} more pod issues...
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Storage Resources */}
+                    {(activeLens === 'storage' || (activeLens === 'all' && filteredPVCs.length > 0)) && filteredPVCs.length > 0 && (
+                      <div>
+                        <div
+                          onClick={() => toggleSection('storage')}
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                        >
+                          {expandedSections.has('storage') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <HardDrive className="w-4 h-4 text-emerald-400" />
+                          <span className="text-sm font-medium text-foreground">PVCs</span>
+                          <span className="text-xs text-muted-foreground">({filteredPVCs.length})</span>
+                          {issueCounts.pvcs > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-yellow-500/20 text-yellow-400">
+                              {issueCounts.pvcs} pending
+                            </span>
+                          )}
+                        </div>
+
+                        {expandedSections.has('storage') && (
+                          <div className="ml-6 border-l-2 border-emerald-500/30 pl-4 mt-1 space-y-1">
+                            {filteredPVCs.slice(0, 10).map((pvc, i) => (
+                              <div
+                                key={i}
+                                onClick={() => drillToNamespace(clusterName, pvc.namespace)}
+                                className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer group"
+                              >
+                                <div className={`w-2 h-2 rounded-full ${pvc.status === 'Bound' ? 'bg-green-400' : 'bg-yellow-400'}`} />
+                                <span className="text-sm text-foreground">{pvc.name}</span>
+                                <span className="text-xs text-muted-foreground">{pvc.namespace}</span>
+                                <span className={`text-xs ${pvc.status === 'Bound' ? 'text-green-400' : 'text-yellow-400'}`}>
+                                  {pvc.status}
+                                </span>
+                                {pvc.capacity && <span className="text-xs text-muted-foreground">{pvc.capacity}</span>}
+                                <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                              </div>
+                            ))}
+                            {filteredPVCs.length > 10 && (
+                              <div className="text-xs text-muted-foreground p-2">
+                                +{filteredPVCs.length - 10} more PVCs...
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Network Resources */}
+                    {activeLens === 'network' && filteredServices.length > 0 && (
+                      <div>
+                        <div
+                          onClick={() => toggleSection('network')}
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                        >
+                          {expandedSections.has('network') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <Network className="w-4 h-4 text-blue-400" />
+                          <span className="text-sm font-medium text-foreground">Services</span>
+                          <span className="text-xs text-muted-foreground">({filteredServices.length})</span>
+                        </div>
+
+                        {expandedSections.has('network') && (
+                          <div className="ml-6 border-l-2 border-blue-500/30 pl-4 mt-1 space-y-1">
+                            {filteredServices.slice(0, 15).map((svc, i) => (
+                              <div
+                                key={i}
+                                onClick={() => drillToNamespace(clusterName, svc.namespace)}
+                                className="flex items-center gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer group"
+                              >
+                                <Network className="w-3 h-3 text-blue-400" />
+                                <span className="text-sm text-foreground">{svc.name}</span>
+                                <span className="text-xs text-muted-foreground">{svc.namespace}</span>
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">{svc.type}</span>
+                                <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
+                              </div>
+                            ))}
+                            {filteredServices.length > 15 && (
+                              <div className="text-xs text-muted-foreground p-2">
+                                +{filteredServices.length - 15} more services...
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Empty state for filters */}
+                    {filteredNodes.length === 0 && filteredDeployments.length === 0 && filteredServices.length === 0 && filteredPVCs.length === 0 && (
+                      <div className="text-center text-muted-foreground text-sm py-4">
+                        No resources match the current filter
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

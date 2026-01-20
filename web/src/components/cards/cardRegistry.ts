@@ -22,6 +22,8 @@ import { EventsTimeline } from './EventsTimeline'
 import { PodHealthTrend } from './PodHealthTrend'
 import { ResourceTrend } from './ResourceTrend'
 import { GPUUtilization } from './GPUUtilization'
+import { GPUUsageTrend } from './GPUUsageTrend'
+import { ClusterResourceTree } from './ClusterResourceTree'
 // Dashboard-specific cards
 import { StorageOverview } from './StorageOverview'
 import { PVCStatus } from './PVCStatus'
@@ -58,6 +60,15 @@ import { ArgoCDHealth } from './ArgoCDHealth'
 import { UserManagement } from './UserManagement'
 // Klaude AI mission cards
 import { KlaudeIssuesCard, KlaudeKubeconfigAuditCard, KlaudeHealthCheckCard } from './KlaudeMissions'
+// Alerting cards
+import { ActiveAlerts } from './ActiveAlerts'
+import { AlertRulesCard } from './AlertRules'
+// Cost management integrations
+import { OpenCostOverview } from './OpenCostOverview'
+import { KubecostOverview } from './KubecostOverview'
+// Policy management cards
+import { OPAPolicies } from './OPAPolicies'
+import { KyvernoPolicies } from './KyvernoPolicies'
 
 // Type for card component props
 export type CardComponentProps = { config?: Record<string, unknown> }
@@ -94,6 +105,8 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
   pod_health_trend: PodHealthTrend,
   resource_trend: ResourceTrend,
   gpu_utilization: GPUUtilization,
+  gpu_usage_trend: GPUUsageTrend,
+  cluster_resource_tree: ClusterResourceTree,
   // Dashboard-specific cards
   storage_overview: StorageOverview,
   pvc_status: PVCStatus,
@@ -132,6 +145,15 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
   klaude_issues: KlaudeIssuesCard,
   klaude_kubeconfig_audit: KlaudeKubeconfigAuditCard,
   klaude_health_check: KlaudeHealthCheckCard,
+  // Alerting cards
+  active_alerts: ActiveAlerts,
+  alert_rules: AlertRulesCard,
+  // Cost management integrations
+  opencost_overview: OpenCostOverview,
+  kubecost_overview: KubecostOverview,
+  // Policy management cards
+  opa_policies: OPAPolicies,
+  kyverno_policies: KyvernoPolicies,
 
   // Aliases - map catalog types to existing components with similar functionality
   gpu_list: GPUInventory,
@@ -151,11 +173,29 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
  * Used to show a demo banner when these cards are present.
  */
 export const DEMO_DATA_CARDS = new Set([
+  // ArgoCD cards - all use mock data
   'argocd_applications',
   'argocd_health',
   'argocd_sync_status',
+  // GitOps cards - use mock data
+  'kustomization_status',
   'overlay_comparison',
+  // Helm cards - use mock data
+  'helm_release_status',
   'helm_values_diff',
+  'helm_history',
+  'chart_versions',
+  // Namespace cards - use mock RBAC/quota data
+  'namespace_quotas',
+  'namespace_rbac',
+  // Other cards using mock/simulated data
+  'resource_capacity',
+  'cluster_costs',
+  // Cost management integrations - demo until connected
+  'opencost_overview',
+  'kubecost_overview',
+  // Policy management - kyverno is demo-only
+  'kyverno_policies',
 ])
 
 /**

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { GitBranch, CheckCircle, RefreshCw, AlertTriangle } from 'lucide-react'
+import { GitBranch, CheckCircle, RefreshCw, AlertTriangle, ExternalLink, AlertCircle } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
@@ -53,17 +53,43 @@ export function ArgoCDSyncStatus({ config: _config }: ArgoCDSyncStatusProps) {
   return (
     <div className="h-full flex flex-col min-h-card content-loaded">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-orange-400" />
           <span className="text-sm font-medium text-muted-foreground">Sync Status</span>
+          <span className="px-1.5 py-0.5 text-[10px] rounded bg-amber-500/20 text-amber-400">Demo</span>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-1">
+          <a
+            href="https://argo-cd.readthedocs.io/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1 hover:bg-secondary rounded transition-colors text-muted-foreground hover:text-purple-400"
+            title="ArgoCD Documentation"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      {/* Integration notice */}
+      <div className="flex items-start gap-2 p-2 mb-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-xs">
+        <AlertCircle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-orange-400 font-medium">ArgoCD Integration</p>
+          <p className="text-muted-foreground">
+            Install ArgoCD for GitOps-based sync.{' '}
+            <a href="https://argo-cd.readthedocs.io/en/stable/getting_started/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
+              Install guide →
+            </a>
+          </p>
+        </div>
       </div>
 
       {/* Donut chart placeholder */}

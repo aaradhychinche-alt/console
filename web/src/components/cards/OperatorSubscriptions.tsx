@@ -4,6 +4,8 @@ import { useClusters, useOperatorSubscriptions } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface OperatorSubscriptionsProps {
   config?: {
@@ -11,9 +13,21 @@ interface OperatorSubscriptionsProps {
   }
 }
 
+type SortByOption = 'pending' | 'name' | 'approval' | 'channel'
+
+const SORT_OPTIONS = [
+  { value: 'pending' as const, label: 'Pending First' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'approval' as const, label: 'Approval' },
+  { value: 'channel' as const, label: 'Channel' },
+]
+
 export function OperatorSubscriptions({ config }: OperatorSubscriptionsProps) {
   const { clusters: allClusters, isLoading: clustersLoading } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
+  const [sortBy, setSortBy] = useState<SortByOption>('pending')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -40,13 +54,47 @@ export function OperatorSubscriptions({ config }: OperatorSubscriptionsProps) {
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
 
   // Fetch subscriptions for selected cluster
-  const { subscriptions, isLoading: subscriptionsLoading, refetch } = useOperatorSubscriptions(selectedCluster || undefined)
+  const { subscriptions: rawSubscriptions, isLoading: subscriptionsLoading, refetch } = useOperatorSubscriptions(selectedCluster || undefined)
+
+  // Sort subscriptions
+  const sortedSubscriptions = useMemo(() => {
+    return [...rawSubscriptions].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'pending':
+          compare = (a.pendingUpgrade ? 0 : 1) - (b.pendingUpgrade ? 0 : 1)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'approval':
+          compare = a.installPlanApproval.localeCompare(b.installPlanApproval)
+          break
+        case 'channel':
+          compare = a.channel.localeCompare(b.channel)
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+  }, [rawSubscriptions, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: subscriptions,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedSubscriptions, effectivePerPage)
 
   const isLoading = clustersLoading || subscriptionsLoading
 
-  const autoCount = subscriptions.filter(s => s.installPlanApproval === 'Automatic').length
-  const manualCount = subscriptions.filter(s => s.installPlanApproval === 'Manual').length
-  const pendingCount = subscriptions.filter(s => s.pendingUpgrade).length
+  const autoCount = rawSubscriptions.filter(s => s.installPlanApproval === 'Automatic').length
+  const manualCount = rawSubscriptions.filter(s => s.installPlanApproval === 'Manual').length
+  const pendingCount = rawSubscriptions.filter(s => s.pendingUpgrade).length
 
   if (isLoading) {
     return (
@@ -77,12 +125,24 @@ export function OperatorSubscriptions({ config }: OperatorSubscriptionsProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh subscriptions"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Cluster selector */}
@@ -162,9 +222,23 @@ export function OperatorSubscriptions({ config }: OperatorSubscriptionsProps) {
             ))}
           </div>
 
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
+
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-            Source: operatorhubio-catalog
+            {totalItems} subscriptions from operatorhubio-catalog
           </div>
         </>
       )}

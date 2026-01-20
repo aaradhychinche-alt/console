@@ -5,7 +5,7 @@ export interface DashboardTemplate {
   name: string
   description: string
   icon: string
-  category: 'cluster' | 'namespace' | 'gitops' | 'security' | 'gpu' | 'storage' | 'compute' | 'network' | 'klaude' | 'custom'
+  category: 'cluster' | 'namespace' | 'gitops' | 'security' | 'gpu' | 'storage' | 'compute' | 'network' | 'klaude' | 'alerting' | 'cost' | 'custom'
   cards: Array<{
     card_type: string
     title?: string
@@ -29,6 +29,16 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'network_overview', position: { w: 4, h: 3 } },
       { card_type: 'pod_issues', position: { w: 6, h: 2 } },
       { card_type: 'deployment_issues', position: { w: 6, h: 2 } },
+    ],
+  },
+  {
+    id: 'cluster-resource-tree',
+    name: 'Resource Explorer',
+    description: 'Hierarchical tree view of all cluster resources',
+    icon: '🌳',
+    category: 'cluster',
+    cards: [
+      { card_type: 'cluster_resource_tree', position: { w: 12, h: 6 } },
     ],
   },
   {
@@ -167,9 +177,9 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
     cards: [
       { card_type: 'gpu_overview', position: { w: 4, h: 2 } },
       { card_type: 'gpu_status', position: { w: 4, h: 2 } },
-      { card_type: 'gpu_inventory', position: { w: 4, h: 2 } },
-      { card_type: 'cluster_costs', position: { w: 6, h: 3 } },
-      { card_type: 'top_pods', title: 'Top GPU Consumers', position: { w: 6, h: 3 } },
+      { card_type: 'gpu_usage_trend', position: { w: 4, h: 2 } },
+      { card_type: 'gpu_inventory', position: { w: 6, h: 3 } },
+      { card_type: 'gpu_workloads', position: { w: 6, h: 3 } },
     ],
   },
 
@@ -266,11 +276,45 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'deployment_issues', position: { w: 6, h: 2 } },
     ],
   },
+
+  // Alerting templates
+  {
+    id: 'alerting-dashboard',
+    name: 'Alerting Dashboard',
+    description: 'Active alerts, rules, and AI-powered diagnostics',
+    icon: '🔔',
+    category: 'alerting',
+    cards: [
+      { card_type: 'active_alerts', position: { w: 6, h: 3 } },
+      { card_type: 'alert_rules', position: { w: 6, h: 3 } },
+      { card_type: 'pod_issues', position: { w: 4, h: 2 } },
+      { card_type: 'deployment_issues', position: { w: 4, h: 2 } },
+      { card_type: 'security_issues', position: { w: 4, h: 2 } },
+    ],
+  },
+
+  // Cost Management templates
+  {
+    id: 'cost-management',
+    name: 'Cost Management',
+    description: 'Resource costs, allocation, and optimization recommendations',
+    icon: '💰',
+    category: 'cost',
+    cards: [
+      { card_type: 'cluster_costs', position: { w: 6, h: 4 } },
+      { card_type: 'opencost_overview', position: { w: 6, h: 4 } },
+      { card_type: 'kubecost_overview', position: { w: 6, h: 4 } },
+      { card_type: 'resource_usage', position: { w: 3, h: 2 } },
+      { card_type: 'resource_capacity', position: { w: 3, h: 2 } },
+    ],
+  },
 ]
 
 export const TEMPLATE_CATEGORIES = [
   { id: 'cluster', name: 'Cluster', icon: '🌐' },
   { id: 'namespace', name: 'Namespace', icon: '📁' },
+  { id: 'alerting', name: 'Alerting', icon: '🔔' },
+  { id: 'cost', name: 'Cost Management', icon: '💰' },
   { id: 'storage', name: 'Storage', icon: '💾' },
   { id: 'compute', name: 'Compute', icon: '⚙️' },
   { id: 'network', name: 'Network', icon: '🌐' },

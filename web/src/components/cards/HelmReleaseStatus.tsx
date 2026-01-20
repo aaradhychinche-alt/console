@@ -4,6 +4,8 @@ import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface HelmReleaseStatusProps {
   config?: {
@@ -23,10 +25,22 @@ interface HelmRelease {
   revision: number
 }
 
+type SortByOption = 'status' | 'name' | 'chart' | 'updated'
+
+const SORT_OPTIONS = [
+  { value: 'status' as const, label: 'Status' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'chart' as const, label: 'Chart' },
+  { value: 'updated' as const, label: 'Updated' },
+]
+
 export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
   const { clusters: allClusters, isLoading, refetch } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [selectedNamespace, setSelectedNamespace] = useState<string>(config?.namespace || '')
+  const [sortBy, setSortBy] = useState<SortByOption>('status')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -69,8 +83,8 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
     return Array.from(nsSet).sort()
   }, [allReleases])
 
-  // Filter releases by namespace, status, and custom text
-  const releases = useMemo(() => {
+  // Filter and sort releases by namespace, status, and custom text
+  const filteredAndSorted = useMemo(() => {
     let result = allReleases
 
     // Filter by namespace
@@ -92,8 +106,41 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
       )
     }
 
+    // Sort
+    const statusOrder: Record<string, number> = { failed: 0, pending: 1, uninstalling: 2, superseded: 3, deployed: 4 }
+    result = [...result].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'status':
+          compare = (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'chart':
+          compare = a.chart.localeCompare(b.chart)
+          break
+        case 'updated':
+          compare = new Date(b.updated).getTime() - new Date(a.updated).getTime()
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+
     return result
-  }, [allReleases, selectedNamespace, filterByStatus, customFilter])
+  }, [allReleases, selectedNamespace, filterByStatus, customFilter, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: releases,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const getStatusIcon = (status: HelmRelease['status']) => {
     switch (status) {
@@ -155,13 +202,24 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-          title="Refresh Helm releases"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh Helm releases"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Selectors */}
@@ -258,9 +316,23 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
             })}
           </div>
 
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
+
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-            {releases.length} releases{selectedNamespace ? ` in ${selectedNamespace}` : ''}
+            {totalItems} releases{selectedNamespace ? ` in ${selectedNamespace}` : ''}
           </div>
         </>
       )}

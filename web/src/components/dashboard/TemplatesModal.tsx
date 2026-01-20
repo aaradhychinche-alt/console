@@ -86,7 +86,7 @@ export function TemplatesModal({ isOpen, onClose, onApplyTemplate }: TemplatesMo
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl mx-4 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
+      <div className="relative w-full max-w-6xl mx-4 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">

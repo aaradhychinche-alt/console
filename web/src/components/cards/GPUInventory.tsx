@@ -1,23 +1,72 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { RefreshCw, Cpu, Server } from 'lucide-react'
 import { useGPUNodes } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface GPUInventoryProps {
   config?: Record<string, unknown>
 }
+
+type SortByOption = 'utilization' | 'name' | 'cluster' | 'gpuType'
+
+const SORT_OPTIONS = [
+  { value: 'utilization' as const, label: 'Utilization' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'cluster' as const, label: 'Cluster' },
+  { value: 'gpuType' as const, label: 'GPU Type' },
+]
 
 export function GPUInventory({ config }: GPUInventoryProps) {
   const cluster = config?.cluster as string | undefined
   const { nodes: rawNodes, isLoading, error, refetch } = useGPUNodes(cluster)
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
 
+  const [sortBy, setSortBy] = useState<SortByOption>('utilization')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
+
   // Filter nodes by global cluster selection
-  const nodes = useMemo(() => {
+  const filteredNodes = useMemo(() => {
     if (isAllClustersSelected) return rawNodes
     return rawNodes.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
   }, [rawNodes, selectedClusters, isAllClustersSelected])
+
+  // Sort nodes
+  const sortedNodes = useMemo(() => {
+    return [...filteredNodes].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'utilization':
+          compare = (a.gpuAllocated / a.gpuCount) - (b.gpuAllocated / b.gpuCount)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'cluster':
+          compare = a.cluster.localeCompare(b.cluster)
+          break
+        case 'gpuType':
+          compare = a.gpuType.localeCompare(b.gpuType)
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+  }, [filteredNodes, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: nodes,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedNodes, effectivePerPage)
 
   if (isLoading) {
     return (
@@ -27,11 +76,11 @@ export function GPUInventory({ config }: GPUInventoryProps) {
     )
   }
 
-  const totalGPUs = nodes.reduce((sum, n) => sum + n.gpuCount, 0)
-  const allocatedGPUs = nodes.reduce((sum, n) => sum + n.gpuAllocated, 0)
+  const totalGPUs = filteredNodes.reduce((sum, n) => sum + n.gpuCount, 0)
+  const allocatedGPUs = filteredNodes.reduce((sum, n) => sum + n.gpuAllocated, 0)
   const availableGPUs = totalGPUs - allocatedGPUs
 
-  if (nodes.length === 0) {
+  if (filteredNodes.length === 0) {
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between mb-3">
@@ -59,17 +108,30 @@ export function GPUInventory({ config }: GPUInventoryProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-green-400" />
           <span className="text-sm font-medium text-muted-foreground">GPU Inventory</span>
           <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
             {totalGPUs} GPUs
           </span>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh GPU inventory"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -117,6 +179,20 @@ export function GPUInventory({ config }: GPUInventoryProps) {
           </div>
         ))}
       </div>
+
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
+        </div>
+      )}
 
       {error && (
         <div className="mt-2 text-xs text-yellow-400">Using simulated data</div>

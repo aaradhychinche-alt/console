@@ -4,6 +4,8 @@ import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
+import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 interface CRDHealthProps {
   config?: {
@@ -20,10 +22,22 @@ interface CRD {
   instances: number
 }
 
+type SortByOption = 'status' | 'name' | 'group' | 'instances'
+
+const SORT_OPTIONS = [
+  { value: 'status' as const, label: 'Status' },
+  { value: 'name' as const, label: 'Name' },
+  { value: 'group' as const, label: 'Group' },
+  { value: 'instances' as const, label: 'Instances' },
+]
+
 export function CRDHealth({ config }: CRDHealthProps) {
   const { clusters: allClusters, isLoading, refetch } = useClusters()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [filterGroup, setFilterGroup] = useState<string>('')
+  const [sortBy, setSortBy] = useState<SortByOption>('status')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const {
     selectedClusters: globalSelectedClusters,
     isAllClustersSelected,
@@ -69,11 +83,45 @@ export function CRDHealth({ config }: CRDHealthProps) {
     return Array.from(groupSet).sort()
   }, [allCRDs])
 
-  // Filter CRDs
-  const crds = useMemo(() => {
-    if (!filterGroup) return allCRDs
-    return allCRDs.filter(c => c.group === filterGroup)
-  }, [allCRDs, filterGroup])
+  // Filter and sort CRDs
+  const filteredAndSorted = useMemo(() => {
+    let result = filterGroup ? allCRDs.filter(c => c.group === filterGroup) : allCRDs
+
+    // Sort
+    const statusOrder: Record<string, number> = { NotEstablished: 0, Terminating: 1, Established: 2 }
+    result = [...result].sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case 'status':
+          compare = (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
+          break
+        case 'name':
+          compare = a.name.localeCompare(b.name)
+          break
+        case 'group':
+          compare = a.group.localeCompare(b.group)
+          break
+        case 'instances':
+          compare = b.instances - a.instances
+          break
+      }
+      return sortDirection === 'asc' ? compare : -compare
+    })
+
+    return result
+  }, [allCRDs, filterGroup, sortBy, sortDirection])
+
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: crds,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(filteredAndSorted, effectivePerPage)
 
   const getStatusIcon = (status: CRD['status']) => {
     switch (status) {
@@ -91,9 +139,9 @@ export function CRDHealth({ config }: CRDHealthProps) {
     }
   }
 
-  const healthyCRDs = crds.filter(c => c.status === 'Established').length
-  const unhealthyCRDs = crds.filter(c => c.status !== 'Established').length
-  const totalInstances = crds.reduce((sum, c) => sum + c.instances, 0)
+  const healthyCRDs = filteredAndSorted.filter(c => c.status === 'Established').length
+  const unhealthyCRDs = filteredAndSorted.filter(c => c.status !== 'Established').length
+  const totalInstances = filteredAndSorted.reduce((sum, c) => sum + c.instances, 0)
 
   if (isLoading) {
     return (
@@ -124,12 +172,24 @@ export function CRDHealth({ config }: CRDHealthProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-        >
-          <RefreshCw className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2">
+          <CardControls
+            limit={limit}
+            onLimitChange={setLimit}
+            sortBy={sortBy}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+          />
+          <button
+            onClick={() => refetch()}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            title="Refresh CRDs"
+          >
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Cluster selector */}
@@ -213,6 +273,20 @@ export function CRDHealth({ config }: CRDHealthProps) {
               )
             })}
           </div>
+
+          {/* Pagination */}
+          {needsPagination && limit !== 'unlimited' && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={perPage}
+                onPageChange={goToPage}
+                showItemsPerPage={false}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">

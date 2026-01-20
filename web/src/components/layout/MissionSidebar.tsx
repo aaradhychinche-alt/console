@@ -23,6 +23,7 @@ import {
   PanelRightOpen,
   ThumbsUp,
   ThumbsDown,
+  Maximize2,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useMissions, Mission, MissionStatus } from '../../hooks/useMissions'
@@ -114,7 +115,7 @@ function MissionListItem({ mission, isActive, onClick, onDismiss, isCollapsed, o
   )
 }
 
-function MissionChat({ mission }: { mission: Mission }) {
+function MissionChat({ mission, isFullScreen = false }: { mission: Mission; isFullScreen?: boolean }) {
   const { sendMessage, cancelMission, dismissMission, rateMission } = useMissions()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -192,7 +193,8 @@ function MissionChat({ mission }: { mission: Mission }) {
               )}
             </div>
             <div className={cn(
-              'flex-1 rounded-lg p-3 max-w-[85%]',
+              'flex-1 rounded-lg p-3',
+              isFullScreen ? 'max-w-[95%]' : 'max-w-[85%]',
               msg.role === 'user' ? 'bg-primary/10 ml-auto' :
               msg.role === 'assistant' ? 'bg-secondary/50' :
               'bg-yellow-500/10'
@@ -297,6 +299,20 @@ function MissionChat({ mission }: { mission: Mission }) {
 export function MissionSidebar() {
   const { missions, activeMission, isSidebarOpen, isSidebarMinimized, setActiveMission, closeSidebar, dismissMission, minimizeSidebar, expandSidebar } = useMissions()
   const [collapsedMissions, setCollapsedMissions] = useState<Set<string>>(new Set())
+  const [isFullScreen, setIsFullScreen] = useState(false)
+
+  // Exit fullscreen on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullScreen) {
+        setIsFullScreen(false)
+      }
+    }
+    if (isFullScreen) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isFullScreen])
 
   // Count missions needing attention
   const needsAttention = missions.filter(m =>
@@ -352,7 +368,12 @@ export function MissionSidebar() {
   }
 
   return (
-    <div className="fixed top-16 right-0 bottom-0 w-96 bg-card/95 backdrop-blur-sm border-l border-border z-40 flex flex-col">
+    <div className={cn(
+      "fixed bg-card/95 backdrop-blur-sm border-l border-border z-40 flex flex-col transition-all duration-300",
+      isFullScreen
+        ? "top-0 right-0 bottom-0 left-0 border-l-0"
+        : "top-16 right-0 bottom-0 w-96"
+    )}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center gap-2">
@@ -365,15 +386,35 @@ export function MissionSidebar() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {isFullScreen ? (
+            <button
+              onClick={() => setIsFullScreen(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/30 hover:bg-primary/20 rounded-lg transition-colors text-sm text-primary font-medium"
+              title="Exit full screen and return to sidebar"
+            >
+              <PanelRightOpen className="w-4 h-4" />
+              <span>Back to Sidebar</span>
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => setIsFullScreen(true)}
+                className="p-1 hover:bg-secondary rounded transition-colors"
+                title="Full screen"
+              >
+                <Maximize2 className="w-5 h-5 text-muted-foreground" />
+              </button>
+              <button
+                onClick={minimizeSidebar}
+                className="p-1 hover:bg-secondary rounded transition-colors"
+                title="Minimize sidebar"
+              >
+                <PanelRightClose className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </>
+          )}
           <button
-            onClick={minimizeSidebar}
-            className="p-1 hover:bg-secondary rounded transition-colors"
-            title="Minimize sidebar"
-          >
-            <PanelRightClose className="w-5 h-5 text-muted-foreground" />
-          </button>
-          <button
-            onClick={closeSidebar}
+            onClick={() => { setIsFullScreen(false); closeSidebar(); }}
             className="p-1 hover:bg-secondary rounded transition-colors"
             title="Close sidebar"
           >
@@ -391,7 +432,10 @@ export function MissionSidebar() {
           </p>
         </div>
       ) : activeMission ? (
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className={cn(
+          "flex-1 flex flex-col min-h-0",
+          isFullScreen && "max-w-4xl mx-auto w-full"
+        )}>
           {/* Back to list if multiple missions */}
           {missions.length > 1 && (
             <button
@@ -402,10 +446,13 @@ export function MissionSidebar() {
               Back to missions ({missions.length})
             </button>
           )}
-          <MissionChat mission={activeMission} />
+          <MissionChat mission={activeMission} isFullScreen={isFullScreen} />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        <div className={cn(
+          "flex-1 overflow-y-auto p-2 space-y-2",
+          isFullScreen && "max-w-2xl mx-auto w-full"
+        )}>
           {missions.map((mission) => (
             <MissionListItem
               key={mission.id}

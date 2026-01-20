@@ -3,6 +3,7 @@ import { HardDrive, CheckCircle, AlertTriangle, Clock } from 'lucide-react'
 import { usePVCs } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { CardControls, SortDirection } from '../ui/CardControls'
+import { Pagination, usePagination } from '../ui/Pagination'
 
 type SortByOption = 'status' | 'name' | 'capacity' | 'age'
 
@@ -66,8 +67,8 @@ export function PVCStatus() {
     return pvcs.filter(p => p.cluster && selectedClusters.includes(p.cluster))
   }, [pvcs, selectedClusters, isAllClustersSelected])
 
-  // Sort and limit
-  const displayPVCs = useMemo(() => {
+  // Sort PVCs
+  const sortedPVCs = useMemo(() => {
     const sorted = [...filteredPVCs].sort((a, b) => {
       let result = 0
       switch (sortBy) {
@@ -88,10 +89,20 @@ export function PVCStatus() {
       }
       return sortDirection === 'asc' ? result : -result
     })
+    return sorted
+  }, [filteredPVCs, sortBy, sortDirection])
 
-    if (limit === 'unlimited') return sorted
-    return sorted.slice(0, limit)
-  }, [filteredPVCs, sortBy, sortDirection, limit])
+  // Use pagination hook
+  const effectivePerPage = limit === 'unlimited' ? 1000 : limit
+  const {
+    paginatedItems: displayPVCs,
+    currentPage,
+    totalPages,
+    totalItems,
+    itemsPerPage: perPage,
+    goToPage,
+    needsPagination,
+  } = usePagination(sortedPVCs, effectivePerPage)
 
   // Stats
   const stats = useMemo(() => ({
@@ -190,10 +201,17 @@ export function PVCStatus() {
         )}
       </div>
 
-      {/* Footer */}
-      {filteredPVCs.length > displayPVCs.length && (
-        <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground text-center">
-          Showing {displayPVCs.length} of {filteredPVCs.length} PVCs
+      {/* Pagination */}
+      {needsPagination && limit !== 'unlimited' && (
+        <div className="pt-2 border-t border-border/50 mt-2">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={perPage}
+            onPageChange={goToPage}
+            showItemsPerPage={false}
+          />
         </div>
       )}
     </div>

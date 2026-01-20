@@ -1,10 +1,20 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 
 // Hook for managing pagination state
 export function usePagination<T>(items: T[], defaultPerPage: number = 5) {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(defaultPerPage)
+  const prevDefaultPerPage = useRef(defaultPerPage)
+
+  // Update itemsPerPage when defaultPerPage changes (e.g., when user selects "Show All")
+  useEffect(() => {
+    if (prevDefaultPerPage.current !== defaultPerPage) {
+      prevDefaultPerPage.current = defaultPerPage
+      setItemsPerPage(defaultPerPage)
+      setCurrentPage(1) // Reset to first page when changing page size
+    }
+  }, [defaultPerPage])
 
   const totalItems = items.length
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage))
