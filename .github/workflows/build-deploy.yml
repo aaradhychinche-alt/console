@@ -115,6 +115,7 @@ jobs:
             --namespace kkc \
             --from-literal=github-client-id=${{ secrets.KKC_OAUTH_CLIENT_ID }} \
             --from-literal=github-client-secret=${{ secrets.KKC_OAUTH_CLIENT_SECRET }} \
+            --from-literal=jwt-secret=${{ secrets.KKC_JWT_SECRET }} \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy with Helm
@@ -125,6 +126,7 @@ jobs:
             --set image.tag=${{ github.sha }} \
             --set github.existingSecret=kkc-secrets \
             --set claude.existingSecret=kkc-secrets \
+            --set jwt.existingSecret=kkc-secrets \
             --set route.enabled=true \
             --set route.host=kkc.apps.fmaas-vllm-d.fmaas.res.ibm.com \
             --wait \
