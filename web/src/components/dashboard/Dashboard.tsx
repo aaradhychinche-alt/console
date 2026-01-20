@@ -34,6 +34,7 @@ import { AddCardModal } from './AddCardModal'
 import { ReplaceCardModal } from './ReplaceCardModal'
 import { ConfigureCardModal } from './ConfigureCardModal'
 import { CardRecommendations } from './CardRecommendations'
+import { MissionSuggestions } from './MissionSuggestions'
 import { TemplatesModal } from './TemplatesModal'
 import { DashboardTemplate } from './templates'
 
@@ -281,17 +282,18 @@ export function Dashboard() {
         const apiCards = data.cards.length > 0 ? data.cards : getDemoCards()
         setDashboard(data)
 
-        // During background refresh, preserve local-only cards (not yet persisted to backend)
-        if (isBackground) {
-          setLocalCards((prevCards) => {
-            // Keep local-only cards that aren't in the API response
-            const localOnlyCards = prevCards.filter(c => isLocalOnlyCard(c.id))
-            // Merge: local-only cards first, then API cards
+        // ALWAYS preserve local-only cards (not yet persisted to backend)
+        // This prevents losing cards when cache expires or user navigates back
+        setLocalCards((prevCards) => {
+          // Keep local-only cards that aren't in the API response
+          const localOnlyCards = prevCards.filter(c => isLocalOnlyCard(c.id))
+          // If we have local-only cards, merge them with API cards
+          if (localOnlyCards.length > 0) {
             return [...localOnlyCards, ...apiCards]
-          })
-        } else {
-          setLocalCards(apiCards)
-        }
+          }
+          // Otherwise just use API cards
+          return apiCards
+        })
         // Update cache
         dashboardCache = { dashboard: data, cards: apiCards, timestamp: Date.now() }
       } else {
@@ -307,12 +309,18 @@ export function Dashboard() {
       }
     } catch (error) {
       console.error('Failed to load dashboard:', error)
-      // Only set demo cards if not a background refresh (keep existing data)
-      if (!isBackground) {
+      // Preserve local-only cards even on error, only add demo cards if needed
+      setLocalCards((prevCards) => {
+        const localOnlyCards = prevCards.filter(c => isLocalOnlyCard(c.id))
+        if (localOnlyCards.length > 0) {
+          // Keep local cards, don't replace with demo
+          return prevCards
+        }
+        // No local cards, use demo
         const cards = getDemoCards()
-        setLocalCards(cards)
         dashboardCache = { dashboard: null, cards, timestamp: Date.now() }
-      }
+        return cards
+      })
     } finally {
       setIsLoading(false)
     }
@@ -624,6 +632,9 @@ export function Dashboard() {
           onAddCard={handleAddRecommendedCard}
         />
       </div>
+
+      {/* Mission Suggestions - actionable items like scaling, restarts, security issues */}
+      <MissionSuggestions />
 
       {/* Demo Data Banner */}
       {hasDemoDataCards && !demoBannerDismissed && (

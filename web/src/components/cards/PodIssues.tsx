@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { RefreshCw, MemoryStick, ImageOff, Clock, ChevronRight } from 'lucide-react'
 import { usePodIssues, PodIssue } from '../../hooks/useMCP'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
@@ -58,6 +58,17 @@ export function PodIssues() {
   const [sortBy, setSortBy] = useState<SortByOption>('status')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [itemsPerPage, setItemsPerPage] = useState<number | 'unlimited'>(5)
+  const [loadingTooLong, setLoadingTooLong] = useState(false)
+
+  // Track if loading is taking too long
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setLoadingTooLong(true), 10000)
+      return () => clearTimeout(timer)
+    } else {
+      setLoadingTooLong(false)
+    }
+  }, [isLoading])
 
   // Filter and sort issues
   const filteredAndSorted = useMemo(() => {
@@ -101,8 +112,19 @@ export function PodIssues() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="h-full flex flex-col items-center justify-center gap-3">
         <div className="spinner w-8 h-8" />
+        {loadingTooLong && (
+          <div className="text-center">
+            <p className="text-xs text-muted-foreground">Loading taking longer than expected...</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-2 text-xs text-primary hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     )
   }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { AlertTriangle, Info, XCircle, RefreshCw, ChevronRight } from 'lucide-react'
 import { useEvents } from '../../hooks/useMCP'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
@@ -32,9 +32,20 @@ export function EventStream() {
   const [itemsPerPage, setItemsPerPage] = useState<number | 'unlimited'>(5)
   const [sortBy, setSortBy] = useState<SortByOption>('time')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [loadingTooLong, setLoadingTooLong] = useState(false)
   // Fetch more events from API to enable pagination
   const { events: rawEvents, isLoading, isRefreshing, lastUpdated, error, refetch } = useEvents(undefined, undefined, 100)
   const { filterByCluster } = useGlobalFilters()
+
+  // Track if loading is taking too long
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setLoadingTooLong(true), 10000)
+      return () => clearTimeout(timer)
+    } else {
+      setLoadingTooLong(false)
+    }
+  }, [isLoading])
 
   // Filter and sort events
   const filteredAndSorted = useMemo(() => {
@@ -89,8 +100,19 @@ export function EventStream() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="h-full flex flex-col items-center justify-center gap-3">
         <div className="spinner w-8 h-8" />
+        {loadingTooLong && (
+          <div className="text-center">
+            <p className="text-xs text-muted-foreground">Loading taking longer than expected...</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-2 text-xs text-primary hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     )
   }
