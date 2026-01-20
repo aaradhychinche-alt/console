@@ -27,6 +27,9 @@ var defaultAllowedOrigins = []string{
 	"https://localhost",
 	"http://127.0.0.1",
 	"https://127.0.0.1",
+	// Known deployment URLs
+	"https://kubestellarklaudeconsole.netlify.app",
+	"https://kkc.apps.fmaas-vllm-d.fmaas.res.ibm.com",
 }
 
 // Server is the local agent WebSocket server
