@@ -18,8 +18,7 @@ permissions:
 jobs:
   ai-fix:
     if: |
-      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'ai-fix-requested') ||
-      (github.event_name == 'issues' && github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'ai-fix-requested')) ||
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'triage/accepted' && contains(github.event.issue.labels.*.name, 'ai-fix-requested')) ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 

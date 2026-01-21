@@ -434,7 +434,7 @@ func (h *FeedbackHandler) handleDeploymentStatus(payload map[string]interface{})
 // createGitHubIssue creates an issue on GitHub
 func (h *FeedbackHandler) createGitHubIssue(request *models.FeatureRequest, user *models.User) (int, string, error) {
 	// Determine labels based on request type
-	labels := []string{"ai-fix-requested"}
+	labels := []string{"ai-fix-requested", "needs-triage"}
 	if request.RequestType == models.RequestTypeBug {
 		labels = append(labels, "bug")
 	} else {
