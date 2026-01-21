@@ -2,7 +2,13 @@ name: AI Fix with Claude Code
 
 on:
   issues:
-    types: [labeled]
+    types: [labeled, opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to fix'
+        required: true
+        type: number
 
 permissions:
   contents: write
@@ -11,7 +17,10 @@ permissions:
 
 jobs:
   ai-fix:
-    if: github.event.label.name == 'ai-fix-requested'
+    if: |
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'ai-fix-requested') ||
+      (github.event_name == 'issues' && github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'ai-fix-requested')) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
