@@ -1083,20 +1083,38 @@ export function useClusters() {
       }
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const token = localStorage.getItem('token')
-      const wsUrl = `${protocol}//localhost:8080/ws${token ? `?token=${token}` : ''}`
+      const wsUrl = `${protocol}//localhost:8080/ws`
       let ws: WebSocket | null = null
 
       const connect = () => {
         ws = new WebSocket(wsUrl)
 
         ws.onopen = () => {
-          console.log('WebSocket connected for cluster updates')
+          // Send authentication as first message (more secure than query param)
+          const token = localStorage.getItem('token')
+          if (token && ws) {
+            ws.send(JSON.stringify({ type: 'auth', token }))
+          }
         }
 
         ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data)
+
+            // Handle authentication confirmation
+            if (message.type === 'authenticated') {
+              console.log('WebSocket authenticated for cluster updates')
+              return
+            }
+
+            // Handle error messages
+            if (message.type === 'error') {
+              console.error('WebSocket error:', message.data?.message)
+              ws?.close()
+              return
+            }
+
+            // Handle kubeconfig change notifications
             if (message.type === 'kubeconfig_changed') {
               console.log('Kubeconfig changed, updating clusters...')
               silentFetchClusters()

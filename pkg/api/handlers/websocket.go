@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/google/uuid"
@@ -145,14 +146,30 @@ func (h *Hub) BroadcastAll(msg Message) {
 
 // HandleConnection handles a new WebSocket connection
 func (h *Hub) HandleConnection(conn *websocket.Conn) {
-	// SECURITY: Validate JWT token for WebSocket connections
-	// Token can be passed via query parameter since WebSocket doesn't support custom headers easily
-	tokenStr := conn.Query("token")
+	// SECURITY: Accept connection but wait for authentication in first message
+	// This keeps tokens out of URLs and server logs
 
 	var userID uuid.UUID
-	if tokenStr == "" {
-		// SECURITY: Reject anonymous connections - require authentication
-		log.Printf("SECURITY: Rejected WebSocket connection - missing token")
+	var authenticated bool
+
+	// Set read deadline for authentication message (5 seconds)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+	// Read first message which should contain authentication token
+	var authMsg struct {
+		Type  string `json:"type"`
+		Token string `json:"token"`
+	}
+
+	if err := conn.ReadJSON(&authMsg); err != nil {
+		log.Printf("SECURITY: Failed to read auth message: %v", err)
+		conn.WriteJSON(Message{Type: "error", Data: map[string]string{"message": "authentication required"}})
+		conn.Close()
+		return
+	}
+
+	if authMsg.Type != "auth" || authMsg.Token == "" {
+		log.Printf("SECURITY: Invalid or missing auth message")
 		conn.WriteJSON(Message{Type: "error", Data: map[string]string{"message": "authentication required"}})
 		conn.Close()
 		return
@@ -160,25 +177,35 @@ func (h *Hub) HandleConnection(conn *websocket.Conn) {
 
 	// Validate JWT token
 	if h.jwtSecret != "" {
-		claims, err := middleware.ValidateJWT(tokenStr, h.jwtSecret)
+		claims, err := middleware.ValidateJWT(authMsg.Token, h.jwtSecret)
 		if err != nil {
-			log.Printf("SECURITY: Rejected WebSocket connection - invalid token: %v", err)
+			log.Printf("SECURITY: Rejected WebSocket - invalid token: %v", err)
 			conn.WriteJSON(Message{Type: "error", Data: map[string]string{"message": "invalid token"}})
 			conn.Close()
 			return
 		}
 		userID = claims.UserID
+		authenticated = true
 		log.Printf("Authenticated WebSocket connection for user: %s", claims.GitHubLogin)
 	} else {
-		// Fallback to user_id param if JWT secret not configured (dev mode compatibility)
-		userIDStr := conn.Query("user_id")
-		var err error
-		userID, err = uuid.Parse(userIDStr)
-		if err != nil {
-			userID = uuid.Nil
-			log.Printf("WARNING: WebSocket connection without JWT validation (JWT secret not configured)")
-		}
+		// No JWT secret configured - accept connection anyway for dev compatibility
+		userID = uuid.Nil
+		authenticated = true
+		log.Printf("WARNING: WebSocket connection without JWT validation (JWT secret not configured)")
 	}
+
+	if !authenticated {
+		log.Printf("SECURITY: WebSocket authentication failed")
+		conn.WriteJSON(Message{Type: "error", Data: map[string]string{"message": "authentication failed"}})
+		conn.Close()
+		return
+	}
+
+	// Send authentication success message
+	conn.WriteJSON(Message{Type: "authenticated", Data: map[string]string{"status": "connected"}})
+
+	// Clear read deadline after successful auth
+	conn.SetReadDeadline(time.Time{})
 
 	client := &Client{
 		conn:   conn,
