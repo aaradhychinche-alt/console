@@ -59,7 +59,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # Create prompt file for Claude Code
-          cat > /tmp/claude-prompt.txt <<EOF
+          cat > /tmp/claude-prompt.txt <<'EOF'
 You are fixing a bug or implementing a feature request for the KubeStellar Console project.
 
 Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}
