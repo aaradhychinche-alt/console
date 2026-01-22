@@ -72,6 +72,10 @@ function saveWorkloadCards(cards: WorkloadCard[]) {
   localStorage.setItem(WORKLOADS_CARDS_KEY, JSON.stringify(cards))
 }
 
+function isCardsCustomized(): boolean {
+  return localStorage.getItem(WORKLOADS_CARDS_KEY) !== null
+}
+
 // Sortable card component with drag handle
 interface SortableWorkloadCardProps {
   card: WorkloadCard
@@ -175,9 +179,17 @@ export function Workloads() {
 
   // Card state
   const [cards, setCards] = useState<WorkloadCard[]>(() => loadWorkloadCards())
+  const [cardsCustomized, setCardsCustomized] = useState(isCardsCustomized)
   // Stats collapsed state is now managed by StatsOverview component
   const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-workloads')
   const [showAddCard, setShowAddCard] = useState(false)
+
+  // Reset dashboard to default cards
+  const handleResetToDefaults = useCallback(() => {
+    setCards(DEFAULT_WORKLOAD_CARDS)
+    localStorage.removeItem(WORKLOADS_CARDS_KEY)
+    setCardsCustomized(false)
+  }, [])
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<WorkloadCard | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -219,9 +231,10 @@ export function Workloads() {
   // Only show skeletons when we have no data yet
   const showSkeletons = (allDeployments.length === 0 && podIssues.length === 0 && deploymentIssues.length === 0) && isLoading
 
-  // Save cards to localStorage when they change
+  // Save cards to localStorage when they change (mark as customized)
   useEffect(() => {
     saveWorkloadCards(cards)
+    setCardsCustomized(true)
   }, [cards])
 
   // Handle addCard URL param - open modal and clear param
@@ -591,6 +604,8 @@ export function Workloads() {
       <FloatingDashboardActions
         onAddCard={() => setShowAddCard(true)}
         onOpenTemplates={() => setShowTemplates(true)}
+        onResetToDefaults={handleResetToDefaults}
+        isCustomized={cardsCustomized}
       />
 
       {/* Add Card Modal */}

@@ -68,6 +68,10 @@ function saveNetworkCards(cards: NetworkCard[]) {
   localStorage.setItem(NETWORK_CARDS_KEY, JSON.stringify(cards))
 }
 
+function isCardsCustomized(): boolean {
+  return localStorage.getItem(NETWORK_CARDS_KEY) !== null
+}
+
 // Sortable card component with drag handle
 interface SortableNetworkCardProps {
   card: NetworkCard
@@ -163,9 +167,17 @@ export function Network() {
 
   // Card state
   const [cards, setCards] = useState<NetworkCard[]>(() => loadNetworkCards())
+  const [cardsCustomized, setCardsCustomized] = useState(isCardsCustomized)
   // Stats collapsed state is now managed by StatsOverview component
   const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-network')
   const [showAddCard, setShowAddCard] = useState(false)
+
+  // Reset dashboard to default cards
+  const handleResetToDefaults = useCallback(() => {
+    setCards(DEFAULT_NETWORK_CARDS)
+    localStorage.removeItem(NETWORK_CARDS_KEY)
+    setCardsCustomized(false)
+  }, [])
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<NetworkCard | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -205,9 +217,10 @@ export function Network() {
   // Only show skeletons when we have no data yet
   const showSkeletons = services.length === 0 && servicesLoading
 
-  // Save cards to localStorage when they change
+  // Save cards to localStorage when they change (mark as customized)
   useEffect(() => {
     saveNetworkCards(cards)
+    setCardsCustomized(true)
   }, [cards])
 
   // Handle addCard URL param - open modal and clear param
@@ -460,6 +473,8 @@ export function Network() {
       <FloatingDashboardActions
         onAddCard={() => setShowAddCard(true)}
         onOpenTemplates={() => setShowTemplates(true)}
+        onResetToDefaults={handleResetToDefaults}
+        isCustomized={cardsCustomized}
       />
 
       {/* Add Card Modal */}

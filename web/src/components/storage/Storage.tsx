@@ -194,6 +194,10 @@ function saveStorageCards(cards: StorageCard[]) {
   localStorage.setItem(STORAGE_CARDS_KEY, JSON.stringify(cards))
 }
 
+function isCardsCustomized(): boolean {
+  return localStorage.getItem(STORAGE_CARDS_KEY) !== null
+}
+
 // Sortable card component with drag handle
 interface SortableStorageCardProps {
   card: StorageCard
@@ -291,9 +295,17 @@ export function Storage() {
 
   // Card state
   const [cards, setCards] = useState<StorageCard[]>(() => loadStorageCards())
+  const [cardsCustomized, setCardsCustomized] = useState(isCardsCustomized)
   // Stats collapsed state is now managed by StatsOverview component
   const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-storage')
   const [showAddCard, setShowAddCard] = useState(false)
+
+  // Reset dashboard to default cards
+  const handleResetToDefaults = useCallback(() => {
+    setCards(DEFAULT_STORAGE_CARDS)
+    localStorage.removeItem(STORAGE_CARDS_KEY)
+    setCardsCustomized(false)
+  }, [])
   const [showTemplates, setShowTemplates] = useState(false)
   const [configuringCard, setConfiguringCard] = useState<StorageCard | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -336,9 +348,10 @@ export function Storage() {
   // Only show skeletons when we have no data yet
   const showSkeletons = clusters.length === 0 && isLoading
 
-  // Save cards to localStorage when they change
+  // Save cards to localStorage when they change (mark as customized)
   useEffect(() => {
     saveStorageCards(cards)
+    setCardsCustomized(true)
   }, [cards])
 
   // Handle addCard URL param - open modal and clear param
@@ -649,6 +662,8 @@ export function Storage() {
       <FloatingDashboardActions
         onAddCard={() => setShowAddCard(true)}
         onOpenTemplates={() => setShowTemplates(true)}
+        onResetToDefaults={handleResetToDefaults}
+        isCustomized={cardsCustomized}
       />
 
       {/* Add Card Modal */}
