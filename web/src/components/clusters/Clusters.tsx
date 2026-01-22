@@ -28,6 +28,7 @@ import { FloatingDashboardActions } from '../dashboard/FloatingDashboardActions'
 import { DashboardTemplate } from '../dashboard/templates'
 import { CardWrapper } from '../cards/CardWrapper'
 import { CARD_COMPONENTS, DEMO_DATA_CARDS } from '../cards/cardRegistry'
+import { getDefaultCards, DashboardType } from '../../lib/defaultCards'
 import { ClusterDetailModal } from './ClusterDetailModal'
 import {
   RenameModal,
@@ -54,10 +55,18 @@ const CLUSTERS_CARDS_KEY = 'kubestellar-clusters-cards'
 function loadClusterCards(): ClusterCard[] {
   try {
     const stored = localStorage.getItem(CLUSTERS_CARDS_KEY)
-    return stored ? JSON.parse(stored) : []
+    if (stored) {
+      return JSON.parse(stored)
+    }
+    // Return default cards for clusters dashboard if nothing stored
+    return getDefaultCards('clusters' as DashboardType) as ClusterCard[]
   } catch {
-    return []
+    return getDefaultCards('clusters' as DashboardType) as ClusterCard[]
   }
+}
+
+function isCardsCustomized(): boolean {
+  return localStorage.getItem(CLUSTERS_CARDS_KEY) !== null
 }
 
 function saveClusterCards(cards: ClusterCard[]) {
@@ -1519,8 +1528,17 @@ export function Clusters() {
 
   // Dashboard cards state
   const [cards, setCards] = useState<ClusterCard[]>(loadClusterCards)
+  const [cardsCustomized, setCardsCustomized] = useState(isCardsCustomized)
   const [showAddCard, setShowAddCard] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
+
+  // Reset dashboard to default cards
+  const handleResetToDefaults = useCallback(() => {
+    const defaults = getDefaultCards('clusters' as DashboardType) as ClusterCard[]
+    setCards(defaults)
+    localStorage.removeItem(CLUSTERS_CARDS_KEY)
+    setCardsCustomized(false)
+  }, [])
   const { showCards, setShowCards, expandCards } = useShowCards('kubestellar-clusters', false) // Collapsed by default so cluster cards are visible first
   const [showStats, setShowStats] = useState(true) // Stats overview visible by default
   const [showClusterGrid, setShowClusterGrid] = useState(true) // Cluster cards visible by default
@@ -1558,9 +1576,10 @@ export function Clusters() {
     }
   }
 
-  // Save cards to localStorage when they change
+  // Save cards to localStorage when they change (mark as customized)
   useEffect(() => {
     saveClusterCards(cards)
+    setCardsCustomized(true)
   }, [cards])
 
   // Handle addCard URL param - open modal and clear param
@@ -2181,6 +2200,8 @@ export function Clusters() {
       <FloatingDashboardActions
         onAddCard={() => setShowAddCard(true)}
         onOpenTemplates={() => setShowTemplates(true)}
+        onResetToDefaults={handleResetToDefaults}
+        isCustomized={cardsCustomized}
       />
 
       {/* Add Card Modal */}
