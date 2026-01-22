@@ -21,6 +21,7 @@ interface CRD {
   scope: 'Namespaced' | 'Cluster'
   status: 'Established' | 'NotEstablished' | 'Terminating'
   instances: number
+  cluster: string
 }
 
 type SortByOption = 'status' | 'name' | 'group' | 'instances'
@@ -65,20 +66,34 @@ export function CRDHealth({ config }: CRDHealthProps) {
     return result
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
 
-  // Mock CRD data - now shows all clusters when none selected
-  const mockCRDs = [
-    { name: 'certificates', group: 'cert-manager.io', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 45 },
-    { name: 'clusterissuers', group: 'cert-manager.io', version: 'v1', scope: 'Cluster' as const, status: 'Established' as const, instances: 2 },
-    { name: 'issuers', group: 'cert-manager.io', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 8 },
-    { name: 'prometheuses', group: 'monitoring.coreos.com', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 3 },
-    { name: 'servicemonitors', group: 'monitoring.coreos.com', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 127 },
-    { name: 'alertmanagers', group: 'monitoring.coreos.com', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 2 },
-    { name: 'kafkas', group: 'kafka.strimzi.io', version: 'v1beta2', scope: 'Namespaced' as const, status: 'Established' as const, instances: 4 },
-    { name: 'kafkatopics', group: 'kafka.strimzi.io', version: 'v1beta2', scope: 'Namespaced' as const, status: 'NotEstablished' as const, instances: 0 },
-    { name: 'applications', group: 'argoproj.io', version: 'v1alpha1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 56 },
-    { name: 'appprojects', group: 'argoproj.io', version: 'v1alpha1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 5 },
-  ]
-  const allCRDs: CRD[] = selectedCluster ? mockCRDs : (clusters.length > 0 ? mockCRDs : [])
+  // Mock CRD data - generates CRDs for each cluster
+  const allCRDs: CRD[] = useMemo(() => {
+    const baseCRDs = [
+      { name: 'certificates', group: 'cert-manager.io', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 45 },
+      { name: 'clusterissuers', group: 'cert-manager.io', version: 'v1', scope: 'Cluster' as const, status: 'Established' as const, instances: 2 },
+      { name: 'issuers', group: 'cert-manager.io', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 8 },
+      { name: 'prometheuses', group: 'monitoring.coreos.com', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 3 },
+      { name: 'servicemonitors', group: 'monitoring.coreos.com', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 127 },
+      { name: 'alertmanagers', group: 'monitoring.coreos.com', version: 'v1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 2 },
+      { name: 'kafkas', group: 'kafka.strimzi.io', version: 'v1beta2', scope: 'Namespaced' as const, status: 'Established' as const, instances: 4 },
+      { name: 'kafkatopics', group: 'kafka.strimzi.io', version: 'v1beta2', scope: 'Namespaced' as const, status: 'NotEstablished' as const, instances: 0 },
+      { name: 'applications', group: 'argoproj.io', version: 'v1alpha1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 56 },
+      { name: 'appprojects', group: 'argoproj.io', version: 'v1alpha1', scope: 'Namespaced' as const, status: 'Established' as const, instances: 5 },
+    ]
+
+    if (selectedCluster) {
+      return baseCRDs.map(crd => ({ ...crd, cluster: selectedCluster }))
+    }
+
+    // When no cluster selected, show CRDs from all clusters
+    const crdsWithClusters: CRD[] = []
+    clusters.forEach(c => {
+      baseCRDs.forEach(crd => {
+        crdsWithClusters.push({ ...crd, cluster: c.name })
+      })
+    })
+    return crdsWithClusters
+  }, [selectedCluster, clusters])
 
   // Get unique groups
   const groups = useMemo(() => {
@@ -97,7 +112,8 @@ export function CRDHealth({ config }: CRDHealthProps) {
         crd.name.toLowerCase().includes(query) ||
         crd.group.toLowerCase().includes(query) ||
         crd.version.toLowerCase().includes(query) ||
-        crd.scope.toLowerCase().includes(query)
+        crd.scope.toLowerCase().includes(query) ||
+        crd.cluster.toLowerCase().includes(query)
       )
     }
 
@@ -294,6 +310,7 @@ export function CRDHealth({ config }: CRDHealthProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1 ml-6 text-xs text-muted-foreground">
+                    <ClusterBadge cluster={crd.cluster} size="sm" />
                     <span className="truncate">{crd.group}</span>
                     <span className="text-border">|</span>
                     <span>{crd.version}</span>
