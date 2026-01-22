@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { TimeSeriesChart } from '../charts'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
-import { useDemoMode } from '../../hooks/useDemoMode'
-import { Server, Clock, Filter, ChevronDown, Info } from 'lucide-react'
+import { Server, Clock, Filter, ChevronDown } from 'lucide-react'
+import { RefreshButton } from '../ui/RefreshIndicator'
 
 type TimeRange = '15m' | '1h' | '6h' | '24h'
 
@@ -14,26 +14,6 @@ const TIME_RANGE_OPTIONS: { value: TimeRange; label: string; points: number; int
   { value: '24h', label: '24 hours', points: 24, intervalMs: 3600000 },
 ]
 
-// Generate demo time series data with a seed for consistency per cluster
-function generateTimeSeriesData(points: number, baseValue: number, variance: number, seed: number, intervalMs: number) {
-  const now = new Date()
-  // Simple seeded random for consistency
-  const seededRandom = (i: number) => {
-    const x = Math.sin(seed + i) * 10000
-    return x - Math.floor(x)
-  }
-  return Array.from({ length: points }, (_, i) => {
-    const time = new Date(now.getTime() - (points - i - 1) * intervalMs)
-    // Format based on interval
-    const timeStr = intervalMs >= 3600000
-      ? time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    return {
-      time: timeStr,
-      value: Math.max(0, baseValue + (seededRandom(i) - 0.5) * variance),
-    }
-  })
-}
 
 type MetricType = 'cpu' | 'memory' | 'pods' | 'nodes'
 
@@ -44,25 +24,59 @@ const metricConfig = {
   nodes: { label: 'Nodes', color: '#f59e0b', unit: '', baseValue: 10, variance: 5 },
 }
 
-// Generate a numeric hash from a string for seeding
-function stringToSeed(str: string): number {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i)
-    hash |= 0
-  }
-  return Math.abs(hash)
+interface MetricPoint {
+  time: string
+  timestamp: number
+  cpu: number
+  memory: number
+  pods: number
+  nodes: number
 }
 
+const STORAGE_KEY = 'cluster-metrics-history'
+const MAX_AGE_MS = 30 * 60 * 1000 // 30 minutes TTL
+
 export function ClusterMetrics() {
-  const { clusters: rawClusters } = useClusters()
+  const { clusters: rawClusters, isLoading, isRefreshing, refetch, isFailed, consecutiveFailures, lastRefresh } = useClusters()
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
-  const { isDemoMode } = useDemoMode()
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('cpu')
   const [timeRange, setTimeRange] = useState<TimeRange>('1h')
   const [localClusterFilter, setLocalClusterFilter] = useState<string[]>([])
   const [showClusterFilter, setShowClusterFilter] = useState(false)
   const clusterFilterRef = useRef<HTMLDivElement>(null)
+
+  // Load history from localStorage
+  const loadSavedHistory = useCallback((): MetricPoint[] => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as { data: MetricPoint[]; timestamp: number }
+        if (Date.now() - parsed.timestamp < MAX_AGE_MS) {
+          return parsed.data
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return []
+  }, [])
+
+  const historyRef = useRef<MetricPoint[]>(loadSavedHistory())
+  const [history, setHistory] = useState<MetricPoint[]>(historyRef.current)
+
+  // Save history to localStorage when it changes
+  useEffect(() => {
+    if (history.length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          data: history,
+          timestamp: Date.now(),
+        }))
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [history])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -111,42 +125,56 @@ export function ClusterMetrics() {
   // Check if we have real data
   const hasRealData = clusters.some(c => c.cpuCores !== undefined || c.memoryGB !== undefined)
 
-  // Get time range config
-  const timeRangeConfig = TIME_RANGE_OPTIONS.find(t => t.value === timeRange) || TIME_RANGE_OPTIONS[1]
+  // Track data points over time - add new point when values change
+  useEffect(() => {
+    if (isLoading || !hasRealData) return
+    if (realValues.nodes === 0 && realValues.cpu === 0) return
 
-  // Generate time-series data - only in demo mode
+    const now = Date.now()
+    const newPoint: MetricPoint = {
+      time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: now,
+      cpu: realValues.cpu,
+      memory: realValues.memory,
+      pods: realValues.pods,
+      nodes: realValues.nodes,
+    }
+
+    // Only add if data changed or at least 30 seconds since last point
+    const lastPoint = historyRef.current[historyRef.current.length - 1]
+    const shouldAdd = !lastPoint ||
+      (now - lastPoint.timestamp > 30000) ||
+      lastPoint.cpu !== newPoint.cpu ||
+      lastPoint.memory !== newPoint.memory ||
+      lastPoint.pods !== newPoint.pods ||
+      lastPoint.nodes !== newPoint.nodes
+
+    if (shouldAdd) {
+      // Keep last 60 points (about 30 minutes at 30-second intervals)
+      const newHistory = [...historyRef.current, newPoint].slice(-60)
+      historyRef.current = newHistory
+      setHistory(newHistory)
+    }
+  }, [realValues, isLoading, hasRealData])
+
+  // Transform history to chart data for selected metric
   const data = useMemo(() => {
-    const config = metricConfig[selectedMetric]
-    const points = timeRangeConfig.points
-    const intervalMs = timeRangeConfig.intervalMs
+    // Filter history based on time range
+    const now = Date.now()
+    const rangeMs = {
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+    }[timeRange]
 
-    // Only generate synthetic data in demo mode
-    if (!isDemoMode) {
-      return []
-    }
+    const filteredHistory = history.filter(p => now - p.timestamp <= rangeMs)
 
-    if (clusters.length === 0) {
-      return generateTimeSeriesData(points, 0, 0, 0, intervalMs)
-    }
-
-    // Use real current value as base if available
-    const baseValue = hasRealData ? realValues[selectedMetric] : config.baseValue
-    const variance = hasRealData ? baseValue * 0.1 : config.variance // 10% variance around real value
-
-    // Generate simulated historical data centered around current real value
-    const clusterData = clusters.map(cluster =>
-      generateTimeSeriesData(points, baseValue / clusters.length, variance / clusters.length, stringToSeed(cluster.name + selectedMetric + timeRange), intervalMs)
-    )
-
-    // Aggregate by summing all cluster values at each time point
-    return Array.from({ length: points }, (_, i) => {
-      const totalValue = clusterData.reduce((sum, cd) => sum + cd[i].value, 0)
-      return {
-        time: clusterData[0][i].time,
-        value: totalValue,
-      }
-    })
-  }, [clusters, selectedMetric, hasRealData, realValues, timeRange, timeRangeConfig.points, timeRangeConfig.intervalMs, isDemoMode])
+    return filteredHistory.map(point => ({
+      time: point.time,
+      value: point[selectedMetric],
+    }))
+  }, [history, selectedMetric, timeRange])
 
   const config = metricConfig[selectedMetric]
   // Use real current value if available, otherwise use last chart value
@@ -179,6 +207,14 @@ export function ClusterMetrics() {
                 Live
               </span>
             )}
+            <RefreshButton
+              isRefreshing={isRefreshing}
+              isFailed={isFailed}
+              consecutiveFailures={consecutiveFailures}
+              lastRefresh={lastRefresh}
+              onRefresh={refetch}
+              size="sm"
+            />
           </div>
           <p className="text-2xl font-bold text-foreground">
             {selectedMetric === 'memory' ? realValues.memory.toFixed(1) : Math.round(currentValue)}<span className="text-sm text-muted-foreground">{config.unit}</span>
@@ -270,11 +306,11 @@ export function ClusterMetrics() {
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
             No clusters selected
           </div>
-        ) : !isDemoMode ? (
+        ) : data.length < 2 ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm gap-2">
-            <Info className="w-5 h-5" />
-            <span>Historical metrics require Prometheus</span>
-            <span className="text-xs text-muted-foreground/70">Enable demo mode to see simulated data</span>
+            <Clock className="w-5 h-5" />
+            <span>{data.length === 0 ? 'Collecting data...' : 'Waiting for next data point...'}</span>
+            <span className="text-xs text-muted-foreground/70">Chart will appear after collecting more data</span>
           </div>
         ) : (
           <TimeSeriesChart
@@ -287,8 +323,8 @@ export function ClusterMetrics() {
         )}
       </div>
 
-      {/* Stats - only show when we have time series data */}
-      {isDemoMode && data.length > 0 && (
+      {/* Stats - show when we have time series data */}
+      {data.length > 0 && (
         <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-3 gap-4">
           <div>
             <p className="text-xs text-muted-foreground">Min</p>
