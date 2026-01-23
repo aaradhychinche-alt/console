@@ -10,10 +10,16 @@ on:
         required: true
         type: number
 
+run-name: "AI Fix #${{ github.event.inputs.issue_number || github.event.issue.number }}"
+
 permissions:
   contents: write
   issues: write
   pull-requests: write
+
+env:
+  # Use workflow_dispatch input if available, otherwise use issue event number
+  ISSUE_NUM: ${{ github.event.inputs.issue_number || github.event.issue.number }}
 
 jobs:
   ai-fix:
@@ -23,11 +29,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set issue number
+        id: issue
+        run: |
+          ISSUE_NUM="${{ github.event.inputs.issue_number || github.event.issue.number }}"
+          echo "number=$ISSUE_NUM" >> $GITHUB_OUTPUT
+
+      - name: Get issue details
+        id: issue_details
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_JSON=$(gh api repos/${{ github.repository }}/issues/${{ steps.issue.outputs.number }})
+          echo "title=$(echo "$ISSUE_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_JSON" | jq -r '.body' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Add rocket reaction to issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/reactions \
+          gh api repos/${{ github.repository }}/issues/${{ steps.issue.outputs.number }}/reactions \
             -X POST \
             -f content='rocket'
 
@@ -35,7 +58,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "🚀 Claude Code is analyzing this issue and working on a fix. I'll update you when I have results!
+          gh issue comment ${{ steps.issue.outputs.number }} --repo ${{ github.repository }} --body "🚀 Claude Code is analyzing this issue and working on a fix. I'll update you when I have results!
 
           View progress: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
@@ -68,14 +91,14 @@ jobs:
         run: |
           git config user.name "Claude Code Bot"
           git config user.email "claude-bot@kubestellar.io"
-          git checkout -b "ai-fix/issue-${{ github.event.issue.number }}"
+          git checkout -b "ai-fix/issue-${{ steps.issue.outputs.number }}"
 
       - name: Run Claude Code
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          ISSUE_TITLE: ${{ steps.issue_details.outputs.title }}
+          ISSUE_BODY: ${{ steps.issue_details.outputs.body }}
         run: |
           # Create prompt directly without heredoc
           PROMPT="You are fixing a bug or implementing a feature request for the KubeStellar Console project.
@@ -102,8 +125,9 @@ jobs:
 
           Please implement the fix now."
 
-          # Run Claude Code in non-interactive mode using npx
-          npx -y @anthropic-ai/claude-code --print "$PROMPT" || true
+          # Run Claude Code in non-interactive mode with permission to edit files
+          # Use --dangerously-skip-permissions to auto-approve file edits in CI
+          npx -y @anthropic-ai/claude-code --dangerously-skip-permissions "$PROMPT" || true
 
       - name: Check for changes
         id: check_changes
@@ -118,14 +142,14 @@ jobs:
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git add -A
-          git commit -s -m "🤖 fix: Address issue #${{ github.event.issue.number }}
+          git commit -s -m "🤖 fix: Address issue #${{ steps.issue.outputs.number }}
 
-          AI-generated fix for: ${{ github.event.issue.title }}
+          AI-generated fix for: ${{ steps.issue_details.outputs.title }}
 
-          Closes #${{ github.event.issue.number }}
+          Closes #${{ steps.issue.outputs.number }}
 
           Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
-          git push origin "ai-fix/issue-${{ github.event.issue.number }}"
+          git push origin "ai-fix/issue-${{ steps.issue.outputs.number }}"
 
       - name: Create Pull Request
         if: steps.check_changes.outputs.has_changes == 'true'
@@ -133,7 +157,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Extract Console Request ID from issue body if present
-          CONSOLE_REQUEST_ID=$(echo "${{ github.event.issue.body }}" | grep -oP 'Console Request ID:\*\* \K[0-9a-f-]{36}' || echo "")
+          CONSOLE_REQUEST_ID=$(echo "${{ steps.issue_details.outputs.body }}" | grep -oP 'Console Request ID:\*\* \K[0-9a-f-]{36}' || echo "")
 
           # Ensure ai-generated label exists
           gh label create "ai-generated" --color "7057ff" --description "Pull request generated by AI" 2>/dev/null || true
@@ -142,8 +166,8 @@ jobs:
           PR_BODY="## AI-Generated Fix
 
           This PR was automatically generated by Claude Code to address:
-          - Issue: #${{ github.event.issue.number }}
-          - Title: ${{ github.event.issue.title }}"
+          - Issue: #${{ steps.issue.outputs.number }}
+          - Title: ${{ steps.issue_details.outputs.title }}"
 
           if [ -n "$CONSOLE_REQUEST_ID" ]; then
             PR_BODY="$PR_BODY
@@ -167,7 +191,7 @@ jobs:
           *Generated by Claude Code*"
 
           gh pr create \
-            --title "🤖 fix: ${{ github.event.issue.title }}" \
+            --title "🤖 fix: ${{ steps.issue_details.outputs.title }}" \
             --body "$PR_BODY" \
             --label "ai-generated"
 
@@ -176,7 +200,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "A fix has been generated and a pull request has been created. You will be notified when a preview deployment is ready for testing.
+          gh issue comment ${{ steps.issue.outputs.number }} --body "A fix has been generated and a pull request has been created. You will be notified when a preview deployment is ready for testing.
 
           Check the linked PR for details on the changes."
 
@@ -185,7 +209,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "Claude Code analyzed this issue but couldn't determine the necessary changes automatically. A human developer will review this issue.
+          gh issue comment ${{ steps.issue.outputs.number }} --body "Claude Code analyzed this issue but couldn't determine the necessary changes automatically. A human developer will review this issue.
 
           This could happen because:
           - The issue description needs more detail
@@ -198,5 +222,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue edit ${{ github.event.issue.number }} --remove-label "ai-fix-requested"
-          gh issue edit ${{ github.event.issue.number }} --add-label "ai-processing-complete"
+          gh issue edit ${{ steps.issue.outputs.number }} --remove-label "ai-fix-requested"
+          gh issue edit ${{ steps.issue.outputs.number }} --add-label "ai-processing-complete"
