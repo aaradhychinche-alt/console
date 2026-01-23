@@ -11,6 +11,8 @@ on:
     types: [submitted]
   pull_request_review_comment:
     types: [created]
+  pull_request_target:
+    types: [synchronize]  # Triggers when commits are pushed to PR
   workflow_dispatch:
     inputs:
       pr_number:
@@ -586,3 +588,71 @@ jobs:
           *Manual test triggered via workflow_dispatch*
           EOF
           )"
+
+  # Auto-request Copilot to test preview when commits are pushed
+  request-copilot-preview-test:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'synchronize'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if PR is from Copilot
+        id: check_copilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+
+          echo "PR #$PR_NUM author: $PR_AUTHOR"
+
+          if [[ "$PR_AUTHOR" == *"copilot"* ]] || [[ "$PR_AUTHOR" == "Copilot" ]]; then
+            echo "is_copilot=true" >> $GITHUB_OUTPUT
+            echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+          else
+            echo "is_copilot=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for Netlify deploy
+        if: steps.check_copilot.outputs.is_copilot == 'true'
+        run: |
+          echo "Waiting 90 seconds for Netlify to build and deploy..."
+          sleep 90
+
+      - name: Test preview and request Copilot verification
+        if: steps.check_copilot.outputs.is_copilot == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ steps.check_copilot.outputs.pr_number }}"
+          PREVIEW_URL="https://deploy-preview-${PR_NUM}.console-deploy-preview.kubestellar.io"
+
+          echo "Testing preview: $PREVIEW_URL"
+
+          # Test if preview is accessible
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL" --max-time 30 || echo "000")
+
+          if [ "$HTTP_CODE" == "200" ]; then
+            # Preview is ready - ask Copilot to verify
+            gh pr comment "$PR_NUM" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ## 🔍 Preview Ready - Verification Required
+
+          @copilot New commit detected. Please verify the preview deployment:
+
+          1. **Fetch the preview:**
+             \`\`\`bash
+             curl -s $PREVIEW_URL
+             \`\`\`
+
+          2. **Verify the response contains:**
+             - \`<div id="root">\` (React mount point)
+             - JavaScript and CSS bundle references
+             - No error messages
+
+          3. **Report your findings** confirming the preview works.
+
+          **Preview URL:** $PREVIEW_URL
+          EOF
+          )"
+            echo "Posted verification request for PR #$PR_NUM"
+          else
+            echo "Preview not ready yet (HTTP $HTTP_CODE), skipping verification request"
+          fi
