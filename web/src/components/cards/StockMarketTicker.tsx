@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { 
-  TrendingUp, TrendingDown, Clock, BarChart3, 
-  ChevronDown, ChevronRight, ExternalLink, Search as SearchIcon,
-  Star, X, Plus, Loader2
+import {
+  TrendingUp, TrendingDown, Clock, BarChart3,
+  ChevronDown, ChevronRight, Search as SearchIcon,
+  Star, X, Loader2
 } from 'lucide-react'
 import { CardControls, SortDirection } from '../ui/CardControls'
 import { Pagination, usePagination } from '../ui/Pagination'
@@ -419,7 +419,7 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
   const [showSavedStocks, setShowSavedStocks] = useState(false)
   const [activeSymbols, setActiveSymbols] = useState<string[]>(symbols)
   
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Save stocks to localStorage whenever they change
   useEffect(() => {
