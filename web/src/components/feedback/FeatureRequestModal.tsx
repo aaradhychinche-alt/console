@@ -451,8 +451,8 @@ export function FeatureRequestModal({ isOpen, onClose }: FeatureRequestModalProp
                                   </button>
                                 )}
                               </div>
-                              {/* For untriaged items not owned by user, show minimal info */}
-                              {request.status === 'needs_triage' && !isOwnedByUser ? (
+                              {/* For needs_triage items, show minimal info - awaiting maintainer attention */}
+                              {request.status === 'needs_triage' ? (
                                 <>
                                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                     <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${statusInfo.bgColor} ${statusInfo.color}`}>
@@ -465,8 +465,9 @@ export function FeatureRequestModal({ isOpen, onClose }: FeatureRequestModalProp
                                 </>
                               ) : (
                                 <>
+                                  {/* Show emoji prefix based on request type */}
                                   <p className={`text-sm font-medium text-foreground mt-1 truncate ${shouldBlur ? 'blur-sm select-none' : ''}`}>
-                                    {request.title}
+                                    {request.request_type === 'bug' ? '🐛 ' : '✨ '}{request.title}
                                   </p>
                                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                     <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${statusInfo.bgColor} ${statusInfo.color}`}>
