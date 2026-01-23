@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
-import { GitCompare, Plus, Minus, Edit, Layers } from 'lucide-react'
+import { GitCompare, Plus, Minus, Edit, Layers, ChevronRight } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { RefreshButton } from '../ui/RefreshIndicator'
@@ -21,6 +22,7 @@ interface OverlayDiff {
 
 export function OverlayComparison({ config }: OverlayComparisonProps) {
   const { clusters: allClusters, isLoading, isRefreshing, refetch, isFailed, consecutiveFailures, lastRefresh } = useClusters()
+  const { drillToKustomization } = useDrillDownActions()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [selectedBase, setSelectedBase] = useState<string>('')
   const [selectedOverlay, setSelectedOverlay] = useState<string>('')
@@ -212,11 +214,20 @@ export function OverlayComparison({ config }: OverlayComparisonProps) {
                   return (
                     <div
                       key={idx}
-                      className={`p-2 rounded-lg bg-${color}-500/10 border-l-2 border-${color}-500`}
+                      onClick={() => drillToKustomization(selectedCluster, diff.overlay, diff.resource, {
+                        type: diff.type,
+                        details: diff.details,
+                        base: selectedBase,
+                        overlay: selectedOverlay,
+                      })}
+                      className={`p-2 rounded-lg bg-${color}-500/10 border-l-2 border-${color}-500 hover:bg-${color}-500/20 transition-colors cursor-pointer group`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <DiffIcon className={`w-4 h-4 text-${color}-400 flex-shrink-0`} />
-                        <span className="text-sm text-foreground truncate">{diff.resource}</span>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <DiffIcon className={`w-4 h-4 text-${color}-400 flex-shrink-0`} />
+                          <span className="text-sm text-foreground group-hover:text-purple-400 truncate">{diff.resource}</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                       </div>
                       <div className="ml-6 text-xs text-muted-foreground truncate">
                         {diff.details}

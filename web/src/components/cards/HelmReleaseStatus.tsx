@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Anchor, CheckCircle, AlertTriangle, XCircle, Clock, Search } from 'lucide-react'
+import { Anchor, CheckCircle, AlertTriangle, XCircle, Clock, Search, ChevronRight } from 'lucide-react'
 import { useClusters, useHelmReleases } from '../../hooks/useMCP'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
@@ -39,6 +40,7 @@ const SORT_OPTIONS = [
 
 export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
   const { clusters: allClusters, isLoading: clustersLoading } = useClusters()
+  const { drillToHelm } = useDrillDownActions()
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || '')
   const [selectedNamespace, setSelectedNamespace] = useState<string>(config?.namespace || '')
   const [sortBy, setSortBy] = useState<SortByOption>('status')
@@ -354,17 +356,28 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
               return (
                 <div
                   key={idx}
-                  className={`p-3 rounded-lg ${release.status === 'failed' ? 'bg-red-500/10 border border-red-500/20' : 'bg-secondary/30'} hover:bg-secondary/50 transition-colors cursor-default`}
+                  onClick={() => drillToHelm(release.cluster || selectedCluster || '', release.namespace, release.name, {
+                    chart: release.chart,
+                    version: release.version,
+                    appVersion: release.appVersion,
+                    status: release.status,
+                    revision: release.revision,
+                    updated: release.updated,
+                  })}
+                  className={`p-3 rounded-lg ${release.status === 'failed' ? 'bg-red-500/10 border border-red-500/20' : 'bg-secondary/30'} hover:bg-secondary/50 transition-colors cursor-pointer group`}
                   title={`${release.name} - ${release.chart}@${release.version} (Revision ${release.revision})`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span title={`Status: ${release.status}`}><StatusIcon className={`w-4 h-4 text-${color}-400`} /></span>
-                      <span className="text-sm text-foreground font-medium" title={release.name}>{release.name}</span>
+                      <span className="text-sm text-foreground font-medium group-hover:text-purple-400" title={release.name}>{release.name}</span>
                     </div>
-                    <span className={`text-xs px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`} title={`Release status: ${release.status}`}>
-                      {release.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`} title={`Release status: ${release.status}`}>
+                        {release.status}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                   <div className="flex items-center gap-4 ml-6 text-xs text-muted-foreground">
                     {release.cluster && <ClusterBadge cluster={release.cluster} size="sm" />}

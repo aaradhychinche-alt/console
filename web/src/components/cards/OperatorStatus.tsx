@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Package, CheckCircle, AlertTriangle, XCircle, RefreshCw, ArrowUpCircle, Search } from 'lucide-react'
+import { Package, CheckCircle, AlertTriangle, XCircle, RefreshCw, ArrowUpCircle, Search, ChevronRight } from 'lucide-react'
 import { useClusters, useOperators, Operator } from '../../hooks/useMCP'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
@@ -25,6 +26,7 @@ const SORT_OPTIONS = [
 
 export function OperatorStatus({ config }: OperatorStatusProps) {
   const { clusters: allClusters, isLoading: clustersLoading, isRefreshing: clustersRefreshing, refetch: refetchClusters, isFailed, consecutiveFailures, lastRefresh } = useClusters()
+  const { drillToOperator } = useDrillDownActions()
   // 'all' means show operators from all clusters, '' means no selection yet
   const [selectedCluster, setSelectedCluster] = useState<string>(config?.cluster || 'all')
   const [sortBy, setSortBy] = useState<SortByOption>('status')
@@ -279,7 +281,12 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
               return (
                 <div
                   key={`${op.cluster || 'default'}-${op.namespace}-${op.name}`}
-                  className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                  onClick={() => drillToOperator(op.cluster || selectedCluster || '', op.namespace, op.name, {
+                    status: op.status,
+                    version: op.version,
+                    upgradeAvailable: op.upgradeAvailable,
+                  })}
+                  className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -287,11 +294,14 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
                       {op.cluster && (
                         <ClusterBadge cluster={op.cluster} size="sm" />
                       )}
-                      <span className="text-sm text-foreground">{op.name}</span>
+                      <span className="text-sm text-foreground group-hover:text-purple-400">{op.name}</span>
                     </div>
-                    <span className={`text-xs px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`}>
-                      {op.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`}>
+                        {op.status}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                   <div className="flex items-center gap-4 mt-1 ml-6 text-xs text-muted-foreground">
                     <span>{op.namespace}</span>

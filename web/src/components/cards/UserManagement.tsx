@@ -9,10 +9,12 @@ import {
   AlertCircle,
   CheckCircle,
   Search,
+  ChevronRight,
 } from 'lucide-react'
 import { useConsoleUsers, useUserManagementSummary, useK8sServiceAccounts } from '../../hooks/useUsers'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
+import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useAuth } from '../../lib/auth'
 import { cn } from '../../lib/cn'
 import type { ConsoleUser, UserRole } from '../../types/users'
@@ -30,6 +32,7 @@ export function UserManagement({ config: _config }: UserManagementProps) {
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
   const [localSearch, setLocalSearch] = useState('')
 
+  const { drillToRBAC } = useDrillDownActions()
   const { user: currentUser } = useAuth()
   const { summary, isLoading: summaryLoading, isRefreshing: summaryRefreshing, refetch: refetchSummary } = useUserManagementSummary()
   const { users: allUsers, isLoading: usersLoading, isRefreshing: usersRefreshing, refetch: refetchUsers, updateUserRole, deleteUser } = useConsoleUsers()
@@ -257,6 +260,12 @@ export function UserManagement({ config: _config }: UserManagementProps) {
             serviceAccounts={serviceAccounts}
             isLoading={sasLoading}
             permissions={summary?.currentUserPermissions || []}
+            onDrillToServiceAccount={(cluster, namespace, name, roles) =>
+              drillToRBAC(cluster, namespace, name, {
+                type: 'ServiceAccount',
+                roles,
+              })
+            }
           />
         )}
       </div>
@@ -410,6 +419,7 @@ interface K8sRbacTabProps {
   }>
   isLoading: boolean
   permissions: Array<{ cluster: string; isClusterAdmin: boolean }>
+  onDrillToServiceAccount: (cluster: string, namespace: string, name: string, roles?: string[]) => void
 }
 
 function K8sRbacTab({
@@ -419,6 +429,7 @@ function K8sRbacTab({
   serviceAccounts,
   isLoading,
   permissions,
+  onDrillToServiceAccount,
 }: K8sRbacTabProps) {
   return (
     <div className="space-y-4">
@@ -486,11 +497,15 @@ function K8sRbacTab({
             {serviceAccounts.slice(0, 10).map((sa, idx) => (
               <div
                 key={`${sa.cluster}-${sa.namespace}-${sa.name}-${idx}`}
-                className="p-2 rounded bg-secondary/30 text-sm"
+                onClick={() => onDrillToServiceAccount(sa.cluster, sa.namespace, sa.name, sa.roles)}
+                className="p-2 rounded bg-secondary/30 text-sm hover:bg-secondary/50 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-foreground font-medium">{sa.name}</span>
-                  <span className="text-xs text-muted-foreground">{sa.namespace}</span>
+                  <span className="text-foreground font-medium group-hover:text-purple-400">{sa.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{sa.namespace}</span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
                 </div>
                 {sa.roles && sa.roles.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">

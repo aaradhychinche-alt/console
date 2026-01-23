@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { GitPullRequest, GitBranch, Star, Users, Package, TrendingUp, AlertCircle, Clock, CheckCircle, XCircle, GitMerge } from 'lucide-react'
+import { GitPullRequest, GitBranch, Star, Users, Package, TrendingUp, AlertCircle, Clock, CheckCircle, XCircle, GitMerge, Settings, X } from 'lucide-react'
 import { CardControls, SortDirection } from '../ui/CardControls'
 import { Pagination, usePagination } from '../ui/Pagination'
 import { RefreshButton } from '../ui/RefreshIndicator'
@@ -112,6 +112,9 @@ function isStale(date: string, days: number = 30): boolean {
   return ageInDays > days
 }
 
+// Default repository to show if none configured
+const DEFAULT_REPO = 'kubestellar/kubestellar'
+
 // Custom hook for GitHub data fetching
 function useGitHubActivity(config?: GitHubActivityConfig) {
   const [prs, setPRs] = useState<GitHubPR[]>([])
@@ -124,7 +127,8 @@ function useGitHubActivity(config?: GitHubActivityConfig) {
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
 
-  const repos = config?.repos || []
+  // Use configured repos or default to kubestellar/kubestellar
+  const repos = config?.repos?.length ? config.repos : [DEFAULT_REPO]
   const org = config?.org
   // Note: Token stored in localStorage - consider using sessionStorage or encrypted storage for production
   const token = config?.token || localStorage.getItem('github_token') || ''
@@ -227,6 +231,20 @@ export function GitHubActivity({ config }: { config?: GitHubActivityConfig }) {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [itemsPerPage, setItemsPerPage] = useState<number | 'unlimited'>(10)
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>(config?.timeRange || '30d')
+  const [customRepo, setCustomRepo] = useState<string>(() => {
+    // Try to load saved repo from localStorage
+    return localStorage.getItem('github_activity_repo') || ''
+  })
+  const [repoInput, setRepoInput] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+
+  // Use custom repo if set, otherwise use config or default
+  const effectiveConfig = useMemo(() => {
+    if (customRepo) {
+      return { ...config, repos: [customRepo] }
+    }
+    return config
+  }, [config, customRepo])
 
   const {
     prs,
@@ -239,7 +257,23 @@ export function GitHubActivity({ config }: { config?: GitHubActivityConfig }) {
     error,
     lastRefresh,
     refetch,
-  } = useGitHubActivity(config)
+  } = useGitHubActivity(effectiveConfig)
+
+  // Handle repo change
+  const handleRepoChange = () => {
+    if (repoInput.trim() && repoInput.includes('/')) {
+      setCustomRepo(repoInput.trim())
+      localStorage.setItem('github_activity_repo', repoInput.trim())
+      setShowSettings(false)
+      setRepoInput('')
+    }
+  }
+
+  const handleResetRepo = () => {
+    setCustomRepo('')
+    localStorage.removeItem('github_activity_repo')
+    setShowSettings(false)
+  }
 
   // Filter and sort data based on view mode
   const filteredAndSorted = useMemo(() => {
@@ -389,6 +423,13 @@ export function GitHubActivity({ config }: { config?: GitHubActivityConfig }) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-1.5 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+            title="Configure repository"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
           <RefreshButton
             isRefreshing={isRefreshing}
             lastRefresh={lastRefresh}
@@ -396,6 +437,54 @@ export function GitHubActivity({ config }: { config?: GitHubActivityConfig }) {
           />
         </div>
       </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="mb-4 p-3 rounded-lg bg-secondary/30 border border-border/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium">Configure Repository</span>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="p-1 rounded hover:bg-secondary text-muted-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={repoInput}
+              onChange={(e) => setRepoInput(e.target.value)}
+              placeholder="owner/repo (e.g., facebook/react)"
+              className="flex-1 px-3 py-1.5 text-sm bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+              onKeyDown={(e) => e.key === 'Enter' && handleRepoChange()}
+            />
+            <button
+              onClick={handleRepoChange}
+              disabled={!repoInput.trim() || !repoInput.includes('/')}
+              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Set
+            </button>
+          </div>
+          {customRepo && (
+            <div className="mt-2 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Currently monitoring: <span className="text-foreground">{customRepo}</span>
+              </span>
+              <button
+                onClick={handleResetRepo}
+                className="text-red-400 hover:text-red-300"
+              >
+                Reset to default
+              </button>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Tip: Add a GitHub token via <code className="px-1 bg-secondary rounded">localStorage.setItem('github_token', 'ghp_...')</code> for higher rate limits.
+          </p>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-4 gap-2 mb-4">
