@@ -25,24 +25,35 @@ const enableMocking = async () => {
     return
   }
 
-  const { worker } = await import('./mocks/browser')
+  try {
+    const { worker } = await import('./mocks/browser')
 
-  // Start the worker with onUnhandledRequest set to bypass
-  // to allow external resources (fonts, images) to load normally
-  return worker.start({
-    onUnhandledRequest: 'bypass',
-    serviceWorker: {
-      url: '/mockServiceWorker.js',
-    },
-  })
+    // Start the worker with onUnhandledRequest set to bypass
+    // to allow external resources (fonts, images) to load normally
+    await worker.start({
+      onUnhandledRequest: 'bypass',
+      serviceWorker: {
+        url: '/mockServiceWorker.js',
+      },
+    })
+  } catch (error) {
+    // If service worker fails to start (e.g., in some browser contexts),
+    // log the error but continue rendering the app without mocking
+    console.warn('MSW service worker failed to start:', error)
+  }
 }
 
-enableMocking().then(() => {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </React.StrictMode>,
-  )
-})
+// Render app after mocking is set up (or fails gracefully)
+enableMocking()
+  .catch((error) => {
+    console.warn('MSW initialization failed:', error)
+  })
+  .finally(() => {
+    ReactDOM.createRoot(document.getElementById('root')!).render(
+      <React.StrictMode>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </React.StrictMode>,
+    )
+  })
