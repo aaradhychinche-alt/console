@@ -130,6 +130,50 @@ const PRESET_REPOS = [
 // LocalStorage key for saved repos
 const SAVED_REPOS_KEY = 'github_activity_saved_repos'
 const CURRENT_REPO_KEY = 'github_activity_repo'
+const CACHE_KEY_PREFIX = 'github_activity_cache_'
+const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes cache TTL
+
+// Cache data structure
+interface CachedGitHubData {
+  timestamp: number
+  repoInfo: GitHubRepo | null
+  prs: GitHubPR[]
+  issues: GitHubIssue[]
+  releases: GitHubRelease[]
+  contributors: GitHubContributor[]
+  openPRCount: number
+  openIssueCount: number
+}
+
+// Get cached data for a repo
+function getCachedData(repo: string): CachedGitHubData | null {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY_PREFIX + repo.replace('/', '_'))
+    if (!cached) return null
+    const data = JSON.parse(cached) as CachedGitHubData
+    // Check if cache is still fresh
+    if (Date.now() - data.timestamp < CACHE_TTL_MS) {
+      return data
+    }
+    return null // Cache expired
+  } catch {
+    return null
+  }
+}
+
+// Save data to cache
+function setCachedData(repo: string, data: Omit<CachedGitHubData, 'timestamp'>) {
+  try {
+    const cached: CachedGitHubData = {
+      ...data,
+      timestamp: Date.now()
+    }
+    localStorage.setItem(CACHE_KEY_PREFIX + repo.replace('/', '_'), JSON.stringify(cached))
+  } catch (e) {
+    // Storage might be full, ignore
+    console.warn('Failed to cache GitHub data:', e)
+  }
+}
 
 // Get saved repos from localStorage
 function getSavedRepos(): string[] {
@@ -174,6 +218,34 @@ function useGitHubActivity(config?: GitHubActivityConfig) {
       return
     }
 
+    // For simplicity, fetch data for the first repo
+    const targetRepo = repos[0]
+
+    if (!targetRepo) {
+      setIsLoading(false)
+      setError('No valid repository specified. Please configure at least one repository in the format "owner/repo".')
+      return
+    }
+
+    // Check cache first (unless manual refresh)
+    if (!isManualRefresh) {
+      const cached = getCachedData(targetRepo)
+      if (cached) {
+        // Use cached data
+        setRepoInfo(cached.repoInfo)
+        setPRs(cached.prs)
+        setIssues(cached.issues)
+        setReleases(cached.releases)
+        setContributors(cached.contributors)
+        setOpenPRCount(cached.openPRCount)
+        setOpenIssueCount(cached.openIssueCount)
+        setLastRefresh(new Date(cached.timestamp))
+        setIsLoading(false)
+        setError(null)
+        return
+      }
+    }
+
     if (isManualRefresh) {
       setIsRefreshing(true)
     } else {
@@ -185,17 +257,9 @@ function useGitHubActivity(config?: GitHubActivityConfig) {
       const headers: HeadersInit = {
         'Accept': 'application/vnd.github.v3+json',
       }
-      
+
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
-      }
-
-      // For simplicity, fetch data for the first repo
-      // Future: support multiple repos and organization aggregation
-      const targetRepo = repos[0]
-      
-      if (!targetRepo) {
-        throw new Error('No valid repository specified. Please configure at least one repository in the format "owner/repo".')
       }
 
       // Fetch repository info
@@ -263,10 +327,44 @@ function useGitHubActivity(config?: GitHubActivityConfig) {
       const contributorsData = await contributorsResponse.json()
       setContributors(contributorsData)
 
+      // Cache the fetched data
+      setCachedData(targetRepo, {
+        repoInfo: repoData,
+        prs: prsData,
+        issues: issuesData.filter((issue: GitHubIssue & { pull_request?: unknown }) => !issue.pull_request),
+        releases: releasesData,
+        contributors: contributorsData,
+        openPRCount: openPRsResponse.ok ? (openPRsResponse.headers.get('Link')?.match(/page=(\d+)>; rel="last"/) ? parseInt(openPRsResponse.headers.get('Link')!.match(/page=(\d+)>; rel="last"/)![1], 10) : 1) : 0,
+        openIssueCount: openIssuesResponse.ok ? (openIssuesResponse.headers.get('Link')?.match(/page=(\d+)>; rel="last"/) ? parseInt(openIssuesResponse.headers.get('Link')!.match(/page=(\d+)>; rel="last"/)![1], 10) : 1) : 0,
+      })
+
       setLastRefresh(new Date())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch GitHub data')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch GitHub data'
       console.error('GitHub API error:', err)
+
+      // Try to use stale cache as fallback (ignore TTL)
+      try {
+        const cachedStr = localStorage.getItem(CACHE_KEY_PREFIX + targetRepo.replace('/', '_'))
+        if (cachedStr) {
+          const cached = JSON.parse(cachedStr) as CachedGitHubData
+          setRepoInfo(cached.repoInfo)
+          setPRs(cached.prs)
+          setIssues(cached.issues)
+          setReleases(cached.releases)
+          setContributors(cached.contributors)
+          setOpenPRCount(cached.openPRCount)
+          setOpenIssueCount(cached.openIssueCount)
+          setLastRefresh(new Date(cached.timestamp))
+          // Show warning that we're using cached data
+          setError(`Using cached data (${formatTimeAgo(new Date(cached.timestamp).toISOString())}). ${errorMessage}`)
+          return
+        }
+      } catch {
+        // Cache read failed, show original error
+      }
+
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
       setIsRefreshing(false)
