@@ -1115,6 +1115,11 @@ func (h *GitOpsHandlers) GetHelmValues(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "release parameter is required"})
 	}
 
+	// If namespace not provided, look it up from helm list
+	if namespace == "" {
+		namespace = h.findReleaseNamespace(c.Context(), cluster, release)
+	}
+
 	args := []string{"get", "values", release, "--output", "json"}
 	if namespace != "" {
 		args = append(args, "-n", namespace)
@@ -1143,4 +1148,15 @@ func (h *GitOpsHandlers) GetHelmValues(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"values": values, "format": "json"})
+}
+
+// findReleaseNamespace finds the namespace for a release by listing all releases
+func (h *GitOpsHandlers) findReleaseNamespace(ctx context.Context, cluster, releaseName string) string {
+	releases := h.getHelmReleasesForCluster(ctx, cluster)
+	for _, r := range releases {
+		if r.Name == releaseName {
+			return r.Namespace
+		}
+	}
+	return ""
 }
