@@ -116,6 +116,19 @@ jobs:
             exit 0
           fi
 
+          # Remove Copilot first if already assigned (to trigger fresh assignment)
+          gh api graphql -f query="
+            mutation {
+              removeAssigneesFromAssignable(input: {
+                assignableId: \"$ISSUE_ID\",
+                assigneeIds: [\"$COPILOT_ID\"]
+              }) {
+                assignable { ... on Issue { id } }
+              }
+            }" 2>/dev/null || true
+
+          echo "Removed Copilot (if was assigned)"
+
           # Assign Copilot to the issue
           gh api graphql -f query="
             mutation {
