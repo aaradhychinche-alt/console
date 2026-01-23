@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import {
-  TrendingUp, TrendingDown, Clock, BarChart3,
+import { 
+  TrendingUp, TrendingDown, Clock, BarChart3, 
   ChevronDown, ChevronRight, Search as SearchIcon,
   Star, X, Loader2
 } from 'lucide-react'
@@ -55,10 +55,11 @@ interface StockMarketTickerProps {
   config?: StockMarketTickerConfig
 }
 
-type SortByOption = 'symbol' | 'change' | 'volume' | 'marketCap'
+type SortByOption = 'symbol' | 'price' | 'change' | 'volume' | 'marketCap'
 
 const SORT_OPTIONS = [
-  { value: 'symbol' as const, label: 'Symbol' },
+  { value: 'symbol' as const, label: 'Name' },
+  { value: 'price' as const, label: 'Price' },
   { value: 'change' as const, label: 'Change %' },
   { value: 'volume' as const, label: 'Volume' },
   { value: 'marketCap' as const, label: 'Market Cap' },
@@ -124,6 +125,40 @@ async function fetchRealStockData(symbols: string[]): Promise<StockData[]> {
   }
 }
 
+// Common stock symbols database for fallback search
+const COMMON_STOCKS: StockSearchResult[] = [
+  { symbol: 'AAPL', name: 'Apple Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'TSLA', name: 'Tesla Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'META', name: 'Meta Platforms Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'NFLX', name: 'Netflix Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'AMD', name: 'Advanced Micro Devices Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'INTC', name: 'Intel Corporation', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'ORCL', name: 'Oracle Corporation', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'IBM', name: 'International Business Machines', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'DIS', name: 'The Walt Disney Company', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'BABA', name: 'Alibaba Group Holding Ltd', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'V', name: 'Visa Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'MA', name: 'Mastercard Incorporated', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'BAC', name: 'Bank of America Corporation', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'WMT', name: 'Walmart Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'PG', name: 'Procter & Gamble Company', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'UNH', name: 'UnitedHealth Group Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'HD', name: 'The Home Depot Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'PYPL', name: 'PayPal Holdings Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'ADBE', name: 'Adobe Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'CRM', name: 'Salesforce Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'CSCO', name: 'Cisco Systems Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'PEP', name: 'PepsiCo Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'KO', name: 'The Coca-Cola Company', type: 'EQUITY', region: 'US', currency: 'USD' },
+  { symbol: 'NKE', name: 'NIKE Inc.', type: 'EQUITY', region: 'US', currency: 'USD' },
+]
+
 // Search for stocks by symbol or company name
 async function searchStocks(query: string): Promise<StockSearchResult[]> {
   if (!query || query.length < 1) {
@@ -154,8 +189,13 @@ async function searchStocks(query: string): Promise<StockSearchResult[]> {
       }))
       .slice(0, 10)
   } catch (error) {
-    console.error('Error searching stocks:', error)
-    return []
+    console.error('Error searching stocks, using fallback:', error)
+    // Fallback to local search when API fails (e.g., CORS issues)
+    const queryLower = query.toLowerCase()
+    return COMMON_STOCKS.filter(stock => 
+      stock.symbol.toLowerCase().includes(queryLower) || 
+      stock.name.toLowerCase().includes(queryLower)
+    ).slice(0, 10)
   }
 }
 
@@ -320,19 +360,55 @@ function Sparkline({ data, isPositive }: { data: number[]; isPositive: boolean }
 function StockRow({ 
   stock, 
   expanded, 
-  onToggle 
+  onToggle,
+  onToggleFavorite,
+  onRemove,
+  isFavorite,
+  canRemove
 }: { 
   stock: StockData
   expanded: boolean
   onToggle: () => void
+  onToggleFavorite: () => void
+  onRemove: () => void
+  isFavorite: boolean
+  canRemove: boolean
 }) {
   const isPositive = stock.change >= 0
 
   return (
-    <div className="border-b border-border/30 last:border-0">
+    <div className="border-b border-border/30 last:border-0 relative">
+      {/* Action buttons - Left side */}
+      <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center gap-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFavorite()
+          }}
+          className="p-1 rounded hover:bg-accent transition-colors"
+          title={isFavorite ? 'Unfavorite' : 'Favorite'}
+        >
+          <Star 
+            className={`w-3 h-3 ${isFavorite ? 'text-yellow-400 fill-current' : 'text-muted-foreground'}`}
+          />
+        </button>
+        {canRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove()
+            }}
+            className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+            title="Remove from list"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
       {/* Main row */}
       <div 
-        className="flex items-center gap-3 p-3 hover:bg-accent/50 cursor-pointer transition-colors"
+        className="flex items-center gap-3 p-3 pl-16 pr-4 hover:bg-accent/50 cursor-pointer transition-colors"
         onClick={onToggle}
       >
         {/* Symbol and name */}
@@ -345,12 +421,12 @@ function StockRow({
         </div>
 
         {/* Sparkline */}
-        <div className="hidden sm:block">
+        <div className="hidden sm:block flex-shrink-0">
           <Sparkline data={stock.sparklineData} isPositive={isPositive} />
         </div>
 
         {/* Price and change */}
-        <div className="text-right">
+        <div className="text-right flex-shrink-0">
           <div className="font-semibold text-sm">${stock.price.toFixed(2)}</div>
           <div className={`text-xs flex items-center justify-end gap-1 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
             {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
@@ -416,7 +492,6 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
     const saved = localStorage.getItem('stock-ticker-saved-stocks')
     return saved ? JSON.parse(saved) : []
   })
-  const [showSavedStocks, setShowSavedStocks] = useState(false)
   const [activeSymbols, setActiveSymbols] = useState<string[]>(symbols)
   
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -514,16 +589,22 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
           favorite: true,
         }])
       }
+      
+      // Trigger refresh after delay to allow state to settle
+      setTimeout(() => handleRefresh(), 2000)
     }
     setStockSearchInput('')
     setShowStockDropdown(false)
     setStockSearchResults([])
-  }, [activeSymbols, savedStocks])
+  }, [activeSymbols, savedStocks, handleRefresh])
 
   // Remove stock from active list
   const removeStock = useCallback((symbol: string) => {
     setActiveSymbols(prev => prev.filter(s => s !== symbol))
-  }, [])
+    
+    // Trigger refresh after delay to allow state to settle
+    setTimeout(() => handleRefresh(), 2000)
+  }, [handleRefresh])
 
   // Toggle favorite status
   const toggleFavorite = useCallback((symbol: string) => {
@@ -545,19 +626,6 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
     }
   }, [savedStocks, stockData])
 
-  // Load saved stock
-  const loadSavedStock = useCallback((symbol: string) => {
-    if (!activeSymbols.includes(symbol)) {
-      setActiveSymbols(prev => [...prev, symbol])
-    }
-    setShowSavedStocks(false)
-  }, [activeSymbols])
-
-  // Remove saved stock
-  const removeSavedStock = useCallback((symbol: string) => {
-    setSavedStocks(prev => prev.filter(s => s.symbol !== symbol))
-  }, [])
-
   // Auto-refresh
   useEffect(() => {
     const interval = setInterval(() => {
@@ -578,6 +646,8 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
       let result = 0
       if (sortBy === 'symbol') {
         result = a.symbol.localeCompare(b.symbol)
+      } else if (sortBy === 'price') {
+        result = a.price - b.price
       } else if (sortBy === 'change') {
         result = a.changePercent - b.changePercent
       } else if (sortBy === 'volume') {
@@ -677,6 +747,12 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
               placeholder="Search stocks by symbol or name..."
               value={stockSearchInput}
               onChange={(e) => setStockSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && stockSearchResults.length > 0) {
+                  e.preventDefault()
+                  addStock(stockSearchResults[0])
+                }
+              }}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
             {isSearching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
@@ -695,7 +771,7 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
 
           {/* Search results dropdown */}
           {showStockDropdown && stockSearchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-[100] max-h-60 overflow-y-auto">
               {stockSearchResults.map((result) => (
                 <button
                   key={result.symbol}
@@ -717,58 +793,6 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
           )}
         </div>
 
-        {/* Saved stocks toggle */}
-        {savedStocks.length > 0 && (
-          <div className="flex items-center justify-between text-xs">
-            <button
-              onClick={() => setShowSavedStocks(!showSavedStocks)}
-              className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-            >
-              <Star className="w-3 h-3" />
-              {showSavedStocks ? 'Hide' : 'Show'} Saved Stocks ({savedStocks.length})
-            </button>
-          </div>
-        )}
-
-        {/* Saved stocks list */}
-        {showSavedStocks && savedStocks.length > 0 && (
-          <div className="border border-border/30 rounded-lg p-2 space-y-1 max-h-40 overflow-y-auto bg-accent/20">
-            {savedStocks
-              .sort((a, b) => {
-                if (a.favorite && !b.favorite) return -1
-                if (!a.favorite && b.favorite) return 1
-                return 0
-              })
-              .map((stock) => (
-                <div
-                  key={stock.symbol}
-                  className="flex items-center justify-between p-2 rounded hover:bg-accent/50 transition-colors text-xs"
-                >
-                  <button
-                    onClick={() => loadSavedStock(stock.symbol)}
-                    className="flex-1 flex items-center gap-2 text-left"
-                  >
-                    <Star
-                      className={`w-3 h-3 ${stock.favorite ? 'text-yellow-400 fill-current' : 'text-muted-foreground'}`}
-                    />
-                    <div>
-                      <div className="font-semibold">{stock.symbol}</div>
-                      <div className="text-muted-foreground truncate">{stock.name}</div>
-                    </div>
-                  </button>
-                  <div className={`text-xs mr-2 ${stock.changePercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
-                  </div>
-                  <button
-                    onClick={() => removeSavedStock(stock.symbol)}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-          </div>
-        )}
       </div>
 
       {/* Portfolio summary */}
@@ -797,40 +821,20 @@ export function StockMarketTicker({ config }: StockMarketTickerProps) {
       ) : (
         <div className="flex-1 overflow-y-auto border border-border/30 rounded-lg">
           {stocks.map(stock => (
-            <div key={stock.symbol} className="relative">
-              <StockRow
-                stock={stock}
-                expanded={expandedStocks.has(stock.symbol)}
-                onToggle={() => toggleExpanded(stock.symbol)}
-              />
-              {/* Favorite and remove buttons */}
-              <div className="absolute right-2 top-2 flex items-center gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleFavorite(stock.symbol)
-                  }}
-                  className="p-1 rounded hover:bg-accent transition-colors"
-                  title={savedStocks.find(s => s.symbol === stock.symbol)?.favorite ? 'Unfavorite' : 'Favorite'}
-                >
-                  <Star 
-                    className={`w-3 h-3 ${savedStocks.find(s => s.symbol === stock.symbol)?.favorite ? 'text-yellow-400 fill-current' : 'text-muted-foreground'}`}
-                  />
-                </button>
-                {activeSymbols.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeStock(stock.symbol)
-                    }}
-                    className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-                    title="Remove from list"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
+            <StockRow
+              key={stock.symbol}
+              stock={stock}
+              expanded={expandedStocks.has(stock.symbol)}
+              onToggle={() => toggleExpanded(stock.symbol)}
+              onToggleFavorite={() => toggleFavorite(stock.symbol)}
+              onRemove={() => {
+                removeStock(stock.symbol)
+                // Trigger immediate refresh to update the display
+                setTimeout(() => handleRefresh(), 100)
+              }}
+              isFavorite={savedStocks.find(s => s.symbol === stock.symbol)?.favorite || false}
+              canRemove={activeSymbols.length > 1}
+            />
           ))}
         </div>
       )}
