@@ -55,7 +55,7 @@ const TOUR_STEPS: TourStep[] = [
     target: '[data-tour="recommendations"]',
     title: 'AI-Powered Recommendations',
     content: 'Claude analyzes your cluster activity and suggests relevant cards. It notices patterns like "You often check pod issues after deployments" and offers helpful cards.',
-    placement: 'left',
+    placement: 'right',
     highlight: true,
   },
   {
@@ -95,7 +95,7 @@ const TOUR_STEPS: TourStep[] = [
     target: '[data-tour="add-card"]',
     title: 'Add Dashboard Cards',
     content: 'Customize your dashboard by adding cards. Browse the card catalog to find monitoring views for clusters, workloads, security, GitOps, and more.',
-    placement: 'left',
+    placement: 'top',
     highlight: true,
   },
   {
@@ -103,7 +103,7 @@ const TOUR_STEPS: TourStep[] = [
     target: '[data-tour="templates"]',
     title: 'Dashboard Templates',
     content: 'Start with pre-configured dashboards for common workflows like SRE monitoring, security auditing, or GPU management. Templates give you a head start!',
-    placement: 'left',
+    placement: 'top',
     highlight: true,
   },
   {

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { useTour, TourStep } from '../../hooks/useTour'
+import { useMissions } from '../../hooks/useMissions'
 import { cn } from '../../lib/cn'
 
 // KubeStellar logo with AI sparkle effect
@@ -35,7 +36,8 @@ function getTooltipPosition(
   placement: TourStep['placement']
 ): TooltipPosition {
   const gap = 12
-  const vw = window.innerWidth
+  // Use clientWidth to exclude scrollbar width for accurate positioning
+  const vw = document.documentElement.clientWidth
   const vh = window.innerHeight
 
   let position: TooltipPosition = {}
@@ -43,56 +45,83 @@ function getTooltipPosition(
   switch (placement) {
     case 'top': {
       // Position above target, centered horizontally
-      let left = targetRect.left + targetRect.width / 2
-      // Clamp horizontal position to keep tooltip in viewport
-      const minLeft = TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING
-      const maxLeft = vw - TOOLTIP_WIDTH / 2 - VIEWPORT_PADDING
-      left = Math.max(minLeft, Math.min(maxLeft, left))
+      const targetCenterX = targetRect.left + targetRect.width / 2
+
+      // Check if near right edge - use absolute right positioning instead of transform
+      const distanceFromRight = vw - targetCenterX
+      const distanceFromLeft = targetCenterX
 
       // Check if there's room above, otherwise flip to bottom
       const spaceAbove = targetRect.top - gap - VIEWPORT_PADDING
       const spaceBelow = vh - targetRect.bottom - gap - VIEWPORT_PADDING
-      if (spaceAbove < TOOLTIP_HEIGHT && spaceBelow > TOOLTIP_HEIGHT) {
-        // Flip to bottom
+      const verticalPos = spaceAbove < TOOLTIP_HEIGHT && spaceBelow > TOOLTIP_HEIGHT
+        ? { top: targetRect.bottom + gap }
+        : { bottom: vh - targetRect.top + gap }
+
+      if (distanceFromRight < TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING) {
+        // Near right edge - use absolute right positioning (no transform needed)
         position = {
-          top: targetRect.bottom + gap,
-          left,
+          ...verticalPos,
+          right: VIEWPORT_PADDING,
+          useAbsoluteLeft: true, // Signal to not use transform
+        }
+      } else if (distanceFromLeft < TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING) {
+        // Near left edge - use absolute left positioning (no transform needed)
+        position = {
+          ...verticalPos,
+          left: VIEWPORT_PADDING,
+          useAbsoluteLeft: true,
         }
       } else {
+        // Centered positioning with transform
         position = {
-          bottom: vh - targetRect.top + gap,
-          left,
+          ...verticalPos,
+          left: targetCenterX,
         }
       }
       break
     }
     case 'bottom': {
       // Position below target, centered horizontally
-      let left = targetRect.left + targetRect.width / 2
-      // Clamp horizontal position to keep tooltip in viewport
-      const minLeft = TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING
-      const maxLeft = vw - TOOLTIP_WIDTH / 2 - VIEWPORT_PADDING
-      left = Math.max(minLeft, Math.min(maxLeft, left))
+      const targetCenterX = targetRect.left + targetRect.width / 2
+
+      // Check if near right edge - use absolute right positioning instead of transform
+      const distanceFromRight = vw - targetCenterX
+      const distanceFromLeft = targetCenterX
 
       // Check if there's room below (with buffer), otherwise flip to top
       const spaceBelow = vh - targetRect.bottom - gap - VIEWPORT_PADDING
       const spaceAbove = targetRect.top - gap - VIEWPORT_PADDING
+      let verticalPos: { top?: number; bottom?: number }
       if (spaceBelow < TOOLTIP_HEIGHT && spaceAbove > TOOLTIP_HEIGHT) {
         // Flip to top
-        position = {
-          bottom: vh - targetRect.top + gap,
-          left,
-        }
+        verticalPos = { bottom: vh - targetRect.top + gap }
       } else if (spaceBelow < TOOLTIP_HEIGHT && spaceAbove <= TOOLTIP_HEIGHT) {
         // Neither above nor below has enough space - position so tooltip bottom is at viewport edge
+        verticalPos = { top: Math.max(VIEWPORT_PADDING, vh - TOOLTIP_HEIGHT - VIEWPORT_PADDING) }
+      } else {
+        verticalPos = { top: targetRect.bottom + gap }
+      }
+
+      if (distanceFromRight < TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING) {
+        // Near right edge - use absolute right positioning (no transform needed)
         position = {
-          top: Math.max(VIEWPORT_PADDING, vh - TOOLTIP_HEIGHT - VIEWPORT_PADDING),
-          left,
+          ...verticalPos,
+          right: VIEWPORT_PADDING,
+          useAbsoluteLeft: true, // Signal to not use transform
+        }
+      } else if (distanceFromLeft < TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING) {
+        // Near left edge - use absolute left positioning (no transform needed)
+        position = {
+          ...verticalPos,
+          left: VIEWPORT_PADDING,
+          useAbsoluteLeft: true,
         }
       } else {
+        // Centered positioning with transform
         position = {
-          top: targetRect.bottom + gap,
-          left,
+          ...verticalPos,
+          left: targetCenterX,
         }
       }
       break
@@ -151,22 +180,32 @@ function getTooltipPosition(
     }
     default: {
       // Default to bottom placement with same logic as 'bottom' case
-      let left = targetRect.left + targetRect.width / 2
-      const minLeft = TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING
-      const maxLeft = vw - TOOLTIP_WIDTH / 2 - VIEWPORT_PADDING
-      left = Math.max(minLeft, Math.min(maxLeft, left))
+      const targetCenterX = targetRect.left + targetRect.width / 2
+      const distanceFromRight = vw - targetCenterX
+      const distanceFromLeft = targetCenterX
 
       const spaceBelow = vh - targetRect.bottom - gap - VIEWPORT_PADDING
       const spaceAbove = targetRect.top - gap - VIEWPORT_PADDING
-      if (spaceBelow < TOOLTIP_HEIGHT && spaceAbove > TOOLTIP_HEIGHT) {
+      const verticalPos = spaceBelow < TOOLTIP_HEIGHT && spaceAbove > TOOLTIP_HEIGHT
+        ? { bottom: vh - targetRect.top + gap }
+        : { top: targetRect.bottom + gap }
+
+      if (distanceFromRight < TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING) {
         position = {
-          bottom: vh - targetRect.top + gap,
-          left,
+          ...verticalPos,
+          right: VIEWPORT_PADDING,
+          useAbsoluteLeft: true,
+        }
+      } else if (distanceFromLeft < TOOLTIP_WIDTH / 2 + VIEWPORT_PADDING) {
+        position = {
+          ...verticalPos,
+          left: VIEWPORT_PADDING,
+          useAbsoluteLeft: true,
         }
       } else {
         position = {
-          top: targetRect.bottom + gap,
-          left,
+          ...verticalPos,
+          left: targetCenterX,
         }
       }
     }
@@ -185,6 +224,7 @@ export function TourOverlay() {
     prevStep,
     skipTour,
   } = useTour()
+  const { openSidebar: openMissionSidebar, closeSidebar: closeMissionSidebar } = useMissions()
 
   const [tooltipPosition, setTooltipPosition] = useState<TooltipPosition>({})
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
@@ -266,6 +306,22 @@ export function TourOverlay() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isActive, nextStep, prevStep, skipTour])
 
+  // Open mission sidebar when on the AI Missions step
+  useEffect(() => {
+    if (!isActive || !currentStep) return
+
+    if (currentStep.id === 'ai-missions') {
+      openMissionSidebar()
+    }
+
+    return () => {
+      // Close sidebar when leaving the AI Missions step
+      if (currentStep.id === 'ai-missions') {
+        closeMissionSidebar()
+      }
+    }
+  }, [isActive, currentStep, openMissionSidebar, closeMissionSidebar])
+
   if (!isActive || !currentStep) return null
 
   return (
@@ -293,8 +349,9 @@ export function TourOverlay() {
         ref={tooltipRef}
         className={cn(
           'absolute z-10 w-80 p-4 rounded-lg glass border border-purple-500/30 shadow-xl animate-fade-in-up pointer-events-auto',
-          // Center horizontally only for top/bottom placements (which use left positioning)
-          (currentStep.placement === 'top' || currentStep.placement === 'bottom' || !currentStep.placement) && '-translate-x-1/2',
+          // Center horizontally only for top/bottom placements when NOT using absolute edge positioning
+          (currentStep.placement === 'top' || currentStep.placement === 'bottom' || !currentStep.placement) &&
+            !tooltipPosition.useAbsoluteLeft && '-translate-x-1/2',
           // Center vertically for left/right placements (which use top positioning)
           (currentStep.placement === 'left' || currentStep.placement === 'right') && '-translate-y-1/2'
         )}
@@ -405,11 +462,11 @@ export function TourTrigger() {
 
 // Auto-start tour prompt for new users
 export function TourPrompt() {
-  const { hasCompletedTour, startTour, skipTour } = useTour()
+  const { hasCompletedTour, isActive, startTour, skipTour } = useTour()
   const [dismissed, setDismissed] = useState(false)
 
-  // Don't show if tour completed or dismissed
-  if (hasCompletedTour || dismissed) return null
+  // Don't show if tour completed, dismissed, or already active
+  if (hasCompletedTour || dismissed || isActive) return null
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-80 p-4 glass rounded-lg border border-purple-500/30 shadow-xl animate-fade-in-up">

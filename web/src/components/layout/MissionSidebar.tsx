@@ -494,14 +494,17 @@ export function MissionSidebar() {
   }
 
   return (
-    <div className={cn(
-      "fixed bg-card/95 backdrop-blur-sm border-border z-40 flex flex-col",
-      // Use separate transitions for smoother animation
-      "transition-[width,top,border] duration-300",
-      isFullScreen
-        ? "inset-0 top-16 border-l-0"
-        : "top-16 right-0 bottom-0 w-96 border-l"
-    )}>
+    <div
+      data-tour="ai-missions"
+      className={cn(
+        "fixed bg-card/95 backdrop-blur-sm border-border z-40 flex flex-col",
+        // Use separate transitions for smoother animation
+        "transition-[width,top,border] duration-300",
+        isFullScreen
+          ? "inset-0 top-16 border-l-0"
+          : "top-16 right-0 bottom-0 w-96 border-l"
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center gap-2">
