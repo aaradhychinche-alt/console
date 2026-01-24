@@ -234,7 +234,7 @@ export function GitOps() {
   const { clusters, isRefreshing, refetch } = useClusters()
   const { releases: helmReleases } = useHelmReleases()
   const { subscriptions: operatorSubs } = useOperatorSubscriptions()
-  const { drillToHelm, drillToOperator } = useDrillDownActions()
+  const { drillToHelm: _drillToHelm, drillToOperator: _drillToOperator, drillToAllHelm, drillToAllOperators } = useDrillDownActions()
   const { showToast } = useToast()
   const { showCards, expandCards } = useShowCards('kubestellar-gitops')
   const [selectedCluster, setSelectedCluster] = useState<string>('')
@@ -545,40 +545,27 @@ export function GitOps() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstHelm = () => {
-      if (helmReleases.length > 0 && helmReleases[0]) {
-        const r = helmReleases[0]
-        drillToHelm(r.cluster || '', r.namespace, r.name)
-      }
-    }
-    const drillToFirstOperator = () => {
-      if (operatorSubs.length > 0 && operatorSubs[0]) {
-        const op = operatorSubs[0]
-        drillToOperator(op.cluster || '', op.namespace, op.name)
-      }
-    }
-
     switch (blockId) {
       case 'total':
-        return { value: stats.total, sublabel: 'apps configured', onClick: drillToFirstHelm, isClickable: stats.total > 0 }
+        return { value: stats.total, sublabel: 'apps configured', onClick: () => drillToAllHelm(), isClickable: stats.total > 0 }
       case 'helm':
-        return { value: helmCount, sublabel: 'helm releases', onClick: drillToFirstHelm, isClickable: helmCount > 0 }
+        return { value: helmCount, sublabel: 'helm releases', onClick: () => drillToAllHelm(), isClickable: helmCount > 0 }
       case 'kustomize':
         return { value: 0, sublabel: 'kustomize apps', isClickable: false }
       case 'operators':
-        return { value: operatorSubs.length, sublabel: 'operators', onClick: drillToFirstOperator, isClickable: operatorSubs.length > 0 }
+        return { value: operatorSubs.length, sublabel: 'operators', onClick: () => drillToAllOperators(), isClickable: operatorSubs.length > 0 }
       case 'deployed':
-        return { value: stats.synced, sublabel: 'synced', onClick: () => setStatusFilter('synced'), isClickable: stats.synced > 0 }
+        return { value: stats.synced, sublabel: 'synced', onClick: () => drillToAllHelm('synced'), isClickable: stats.synced > 0 }
       case 'failed':
-        return { value: stats.drifted, sublabel: 'drifted', onClick: () => setStatusFilter('drifted'), isClickable: stats.drifted > 0 }
+        return { value: stats.drifted, sublabel: 'drifted', onClick: () => drillToAllHelm('drifted'), isClickable: stats.drifted > 0 }
       case 'pending':
         return { value: stats.checking, sublabel: 'checking', isClickable: false }
       case 'other':
-        return { value: stats.healthy, sublabel: 'healthy', onClick: () => setStatusFilter('synced'), isClickable: stats.healthy > 0 }
+        return { value: stats.healthy, sublabel: 'healthy', onClick: () => drillToAllHelm('healthy'), isClickable: stats.healthy > 0 }
       default:
         return { value: 0 }
     }
-  }, [stats, setStatusFilter, helmCount, operatorSubs, helmReleases, drillToHelm, drillToOperator])
+  }, [stats, helmCount, operatorSubs, drillToAllHelm, drillToAllOperators])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

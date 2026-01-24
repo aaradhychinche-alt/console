@@ -158,7 +158,7 @@ export function Nodes() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { clusters, isLoading, isRefreshing, lastUpdated, refetch } = useClusters()
   const { nodes: gpuNodes } = useGPUNodes()
-  const { drillToNode } = useDrillDownActions()
+  const { drillToNode: _drillToNode, drillToAllNodes, drillToAllGPU, drillToAllPods, drillToAllClusters } = useDrillDownActions()
   const { selectedClusters: globalSelectedClusters, isAllClustersSelected } = useGlobalFilters()
 
   // Card state
@@ -316,44 +316,32 @@ export function Nodes() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstCluster = () => {
-      if (reachableClusters.length > 0 && reachableClusters[0]) {
-        // Navigate to compute/nodes view for this cluster
-        window.location.href = `/compute?cluster=${encodeURIComponent(reachableClusters[0].name)}`
-      }
-    }
-    const drillToGPUNode = () => {
-      if (gpuNodes.length > 0 && gpuNodes[0]) {
-        drillToNode(gpuNodes[0].cluster || '', gpuNodes[0].name)
-      }
-    }
-
     switch (blockId) {
       case 'nodes':
-        return { value: totalNodes, sublabel: 'total nodes', onClick: drillToFirstCluster, isClickable: totalNodes > 0 }
+        return { value: totalNodes, sublabel: 'total nodes', onClick: () => drillToAllNodes(), isClickable: totalNodes > 0 }
       case 'cpus':
-        return { value: totalCPU, sublabel: 'CPU cores', onClick: drillToFirstCluster, isClickable: totalCPU > 0 }
+        return { value: totalCPU, sublabel: 'CPU cores', onClick: () => drillToAllNodes(), isClickable: totalCPU > 0 }
       case 'memory':
-        return { value: `${totalMemoryGB.toFixed(0)} GB`, sublabel: 'memory', onClick: drillToFirstCluster, isClickable: totalMemoryGB > 0 }
+        return { value: `${totalMemoryGB.toFixed(0)} GB`, sublabel: 'memory', onClick: () => drillToAllNodes(), isClickable: totalMemoryGB > 0 }
       case 'gpus':
-        return { value: totalGPUs, sublabel: 'GPUs', onClick: drillToGPUNode, isClickable: totalGPUs > 0 }
+        return { value: totalGPUs, sublabel: 'GPUs', onClick: () => drillToAllGPU(), isClickable: totalGPUs > 0 }
       case 'tpus':
         return { value: 0, sublabel: 'TPUs', isClickable: false }
       case 'pods':
-        return { value: totalPods, sublabel: 'pods', onClick: drillToFirstCluster, isClickable: totalPods > 0 }
+        return { value: totalPods, sublabel: 'pods', onClick: () => drillToAllPods(), isClickable: totalPods > 0 }
       case 'cpu_util':
-        return { value: `${cpuUtilization}%`, sublabel: 'utilization', onClick: drillToFirstCluster, isClickable: cpuUtilization > 0 }
+        return { value: `${cpuUtilization}%`, sublabel: 'utilization', onClick: () => drillToAllNodes(), isClickable: cpuUtilization > 0 }
       case 'memory_util':
-        return { value: `${memoryUtilization}%`, sublabel: 'utilization', onClick: drillToFirstCluster, isClickable: memoryUtilization > 0 }
+        return { value: `${memoryUtilization}%`, sublabel: 'utilization', onClick: () => drillToAllNodes(), isClickable: memoryUtilization > 0 }
       // Legacy IDs for backwards compatibility
       case 'clusters':
-        return { value: reachableClusters.length, sublabel: 'clusters' }
+        return { value: reachableClusters.length, sublabel: 'clusters', onClick: () => drillToAllClusters(), isClickable: reachableClusters.length > 0 }
       case 'healthy':
-        return { value: totalNodes, sublabel: 'total nodes', onClick: drillToFirstCluster, isClickable: totalNodes > 0 }
+        return { value: totalNodes, sublabel: 'total nodes', onClick: () => drillToAllNodes(), isClickable: totalNodes > 0 }
       default:
         return { value: 0 }
     }
-  }, [reachableClusters, totalNodes, totalCPU, totalMemoryGB, totalPods, totalGPUs, cpuUtilization, memoryUtilization, drillToNode, gpuNodes])
+  }, [reachableClusters, totalNodes, totalCPU, totalMemoryGB, totalPods, totalGPUs, cpuUtilization, memoryUtilization, drillToAllNodes, drillToAllGPU, drillToAllPods, drillToAllClusters])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

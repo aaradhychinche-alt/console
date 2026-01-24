@@ -24,6 +24,7 @@ import { PolicyDrillDown } from './views/PolicyDrillDown'
 import { KustomizationDrillDown } from './views/KustomizationDrillDown'
 import { CRDDrillDown } from './views/CRDDrillDown'
 import { DriftDrillDown } from './views/DriftDrillDown'
+import { MultiClusterSummaryDrillDown } from './views/MultiClusterSummaryDrillDown'
 
 // Helper to get status badge color for pods
 const getPodStatusColor = (status: string) => {
@@ -59,6 +60,21 @@ const getViewIcon = (type: string) => {
     case 'kustomization': return <Layers className="w-4 h-4 text-indigo-400" />
     case 'crd': return <Package className="w-4 h-4 text-purple-400" />
     case 'drift': return <GitBranch className="w-4 h-4 text-orange-400" />
+    // Multi-cluster summary views
+    case 'all-clusters': return <Server className="w-4 h-4 text-blue-400" />
+    case 'all-namespaces': return <Layers className="w-4 h-4 text-purple-400" />
+    case 'all-deployments': return <Rocket className="w-4 h-4 text-green-400" />
+    case 'all-pods': return <Box className="w-4 h-4 text-cyan-400" />
+    case 'all-services': return <Layers className="w-4 h-4 text-indigo-400" />
+    case 'all-nodes': return <Server className="w-4 h-4 text-orange-400" />
+    case 'all-events': return <Zap className="w-4 h-4 text-amber-400" />
+    case 'all-alerts': return <Bell className="w-4 h-4 text-red-400" />
+    case 'all-helm': return <Ship className="w-4 h-4 text-blue-400" />
+    case 'all-operators': return <Settings className="w-4 h-4 text-purple-400" />
+    case 'all-security': return <Shield className="w-4 h-4 text-red-400" />
+    case 'all-gpu': return <Cpu className="w-4 h-4 text-purple-400" />
+    case 'all-storage': return <Package className="w-4 h-4 text-emerald-400" />
+    case 'all-jobs': return <Rocket className="w-4 h-4 text-yellow-400" />
     default: return null
   }
 }
@@ -162,6 +178,22 @@ export function DrillDownModal() {
         return <CRDDrillDown data={data} />
       case 'drift':
         return <DriftDrillDown data={data} />
+      // Multi-cluster summary views
+      case 'all-clusters':
+      case 'all-namespaces':
+      case 'all-deployments':
+      case 'all-pods':
+      case 'all-services':
+      case 'all-nodes':
+      case 'all-events':
+      case 'all-alerts':
+      case 'all-helm':
+      case 'all-operators':
+      case 'all-security':
+      case 'all-gpu':
+      case 'all-storage':
+      case 'all-jobs':
+        return <MultiClusterSummaryDrillDown data={data} viewType={type} />
       case 'custom':
         return state.currentView?.customComponent || <div>Custom view</div>
       default:

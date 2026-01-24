@@ -162,7 +162,7 @@ export function Pods() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { issues: podIssues, isLoading: podIssuesLoading, isRefreshing: podIssuesRefreshing, lastUpdated, refetch: refetchPodIssues } = usePodIssues()
   const { clusters, isLoading: clustersLoading, refetch: refetchClusters } = useClusters()
-  const { drillToPod } = useDrillDownActions()
+  const { drillToPod, drillToAllPods, drillToAllClusters } = useDrillDownActions()
 
   // Card state
   const [cards, setCards] = useState<PodCard[]>(() => loadPodCards())
@@ -341,37 +341,23 @@ export function Pods() {
 
   // Stats value getter
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstIssue = () => {
-      if (filteredPodIssues.length > 0 && filteredPodIssues[0]) {
-        drillToPod(filteredPodIssues[0].cluster || '', filteredPodIssues[0].namespace, filteredPodIssues[0].name)
-      }
-    }
-    const drillToPending = () => {
-      const pending = filteredPodIssues.find(p => p.reason === 'Pending' || p.status === 'Pending')
-      if (pending) drillToPod(pending.cluster || '', pending.namespace, pending.name)
-    }
-    const drillToHighRestarts = () => {
-      const highRestart = filteredPodIssues.find(p => (p.restarts || 0) > 5)
-      if (highRestart) drillToPod(highRestart.cluster || '', highRestart.namespace, highRestart.name)
-    }
-
     switch (blockId) {
       case 'total_pods':
-        return { value: stats.totalPods, sublabel: 'total pods', onClick: drillToFirstIssue, isClickable: filteredPodIssues.length > 0 }
+        return { value: stats.totalPods, sublabel: 'total pods', onClick: () => drillToAllPods(), isClickable: stats.totalPods > 0 }
       case 'healthy':
-        return { value: stats.healthy, sublabel: 'healthy pods' }
+        return { value: stats.healthy, sublabel: 'healthy pods', onClick: () => drillToAllPods('healthy'), isClickable: stats.healthy > 0 }
       case 'issues':
-        return { value: stats.issues, sublabel: 'pod issues', onClick: drillToFirstIssue, isClickable: stats.issues > 0 }
+        return { value: stats.issues, sublabel: 'pod issues', onClick: () => drillToAllPods('issues'), isClickable: stats.issues > 0 }
       case 'pending':
-        return { value: stats.pending, sublabel: 'pending pods', onClick: drillToPending, isClickable: stats.pending > 0 }
+        return { value: stats.pending, sublabel: 'pending pods', onClick: () => drillToAllPods('pending'), isClickable: stats.pending > 0 }
       case 'restarts':
-        return { value: stats.restarts, sublabel: 'high restart pods', onClick: drillToHighRestarts, isClickable: stats.restarts > 0 }
+        return { value: stats.restarts, sublabel: 'high restart pods', onClick: () => drillToAllPods('restarts'), isClickable: stats.restarts > 0 }
       case 'clusters':
-        return { value: stats.clusters, sublabel: 'clusters' }
+        return { value: stats.clusters, sublabel: 'clusters', onClick: () => drillToAllClusters(), isClickable: stats.clusters > 0 }
       default:
         return { value: '-', sublabel: '' }
     }
-  }, [stats, filteredPodIssues, drillToPod])
+  }, [stats, drillToAllPods, drillToAllClusters])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

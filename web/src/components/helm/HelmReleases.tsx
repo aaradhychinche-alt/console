@@ -156,7 +156,7 @@ function HelmDragPreviewCard({ card }: { card: HelmCard }) {
 export function HelmReleases() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { clusters, isLoading, isRefreshing, lastUpdated, refetch } = useClusters()
-  const { drillToHelm: _drillToHelm } = useDrillDownActions() // Reserved for future use with specific releases
+  const { drillToHelm: _drillToHelm, drillToAllHelm, drillToAllClusters } = useDrillDownActions()
   const { selectedClusters: globalSelectedClusters, isAllClustersSelected } = useGlobalFilters()
 
   // Card state
@@ -284,23 +284,15 @@ export function HelmReleases() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    // Navigate to first cluster's Helm view
-    const drillToFirstCluster = () => {
-      if (reachableClusters.length > 0 && reachableClusters[0]) {
-        // For now, just expand cards to show Helm releases
-        // In future could use drillToHelm for specific releases
-      }
-    }
-
     switch (blockId) {
       case 'clusters':
-        return { value: reachableClusters.length, sublabel: 'clusters', onClick: drillToFirstCluster, isClickable: reachableClusters.length > 0 }
+        return { value: reachableClusters.length, sublabel: 'clusters', onClick: () => drillToAllClusters(), isClickable: reachableClusters.length > 0 }
       case 'healthy':
-        return { value: reachableClusters.length, sublabel: 'with Helm', onClick: drillToFirstCluster, isClickable: reachableClusters.length > 0 }
+        return { value: reachableClusters.length, sublabel: 'with Helm', onClick: () => drillToAllHelm(), isClickable: reachableClusters.length > 0 }
       default:
         return { value: 0 }
     }
-  }, [reachableClusters])
+  }, [reachableClusters, drillToAllHelm, drillToAllClusters])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

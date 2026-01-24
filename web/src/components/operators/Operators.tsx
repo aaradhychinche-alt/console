@@ -158,7 +158,7 @@ export function Operators() {
   const { clusters, isLoading, isRefreshing, lastUpdated, refetch } = useClusters()
   const { subscriptions: operatorSubs, refetch: refetchSubs } = useOperatorSubscriptions()
   const { operators: allOperators, refetch: refetchOps } = useOperators()
-  const { drillToOperator } = useDrillDownActions()
+  const { drillToOperator: _drillToOperator, drillToAllOperators, drillToAllClusters } = useDrillDownActions()
   const { selectedClusters: globalSelectedClusters, isAllClustersSelected, filterByStatus, customFilter } = useGlobalFilters()
 
   // Card state
@@ -345,44 +345,27 @@ export function Operators() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstInstalled = () => {
-      const installed = filteredOperatorsAPI.find(op => op.status === 'Succeeded')
-      if (installed) drillToOperator(installed.cluster || '', installed.namespace, installed.name)
-    }
-    const drillToFirstInstalling = () => {
-      const installing = filteredOperatorsAPI.find(op => op.status === 'Installing' || op.status === 'Upgrading')
-      if (installing) drillToOperator(installing.cluster || '', installing.namespace, installing.name)
-    }
-    const drillToFirstUpgrade = () => {
-      const upgrade = filteredSubscriptions.find(op => op.pendingUpgrade)
-      if (upgrade) drillToOperator(upgrade.cluster || '', upgrade.namespace, upgrade.name)
-    }
-    const drillToFirstFailing = () => {
-      const failing = filteredOperatorsAPI.find(op => op.status === 'Failed')
-      if (failing) drillToOperator(failing.cluster || '', failing.namespace, failing.name)
-    }
-
     switch (blockId) {
       case 'operators':
-        return { value: totalOperators, sublabel: 'total operators', onClick: drillToFirstInstalled, isClickable: totalOperators > 0 }
+        return { value: totalOperators, sublabel: 'total operators', onClick: () => drillToAllOperators(), isClickable: totalOperators > 0 }
       case 'installed':
-        return { value: installedOperators, sublabel: 'installed', onClick: drillToFirstInstalled, isClickable: installedOperators > 0 }
+        return { value: installedOperators, sublabel: 'installed', onClick: () => drillToAllOperators('installed'), isClickable: installedOperators > 0 }
       case 'installing':
-        return { value: installingOperators, sublabel: 'installing', onClick: drillToFirstInstalling, isClickable: installingOperators > 0 }
+        return { value: installingOperators, sublabel: 'installing', onClick: () => drillToAllOperators('installing'), isClickable: installingOperators > 0 }
       case 'upgrades':
-        return { value: upgradesAvailable, sublabel: 'upgrades available', onClick: drillToFirstUpgrade, isClickable: upgradesAvailable > 0 }
+        return { value: upgradesAvailable, sublabel: 'upgrades available', onClick: () => drillToAllOperators('upgrades'), isClickable: upgradesAvailable > 0 }
       case 'subscriptions':
-        return { value: filteredSubscriptions.length, sublabel: 'subscriptions', onClick: drillToFirstInstalled, isClickable: filteredSubscriptions.length > 0 }
+        return { value: filteredSubscriptions.length, sublabel: 'subscriptions', onClick: () => drillToAllOperators(), isClickable: filteredSubscriptions.length > 0 }
       case 'crds':
         return { value: 0, sublabel: 'CRDs' } // Would need a CRD hook
       case 'failing':
-        return { value: failingOperators, sublabel: 'failing', onClick: drillToFirstFailing, isClickable: failingOperators > 0 }
+        return { value: failingOperators, sublabel: 'failing', onClick: () => drillToAllOperators('failed'), isClickable: failingOperators > 0 }
       case 'clusters':
-        return { value: reachableClusters.length, sublabel: 'clusters' }
+        return { value: reachableClusters.length, sublabel: 'clusters', onClick: () => drillToAllClusters(), isClickable: reachableClusters.length > 0 }
       default:
         return { value: 0 }
     }
-  }, [totalOperators, installedOperators, installingOperators, upgradesAvailable, failingOperators, reachableClusters.length, filteredSubscriptions, filteredOperatorsAPI, drillToOperator])
+  }, [totalOperators, installedOperators, installingOperators, upgradesAvailable, failingOperators, reachableClusters.length, filteredSubscriptions, drillToAllOperators, drillToAllClusters])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

@@ -230,7 +230,7 @@ export function Events() {
     filterBySeverity,
     customFilter: globalCustomFilter,
   } = useGlobalFilters()
-  const { drillToEvents } = useDrillDownActions()
+  const { drillToEvents: _drillToEvents, drillToAllEvents } = useDrillDownActions()
 
   // Card state
   const [cards, setCards] = useState<EventCard[]>(() => loadEventCards())
@@ -599,32 +599,21 @@ export function Events() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstEvent = () => {
-      if (globalFilteredAllEvents.length > 0 && globalFilteredAllEvents[0]) {
-        const e = globalFilteredAllEvents[0]
-        drillToEvents(e.cluster || '', e.namespace, e.object)
-      }
-    }
-    const drillToWarningEvent = () => {
-      const warning = globalFilteredWarningEvents.find(e => e.type === 'Warning')
-      if (warning) drillToEvents(warning.cluster || '', warning.namespace, warning.object)
-    }
-
     switch (blockId) {
       case 'total':
-        return { value: formatStat(displayStats.total), sublabel: 'events', onClick: drillToFirstEvent, isClickable: displayStats.total > 0 }
+        return { value: formatStat(displayStats.total), sublabel: 'events', onClick: () => drillToAllEvents(), isClickable: displayStats.total > 0 }
       case 'warnings':
-        return { value: formatStat(displayStats.warnings), sublabel: 'warning events', onClick: drillToWarningEvent, isClickable: displayStats.warnings > 0 }
+        return { value: formatStat(displayStats.warnings), sublabel: 'warning events', onClick: () => drillToAllEvents('warning'), isClickable: displayStats.warnings > 0 }
       case 'normal':
-        return { value: formatStat(displayStats.normal), sublabel: 'normal events', onClick: drillToFirstEvent, isClickable: displayStats.normal > 0 }
+        return { value: formatStat(displayStats.normal), sublabel: 'normal events', onClick: () => drillToAllEvents('normal'), isClickable: displayStats.normal > 0 }
       case 'recent':
-        return { value: formatStat(displayStats.recentCount), sublabel: 'in last hour', onClick: drillToFirstEvent, isClickable: displayStats.recentCount > 0 }
+        return { value: formatStat(displayStats.recentCount), sublabel: 'in last hour', onClick: () => drillToAllEvents('recent'), isClickable: displayStats.recentCount > 0 }
       case 'errors':
-        return { value: formatStat(displayStats.warnings), sublabel: 'error events', onClick: drillToWarningEvent, isClickable: displayStats.warnings > 0 }
+        return { value: formatStat(displayStats.warnings), sublabel: 'error events', onClick: () => drillToAllEvents('warning'), isClickable: displayStats.warnings > 0 }
       default:
         return { value: '-', sublabel: '' }
     }
-  }, [displayStats, globalFilteredAllEvents, globalFilteredWarningEvents, drillToEvents])
+  }, [displayStats, drillToAllEvents])
 
   // Group events by time
   const groupedEvents = useMemo(() => {

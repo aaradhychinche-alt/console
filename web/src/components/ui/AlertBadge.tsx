@@ -7,6 +7,45 @@ import { useMissions } from '../../hooks/useMissions'
 import { getSeverityIcon } from '../../types/alerts'
 import type { Alert, AlertSeverity } from '../../types/alerts'
 
+// Animated counter component for the badge - exported for future use
+export function AnimatedCounter({ value, className }: { value: number; className?: string }) {
+  const [displayValue, setDisplayValue] = useState(value)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [direction, setDirection] = useState<'up' | 'down'>('up')
+  const prevValueRef = useRef(value)
+
+  useEffect(() => {
+    if (value !== prevValueRef.current) {
+      setDirection(value > prevValueRef.current ? 'up' : 'down')
+      setIsAnimating(true)
+      // Wait for exit animation, then update value
+      const timer = setTimeout(() => {
+        setDisplayValue(value)
+        prevValueRef.current = value
+        // Reset animation after enter completes
+        setTimeout(() => setIsAnimating(false), 200)
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+  }, [value])
+
+  const displayText = displayValue > 99 ? '99+' : displayValue.toString()
+
+  return (
+    <span
+      className={`inline-block transition-all duration-200 ${className} ${
+        isAnimating
+          ? direction === 'up'
+            ? 'animate-roll-up'
+            : 'animate-roll-down'
+          : ''
+      }`}
+    >
+      {displayText}
+    </span>
+  )
+}
+
 // Format relative time
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString)

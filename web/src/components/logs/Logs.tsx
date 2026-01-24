@@ -157,7 +157,7 @@ export function Logs() {
   const { clusters, isLoading, isRefreshing, lastUpdated, refetch } = useClusters()
   const { events } = useEvents()
   const { events: warningEvents } = useWarningEvents()
-  const { drillToEvents } = useDrillDownActions()
+  const { drillToEvents: _drillToEvents, drillToAllEvents, drillToAllClusters } = useDrillDownActions()
   const { selectedClusters: globalSelectedClusters, isAllClustersSelected } = useGlobalFilters()
 
   // Card state
@@ -330,36 +330,25 @@ export function Logs() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstEvent = () => {
-      if (filteredEvents.length > 0 && filteredEvents[0]) {
-        const e = filteredEvents[0]
-        drillToEvents(e.cluster || '', e.namespace, e.object)
-      }
-    }
-    const drillToWarningEvent = () => {
-      const warning = filteredWarningEvents.find(e => e.type === 'Warning')
-      if (warning) drillToEvents(warning.cluster || '', warning.namespace, warning.object)
-    }
-
     switch (blockId) {
       case 'clusters':
-        return { value: reachableClusters.length, sublabel: 'clusters' }
+        return { value: reachableClusters.length, sublabel: 'clusters', onClick: () => drillToAllClusters(), isClickable: reachableClusters.length > 0 }
       case 'healthy':
-        return { value: reachableClusters.length, sublabel: 'monitored' }
+        return { value: reachableClusters.length, sublabel: 'monitored', onClick: () => drillToAllClusters(), isClickable: reachableClusters.length > 0 }
       case 'total':
-        return { value: totalEvents, sublabel: 'events', onClick: drillToFirstEvent, isClickable: totalEvents > 0 }
+        return { value: totalEvents, sublabel: 'events', onClick: () => drillToAllEvents(), isClickable: totalEvents > 0 }
       case 'warnings':
-        return { value: warningCount, sublabel: 'warning events', onClick: drillToWarningEvent, isClickable: warningCount > 0 }
+        return { value: warningCount, sublabel: 'warning events', onClick: () => drillToAllEvents('warning'), isClickable: warningCount > 0 }
       case 'normal':
-        return { value: normalCount, sublabel: 'normal events', onClick: drillToFirstEvent, isClickable: normalCount > 0 }
+        return { value: normalCount, sublabel: 'normal events', onClick: () => drillToAllEvents('normal'), isClickable: normalCount > 0 }
       case 'recent':
-        return { value: recentCount, sublabel: 'in last hour', onClick: drillToFirstEvent, isClickable: recentCount > 0 }
+        return { value: recentCount, sublabel: 'in last hour', onClick: () => drillToAllEvents('recent'), isClickable: recentCount > 0 }
       case 'errors':
-        return { value: errorCount, sublabel: 'error events', onClick: drillToWarningEvent, isClickable: errorCount > 0 }
+        return { value: errorCount, sublabel: 'error events', onClick: () => drillToAllEvents('error'), isClickable: errorCount > 0 }
       default:
         return { value: 0 }
     }
-  }, [reachableClusters.length, totalEvents, warningCount, normalCount, recentCount, errorCount, filteredEvents, filteredWarningEvents, drillToEvents])
+  }, [reachableClusters.length, totalEvents, warningCount, normalCount, recentCount, errorCount, drillToAllEvents, drillToAllClusters])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

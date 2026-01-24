@@ -174,7 +174,7 @@ export function Workloads() {
   const { issues: deploymentIssues, isLoading: deploymentIssuesLoading, isRefreshing: deploymentIssuesRefreshing, refetch: refetchDeploymentIssues } = useDeploymentIssues()
   const { deployments: allDeployments, isLoading: deploymentsLoading, isRefreshing: deploymentsRefreshing, refetch: refetchDeployments } = useDeployments()
   const { clusters, isLoading: clustersLoading, refetch: refetchClusters } = useClusters()
-  const { drillToNamespace } = useDrillDownActions()
+  const { drillToNamespace, drillToAllNamespaces, drillToAllDeployments, drillToAllPods } = useDrillDownActions()
 
   // Card state
   const [cards, setCards] = useState<WorkloadCard[]>(() => loadWorkloadCards())
@@ -432,43 +432,25 @@ export function Workloads() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirst = () => {
-      if (apps.length > 0 && apps[0]) {
-        drillToNamespace(apps[0].cluster, apps[0].namespace)
-      }
-    }
-    const drillToCritical = () => {
-      const criticalApp = apps.find(a => a.status === 'error')
-      if (criticalApp) drillToNamespace(criticalApp.cluster, criticalApp.namespace)
-    }
-    const drillToWarning = () => {
-      const warningApp = apps.find(a => a.status === 'warning')
-      if (warningApp) drillToNamespace(warningApp.cluster, warningApp.namespace)
-    }
-    const drillToHealthy = () => {
-      const healthyApp = apps.find(a => a.status === 'healthy')
-      if (healthyApp) drillToNamespace(healthyApp.cluster, healthyApp.namespace)
-    }
-
     switch (blockId) {
       case 'namespaces':
-        return { value: stats.total, sublabel: 'active namespaces', onClick: drillToFirst, isClickable: apps.length > 0 }
+        return { value: stats.total, sublabel: 'active namespaces', onClick: () => drillToAllNamespaces(), isClickable: apps.length > 0 }
       case 'critical':
-        return { value: stats.critical, sublabel: 'critical issues', onClick: drillToCritical, isClickable: stats.critical > 0 }
+        return { value: stats.critical, sublabel: 'critical issues', onClick: () => drillToAllNamespaces('critical'), isClickable: stats.critical > 0 }
       case 'warning':
-        return { value: stats.warning, sublabel: 'warning issues', onClick: drillToWarning, isClickable: stats.warning > 0 }
+        return { value: stats.warning, sublabel: 'warning issues', onClick: () => drillToAllNamespaces('warning'), isClickable: stats.warning > 0 }
       case 'healthy':
-        return { value: stats.healthy, sublabel: 'healthy namespaces', onClick: drillToHealthy, isClickable: stats.healthy > 0 }
+        return { value: stats.healthy, sublabel: 'healthy namespaces', onClick: () => drillToAllNamespaces('healthy'), isClickable: stats.healthy > 0 }
       case 'deployments':
-        return { value: stats.totalDeployments, sublabel: 'total deployments', onClick: drillToFirst, isClickable: stats.totalDeployments > 0 }
+        return { value: stats.totalDeployments, sublabel: 'total deployments', onClick: () => drillToAllDeployments(), isClickable: stats.totalDeployments > 0 }
       case 'pod_issues':
-        return { value: stats.totalPodIssues, sublabel: 'pod issues', onClick: drillToFirst, isClickable: stats.totalPodIssues > 0 }
+        return { value: stats.totalPodIssues, sublabel: 'pod issues', onClick: () => drillToAllPods('issues'), isClickable: stats.totalPodIssues > 0 }
       case 'deployment_issues':
-        return { value: stats.totalDeploymentIssues, sublabel: 'deployment issues', onClick: drillToFirst, isClickable: stats.totalDeploymentIssues > 0 }
+        return { value: stats.totalDeploymentIssues, sublabel: 'deployment issues', onClick: () => drillToAllDeployments('issues'), isClickable: stats.totalDeploymentIssues > 0 }
       default:
         return { value: '-', sublabel: '' }
     }
-  }, [stats, apps, drillToNamespace])
+  }, [stats, apps, drillToAllNamespaces, drillToAllDeployments, drillToAllPods])
 
   // Transform card for ConfigureCardModal
   const configureCard = configuringCard ? {

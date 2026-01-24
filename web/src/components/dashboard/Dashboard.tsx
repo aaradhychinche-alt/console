@@ -117,7 +117,7 @@ export function Dashboard() {
 
   // Cluster data for refresh functionality and stats - most cards depend on this
   const { clusters, isRefreshing, lastUpdated, refetch, isLoading: isClustersLoading } = useClusters()
-  const { drillToCluster } = useDrillDownActions()
+  const { drillToCluster: _drillToCluster, drillToAllClusters, drillToAllNodes, drillToAllPods } = useDrillDownActions()
 
   // Reset hook for dashboard
   const { reset, isCustomized } = useDashboardReset({
@@ -135,37 +135,23 @@ export function Dashboard() {
 
   // Stats value getter for the configurable StatsOverview component
   const getStatValue = useCallback((blockId: string): StatBlockValue => {
-    const drillToFirstCluster = () => {
-      if (clusters.length > 0 && clusters[0]) {
-        drillToCluster(clusters[0].name)
-      }
-    }
-    const drillToHealthyCluster = () => {
-      const healthy = clusters.find(c => c.healthy)
-      if (healthy) drillToCluster(healthy.name)
-    }
-    const drillToUnhealthyCluster = () => {
-      const unhealthy = clusters.find(c => !c.healthy)
-      if (unhealthy) drillToCluster(unhealthy.name)
-    }
-
     switch (blockId) {
       case 'clusters':
-        return { value: clusters.length, sublabel: 'total clusters', onClick: drillToFirstCluster, isClickable: clusters.length > 0 }
+        return { value: clusters.length, sublabel: 'total clusters', onClick: () => drillToAllClusters(), isClickable: clusters.length > 0 }
       case 'healthy':
-        return { value: healthyClusters, sublabel: 'healthy', onClick: drillToHealthyCluster, isClickable: healthyClusters > 0 }
+        return { value: healthyClusters, sublabel: 'healthy', onClick: () => drillToAllClusters('healthy'), isClickable: healthyClusters > 0 }
       case 'warnings':
         return { value: 0, sublabel: 'warnings', isClickable: false }
       case 'errors':
-        return { value: unhealthyClusters, sublabel: 'unhealthy', onClick: drillToUnhealthyCluster, isClickable: unhealthyClusters > 0 }
+        return { value: unhealthyClusters, sublabel: 'unhealthy', onClick: () => drillToAllClusters('unhealthy'), isClickable: unhealthyClusters > 0 }
       case 'namespaces':
-        return { value: totalNodes, sublabel: 'nodes', onClick: drillToFirstCluster, isClickable: totalNodes > 0 }
+        return { value: totalNodes, sublabel: 'nodes', onClick: () => drillToAllNodes(), isClickable: totalNodes > 0 }
       case 'pods':
-        return { value: totalPods, sublabel: 'pods', onClick: drillToFirstCluster, isClickable: totalPods > 0 }
+        return { value: totalPods, sublabel: 'pods', onClick: () => drillToAllPods(), isClickable: totalPods > 0 }
       default:
         return { value: 0 }
     }
-  }, [clusters, healthyClusters, unhealthyClusters, totalNodes, totalPods, drillToCluster])
+  }, [clusters, healthyClusters, unhealthyClusters, totalNodes, totalPods, drillToAllClusters, drillToAllNodes, drillToAllPods])
 
   // Auto-refresh state (persisted in localStorage)
   const [autoRefresh, setAutoRefresh] = useState(() => {
