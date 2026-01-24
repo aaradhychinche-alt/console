@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Newspaper, Clock, AlertTriangle, Settings, Search, ChevronRight } from 'lucide-react'
 import { useClusters, useOperatorSubscriptions } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
@@ -57,6 +57,13 @@ export function OperatorSubscriptions({ config }: OperatorSubscriptionsProps) {
 
     return result
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
+
+  // Reset selected cluster if it's no longer in the filtered list (but keep 'all')
+  useEffect(() => {
+    if (selectedCluster !== 'all' && selectedCluster && clusters.length > 0 && !clusters.some(c => c.name === selectedCluster)) {
+      setSelectedCluster('all')
+    }
+  }, [selectedCluster, clusters])
 
   // Fetch subscriptions - pass undefined when 'all' to get all clusters
   const { subscriptions: rawSubscriptions, isLoading: subscriptionsLoading, isRefreshing: subscriptionsRefreshing, refetch: refetchSubscriptions } = useOperatorSubscriptions(selectedCluster === 'all' ? undefined : selectedCluster || undefined)

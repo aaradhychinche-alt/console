@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { FileCode, CheckCircle, AlertTriangle, XCircle, Database, Search } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
@@ -66,6 +66,13 @@ export function CRDHealth({ config }: CRDHealthProps) {
 
     return result
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
+
+  // Reset selected cluster if it's no longer in the filtered list (but keep 'all')
+  useEffect(() => {
+    if (selectedCluster !== 'all' && selectedCluster && clusters.length > 0 && !clusters.some(c => c.name === selectedCluster)) {
+      setSelectedCluster('all')
+    }
+  }, [selectedCluster, clusters])
 
   // Generate cluster-specific CRD data
   const getClusterCRDs = useCallback((clusterName: string): CRD[] => {

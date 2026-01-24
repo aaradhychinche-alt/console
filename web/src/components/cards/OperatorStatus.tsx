@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Package, CheckCircle, AlertTriangle, XCircle, RefreshCw, ArrowUpCircle, Search, ChevronRight } from 'lucide-react'
 import { useClusters, useOperators, Operator } from '../../hooks/useMCP'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
@@ -58,6 +58,13 @@ export function OperatorStatus({ config }: OperatorStatusProps) {
 
     return result
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
+
+  // Reset selected cluster if it's no longer in the filtered list (but keep 'all')
+  useEffect(() => {
+    if (selectedCluster !== 'all' && selectedCluster && clusters.length > 0 && !clusters.some(c => c.name === selectedCluster)) {
+      setSelectedCluster('all')
+    }
+  }, [selectedCluster, clusters])
 
   // Fetch operators - pass undefined when 'all' to get all clusters
   const { operators: rawOperators, isLoading: operatorsLoading, isRefreshing: operatorsRefreshing, refetch: refetchOperators } = useOperators(selectedCluster === 'all' ? undefined : selectedCluster || undefined)

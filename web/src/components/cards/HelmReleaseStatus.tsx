@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Anchor, CheckCircle, AlertTriangle, XCircle, Clock, Search, ChevronRight } from 'lucide-react'
 import { useClusters, useHelmReleases } from '../../hooks/useMCP'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
@@ -92,6 +92,13 @@ export function HelmReleaseStatus({ config }: HelmReleaseStatusProps) {
 
     return result
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
+
+  // Reset selected cluster if it's no longer in the filtered list
+  useEffect(() => {
+    if (selectedCluster && clusters.length > 0 && !clusters.some(c => c.name === selectedCluster)) {
+      setSelectedCluster('')
+    }
+  }, [selectedCluster, clusters])
 
   // Transform API data to display format
   const allReleases = useMemo(() => {
