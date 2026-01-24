@@ -74,6 +74,8 @@ import { KyvernoPolicies } from './KyvernoPolicies'
 import { FalcoAlerts, TrivyScan, KubescapeScan, PolicyViolations, ComplianceScore } from './ComplianceCards'
 // Data compliance tool cards
 import { VaultSecrets, ExternalSecrets, CertManager } from './DataComplianceCards'
+// Workload detection cards
+import { ProwJobs, ProwStatus, ProwHistory, LLMInference, LLMModels, MLJobs, MLNotebooks } from './WorkloadDetectionCards'
 // Weather card
 import { Weather } from './Weather'
 // GitHub Activity Monitoring card
@@ -204,6 +206,14 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
   vault_secrets: VaultSecrets,
   external_secrets: ExternalSecrets,
   cert_manager: CertManager,
+  // Workload detection cards
+  prow_jobs: ProwJobs,
+  prow_status: ProwStatus,
+  prow_history: ProwHistory,
+  llm_inference: LLMInference,
+  llm_models: LLMModels,
+  ml_jobs: MLJobs,
+  ml_notebooks: MLNotebooks,
   // Weather card
   weather: Weather,
   // GitHub Activity Monitoring card
@@ -279,6 +289,14 @@ export const DEMO_DATA_CARDS = new Set([
   'vault_secrets',
   'external_secrets',
   'cert_manager',
+  // Workload detection cards - demo until tools are detected
+  'prow_jobs',
+  'prow_status',
+  'prow_history',
+  'llm_inference',
+  'llm_models',
+  'ml_jobs',
+  'ml_notebooks',
 ])
 
 /**
@@ -333,6 +351,14 @@ export const CARD_DEFAULT_WIDTHS: Record<string, number> = {
   vault_secrets: 4,
   external_secrets: 4,
   cert_manager: 4,
+  // Workload detection cards
+  prow_jobs: 6,
+  prow_status: 4,
+  prow_history: 6,
+  llm_inference: 6,
+  llm_models: 6,
+  ml_jobs: 6,
+  ml_notebooks: 6,
   klaude_issues: 6,
   klaude_kubeconfig_audit: 6,
   klaude_health_check: 6,
