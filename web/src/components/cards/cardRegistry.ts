@@ -35,6 +35,7 @@ import { ClusterFocus } from './ClusterFocus'
 import { ClusterComparison } from './ClusterComparison'
 import { ClusterCosts } from './ClusterCosts'
 import { ClusterNetwork } from './ClusterNetwork'
+import { ClusterLocations } from './ClusterLocations'
 // Namespace-scoped cards
 import { NamespaceOverview } from './NamespaceOverview'
 import { NamespaceQuotas } from './NamespaceQuotas'
@@ -130,6 +131,7 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
   cluster_comparison: ClusterComparison,
   cluster_costs: ClusterCosts,
   cluster_network: ClusterNetwork,
+  cluster_locations: ClusterLocations,
   // Namespace-scoped cards
   namespace_overview: NamespaceOverview,
   namespace_quotas: NamespaceQuotas,
@@ -288,6 +290,7 @@ export const CARD_DEFAULT_WIDTHS: Record<string, number> = {
   cluster_focus: 8,
   cluster_costs: 8,
   cluster_network: 8,
+  cluster_locations: 6,
   argocd_health: 6,
   opencost_overview: 8,
   kubecost_overview: 8,

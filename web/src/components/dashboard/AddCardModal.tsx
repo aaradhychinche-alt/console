@@ -6,6 +6,7 @@ const CARD_CATALOG = {
   'Cluster Health': [
     { type: 'cluster_health', title: 'Cluster Health', description: 'Health status of all clusters', visualization: 'status' },
     { type: 'cluster_metrics', title: 'Cluster Metrics', description: 'CPU, memory, and pod metrics over time', visualization: 'timeseries' },
+    { type: 'cluster_locations', title: 'Cluster Locations', description: 'Clusters grouped by region and cloud provider', visualization: 'status' },
     { type: 'cluster_focus', title: 'Cluster Focus', description: 'Single cluster detailed view', visualization: 'status' },
     { type: 'cluster_comparison', title: 'Cluster Comparison', description: 'Side-by-side cluster metrics', visualization: 'bar' },
     { type: 'cluster_costs', title: 'Cluster Costs', description: 'Resource cost estimation', visualization: 'bar' },
