@@ -10,9 +10,5 @@ permissions:
 
 jobs:
   verify:
-    # Skip verification for bot PRs (Copilot, dependabot, etc.)
-    if: |
-      !contains(github.event.pull_request.user.login, 'copilot-swe-agent') &&
-      !contains(github.event.pull_request.user.login, 'dependabot')
     uses: kubestellar/infra/.github/workflows/reusable-pr-verifier.yml@main
     secrets: inherit
