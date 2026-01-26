@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Layers, Box, Activity, AlertTriangle, Server } from 'lucide-react'
-import { useClusters, usePodIssues, useDeploymentIssues, useNamespaces } from '../../hooks/useMCP'
+import { useClusters, useNamespaces } from '../../hooks/useMCP'
+import { useCachedPodIssues, useCachedDeploymentIssues } from '../../hooks/useCachedData'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { Skeleton } from '../ui/Skeleton'
@@ -44,8 +45,8 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
     return result
   }, [allClusters, globalSelectedClusters, isAllClustersSelected, customFilter])
 
-  const { issues: allPodIssues } = usePodIssues(selectedCluster)
-  const { issues: allDeploymentIssues } = useDeploymentIssues(selectedCluster)
+  const { issues: allPodIssues } = useCachedPodIssues(selectedCluster)
+  const { issues: allDeploymentIssues } = useCachedDeploymentIssues(selectedCluster)
 
   // Fetch namespaces for the selected cluster
   const { namespaces } = useNamespaces(selectedCluster || undefined)
@@ -81,13 +82,9 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
   const needsSelection = !selectedCluster || !selectedNamespace
 
   return (
-    <div className="h-full flex flex-col min-h-card content-loaded">
+    <div className="h-full flex flex-col min-h-card content-loaded overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-medium text-muted-foreground">Namespace Overview</span>
-        </div>
+      <div className="flex items-center justify-end mb-4">
         <RefreshButton
           isRefreshing={isRefreshing}
           isFailed={isFailed}
@@ -135,10 +132,10 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
       ) : (
         <>
           {/* Scope badge */}
-          <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 cursor-default" title={`Viewing namespace ${selectedNamespace} in cluster ${selectedCluster}`}>
-            <ClusterBadge cluster={selectedCluster} />
-            <span className="text-blue-400">/</span>
-            <span className="text-sm font-medium text-blue-300">{selectedNamespace}</span>
+          <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 cursor-default min-w-0 overflow-hidden" title={`Viewing namespace ${selectedNamespace} in cluster ${selectedCluster}`}>
+            <div className="shrink-0"><ClusterBadge cluster={selectedCluster} /></div>
+            <span className="text-blue-400 shrink-0">/</span>
+            <span className="text-sm font-medium text-blue-300 truncate min-w-0">{selectedNamespace}</span>
           </div>
 
           {/* Stats */}
@@ -188,10 +185,10 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
                     onClick={() => drillToDeployment(selectedCluster, issue.namespace, issue.name)}
                     title={`${issue.name}: ${issue.readyReplicas}/${issue.replicas} replicas ready - Click to view details`}
                   >
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-orange-400" />
-                      <span className="text-sm text-foreground">{issue.name}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
+                      <span className="text-sm text-foreground truncate">{issue.name}</span>
+                      <span className="text-xs text-muted-foreground ml-auto shrink-0">
                         {issue.readyReplicas}/{issue.replicas}
                       </span>
                     </div>
@@ -204,10 +201,10 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
                     onClick={() => drillToPod(selectedCluster, issue.namespace, issue.name)}
                     title={`Pod ${issue.name} in ${issue.status} state - Click to view details`}
                   >
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-400" />
-                      <span className="text-sm text-foreground truncate">{issue.name}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 ml-auto">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span className="text-sm text-foreground truncate min-w-0 flex-1">{issue.name}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 shrink-0">
                         {issue.status}
                       </span>
                     </div>

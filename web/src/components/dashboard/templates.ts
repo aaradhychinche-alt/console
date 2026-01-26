@@ -5,7 +5,7 @@ export interface DashboardTemplate {
   name: string
   description: string
   icon: string
-  category: 'cluster' | 'namespace' | 'workloads' | 'gitops' | 'security' | 'gpu' | 'storage' | 'compute' | 'network' | 'klaude' | 'alerting' | 'cost' | 'compliance' | 'custom'
+  category: 'cluster' | 'namespace' | 'workloads' | 'gitops' | 'security' | 'gpu' | 'storage' | 'compute' | 'network' | 'klaude' | 'alerting' | 'cost' | 'compliance' | 'arcade' | 'deploy' | 'custom'
   cards: Array<{
     card_type: string
     title?: string
@@ -394,13 +394,13 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   },
   {
     id: 'llm-inference',
-    name: 'LLM Inference Dashboard',
-    description: 'Monitor vLLM, LLM-d, and AI inference workloads',
+    name: 'llm-d inference dashboard',
+    description: 'Monitor vLLM, llm-d, and AI inference workloads',
     icon: '🤖',
     category: 'workloads',
     cards: [
-      { card_type: 'llm_inference', title: 'LLM Inference Status', position: { w: 6, h: 3 } },
-      { card_type: 'llm_models', title: 'Deployed Models', position: { w: 6, h: 3 } },
+      { card_type: 'llm_inference', title: 'llm-d inference status', position: { w: 6, h: 3 } },
+      { card_type: 'llm_models', title: 'llm-d models', position: { w: 6, h: 3 } },
       { card_type: 'gpu_workloads', title: 'GPU Workloads', position: { w: 6, h: 3 } },
       { card_type: 'gpu_usage_trend', position: { w: 6, h: 3 } },
       { card_type: 'pod_issues', title: 'Inference Pod Issues', config: { labelSelector: 'app.kubernetes.io/name=vllm' }, position: { w: 6, h: 2 } },
@@ -414,12 +414,133 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
     icon: '🧠',
     category: 'workloads',
     cards: [
-      { card_type: 'ml_jobs', title: 'Training Jobs', position: { w: 6, h: 3 } },
-      { card_type: 'ml_notebooks', title: 'Jupyter Notebooks', position: { w: 6, h: 3 } },
-      { card_type: 'llm_models', title: 'Model Registry', position: { w: 6, h: 3 } },
+      { card_type: 'ml_jobs', title: 'ML Training Jobs', position: { w: 6, h: 3 } },
+      { card_type: 'ml_notebooks', title: 'ML Notebooks', position: { w: 6, h: 3 } },
+      { card_type: 'llm_models', title: 'llm-d model registry', position: { w: 6, h: 3 } },
       { card_type: 'gpu_overview', position: { w: 3, h: 2 } },
       { card_type: 'gpu_status', position: { w: 3, h: 2 } },
       { card_type: 'resource_capacity', position: { w: 6, h: 2 } },
+    ],
+  },
+
+  // Arcade templates
+  {
+    id: 'arcade-classics',
+    name: 'Arcade Classics',
+    description: 'Classic games with a Kubernetes twist - Tetris, 2048, Minesweeper, and more',
+    icon: '🎮',
+    category: 'arcade',
+    cards: [
+      { card_type: 'container_tetris', title: 'Container Tetris', position: { w: 4, h: 4 } },
+      { card_type: 'game_2048', title: 'Kube 2048', position: { w: 4, h: 4 } },
+      { card_type: 'pod_sweeper', title: 'Pod Sweeper', position: { w: 4, h: 4 } },
+      { card_type: 'solitaire', title: 'Kube Solitaire', position: { w: 6, h: 4 } },
+      { card_type: 'checkers', title: 'Kube Checkers', position: { w: 6, h: 4 } },
+    ],
+  },
+  {
+    id: 'arcade-action',
+    name: 'Arcade Action',
+    description: 'Fast-paced action games - Flappy Pod, Node Invaders, Kube Kong, and more',
+    icon: '🚀',
+    category: 'arcade',
+    cards: [
+      { card_type: 'flappy_pod', title: 'Flappy Pod', position: { w: 4, h: 4 } },
+      { card_type: 'node_invaders', title: 'Node Invaders', position: { w: 4, h: 4 } },
+      { card_type: 'kube_kong', title: 'Kube Kong', position: { w: 4, h: 4 } },
+      { card_type: 'pod_pitfall', title: 'Pod Pitfall', position: { w: 6, h: 4 } },
+      { card_type: 'kube_man', title: 'Kube Man', position: { w: 6, h: 4 } },
+    ],
+  },
+  {
+    id: 'arcade-puzzle',
+    name: 'Arcade Puzzles',
+    description: 'Brain teasers and puzzle games - Kubedle, Match Game, and more',
+    icon: '🧩',
+    category: 'arcade',
+    cards: [
+      { card_type: 'kubedle', title: 'Kubedle', position: { w: 4, h: 4 } },
+      { card_type: 'match_game', title: 'Kube Match', position: { w: 4, h: 4 } },
+      { card_type: 'game_2048', title: 'Kube 2048', position: { w: 4, h: 4 } },
+    ],
+  },
+  {
+    id: 'arcade-all',
+    name: 'Full Arcade',
+    description: 'All available Kubernetes-themed arcade games',
+    icon: '🎪',
+    category: 'arcade',
+    cards: [
+      { card_type: 'flappy_pod', title: 'Flappy Pod', position: { w: 4, h: 4 } },
+      { card_type: 'container_tetris', title: 'Container Tetris', position: { w: 4, h: 4 } },
+      { card_type: 'game_2048', title: 'Kube 2048', position: { w: 4, h: 4 } },
+      { card_type: 'pod_sweeper', title: 'Pod Sweeper', position: { w: 4, h: 4 } },
+      { card_type: 'checkers', title: 'Kube Checkers', position: { w: 4, h: 4 } },
+      { card_type: 'match_game', title: 'Kube Match', position: { w: 4, h: 4 } },
+      { card_type: 'kubedle', title: 'Kubedle', position: { w: 4, h: 4 } },
+      { card_type: 'solitaire', title: 'Kube Solitaire', position: { w: 4, h: 4 } },
+      { card_type: 'node_invaders', title: 'Node Invaders', position: { w: 4, h: 4 } },
+      { card_type: 'kube_kong', title: 'Kube Kong', position: { w: 4, h: 4 } },
+      { card_type: 'kube_man', title: 'Kube Man', position: { w: 4, h: 4 } },
+      { card_type: 'pod_pitfall', title: 'Pod Pitfall', position: { w: 4, h: 4 } },
+    ],
+  },
+
+  // Deploy templates
+  {
+    id: 'deploy-overview',
+    name: 'Deployment Overview',
+    description: 'Monitor deployment status, issues, and progress across clusters',
+    icon: '🚀',
+    category: 'deploy',
+    cards: [
+      { card_type: 'deployment_status', position: { w: 6, h: 2 } },
+      { card_type: 'deployment_progress', position: { w: 5, h: 2 } },
+      { card_type: 'deployment_issues', position: { w: 6, h: 2 } },
+      { card_type: 'upgrade_status', position: { w: 4, h: 2 } },
+    ],
+  },
+  {
+    id: 'deploy-gitops',
+    name: 'GitOps Deployments',
+    description: 'ArgoCD applications, sync status, and drift detection',
+    icon: '🔄',
+    category: 'deploy',
+    cards: [
+      { card_type: 'gitops_drift', position: { w: 6, h: 2 } },
+      { card_type: 'argocd_applications', position: { w: 6, h: 3 } },
+      { card_type: 'argocd_sync_status', position: { w: 6, h: 3 } },
+      { card_type: 'argocd_health', position: { w: 6, h: 2 } },
+    ],
+  },
+  {
+    id: 'deploy-helm',
+    name: 'Helm Deployments',
+    description: 'Helm releases, history, and chart versions',
+    icon: '⛵',
+    category: 'deploy',
+    cards: [
+      { card_type: 'helm_release_status', position: { w: 6, h: 2 } },
+      { card_type: 'helm_history', position: { w: 8, h: 3 } },
+      { card_type: 'chart_versions', position: { w: 6, h: 3 } },
+      { card_type: 'helm_values_diff', position: { w: 8, h: 3 } },
+    ],
+  },
+  {
+    id: 'deploy-full',
+    name: 'Full Deployment Dashboard',
+    description: 'Complete deployment monitoring with GitOps, Helm, and Kustomize',
+    icon: '📦',
+    category: 'deploy',
+    cards: [
+      { card_type: 'deployment_status', position: { w: 6, h: 2 } },
+      { card_type: 'deployment_issues', position: { w: 6, h: 2 } },
+      { card_type: 'gitops_drift', position: { w: 6, h: 2 } },
+      { card_type: 'argocd_applications', position: { w: 6, h: 2 } },
+      { card_type: 'helm_release_status', position: { w: 6, h: 2 } },
+      { card_type: 'kustomization_status', position: { w: 6, h: 2 } },
+      { card_type: 'workload_deployment', position: { w: 6, h: 2 } },
+      { card_type: 'upgrade_status', position: { w: 4, h: 2 } },
     ],
   },
 ]
@@ -438,5 +559,7 @@ export const TEMPLATE_CATEGORIES = [
   { id: 'security', name: 'Security', icon: '🔒' },
   { id: 'gpu', name: 'GPU', icon: '🎮' },
   { id: 'klaude', name: 'Klaude AI', icon: '🤖' },
+  { id: 'arcade', name: 'Arcade', icon: '🕹️' },
+  { id: 'deploy', name: 'Deploy', icon: '🚀' },
   { id: 'custom', name: 'Other', icon: '📌' },
 ] as const

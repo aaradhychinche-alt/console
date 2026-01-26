@@ -1,13 +1,15 @@
 import { useMemo } from 'react'
-import { Network, Globe, Server, Layers, ExternalLink } from 'lucide-react'
-import { useClusters, useServices } from '../../hooks/useMCP'
+import { Globe, Server, Layers, ExternalLink, Filter, ChevronDown } from 'lucide-react'
+import { useClusters } from '../../hooks/useMCP'
+import { useCachedServices } from '../../hooks/useCachedData'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { RefreshButton } from '../ui/RefreshIndicator'
+import { useChartFilters } from '../../lib/cards'
 
 export function NetworkOverview() {
   const { clusters, isLoading, isRefreshing: clustersRefreshing, refetch: refetchClusters, isFailed, consecutiveFailures, lastRefresh } = useClusters()
-  const { services, isLoading: servicesLoading, isRefreshing: servicesRefreshing, refetch: refetchServices } = useServices()
+  const { services, isLoading: servicesLoading, isRefreshing: servicesRefreshing, refetch: refetchServices } = useCachedServices()
 
   const isRefreshing = clustersRefreshing || servicesRefreshing
   const refetch = () => {
@@ -17,17 +19,42 @@ export function NetworkOverview() {
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const { drillToService } = useDrillDownActions()
 
-  // Filter clusters by selection
-  const filteredClusters = useMemo(() => {
+  // Local cluster filter
+  const {
+    localClusterFilter,
+    toggleClusterFilter,
+    clearClusterFilter,
+    availableClusters,
+    showClusterFilter,
+    setShowClusterFilter,
+    clusterFilterRef,
+  } = useChartFilters({
+    storageKey: 'network-overview',
+  })
+
+  // Filter clusters by global selection first
+  const globalFilteredClusters = useMemo(() => {
     if (isAllClustersSelected) return clusters
     return clusters.filter(c => selectedClusters.includes(c.name))
   }, [clusters, selectedClusters, isAllClustersSelected])
 
+  // Apply local cluster filter
+  const filteredClusters = useMemo(() => {
+    if (localClusterFilter.length === 0) return globalFilteredClusters
+    return globalFilteredClusters.filter(c => localClusterFilter.includes(c.name))
+  }, [globalFilteredClusters, localClusterFilter])
+
   // Filter services by selection
   const filteredServices = useMemo(() => {
-    if (isAllClustersSelected) return services
-    return services.filter(s => s.cluster && selectedClusters.includes(s.cluster))
-  }, [services, selectedClusters, isAllClustersSelected])
+    let result = services
+    if (!isAllClustersSelected) {
+      result = result.filter(s => s.cluster && selectedClusters.includes(s.cluster))
+    }
+    if (localClusterFilter.length > 0) {
+      result = result.filter(s => s.cluster && localClusterFilter.includes(s.cluster))
+    }
+    return result
+  }, [services, selectedClusters, isAllClustersSelected, localClusterFilter])
 
   // Calculate network stats
   const stats = useMemo(() => {
@@ -55,8 +82,6 @@ export function NetworkOverview() {
     }
   }, [filteredServices])
 
-  const hasRealData = !isLoading && filteredClusters.length > 0
-
   if (isLoading && !clusters.length) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -67,25 +92,71 @@ export function NetworkOverview() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* Controls */}
       <div className="flex items-center justify-between mb-4">
+        <div />
         <div className="flex items-center gap-2">
-          <Network className="w-4 h-4 text-purple-400" />
-          <span className="text-sm font-medium text-foreground">Network Overview</span>
-          {hasRealData && (
-            <span className="text-xs text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded" title="Showing live data from clusters">
-              Live
+          {/* Cluster count indicator */}
+          {localClusterFilter.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+              <Server className="w-3 h-3" />
+              {localClusterFilter.length}/{availableClusters.length}
             </span>
           )}
+
+          {/* Cluster filter dropdown */}
+          {availableClusters.length >= 1 && (
+            <div ref={clusterFilterRef} className="relative">
+              <button
+                onClick={() => setShowClusterFilter(!showClusterFilter)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                  localClusterFilter.length > 0
+                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                    : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+                }`}
+                title="Filter by cluster"
+              >
+                <Filter className="w-3 h-3" />
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showClusterFilter && (
+                <div className="absolute top-full right-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                  <div className="p-1">
+                    <button
+                      onClick={clearClusterFilter}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      All clusters
+                    </button>
+                    {availableClusters.map(cluster => (
+                      <button
+                        key={cluster.name}
+                        onClick={() => toggleClusterFilter(cluster.name)}
+                        className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                          localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                        }`}
+                      >
+                        {cluster.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <RefreshButton
+            isRefreshing={isRefreshing}
+            isFailed={isFailed}
+            consecutiveFailures={consecutiveFailures}
+            lastRefresh={lastRefresh}
+            onRefresh={refetch}
+            size="sm"
+          />
         </div>
-        <RefreshButton
-          isRefreshing={isRefreshing}
-          isFailed={isFailed}
-          consecutiveFailures={consecutiveFailures}
-          lastRefresh={lastRefresh}
-          onRefresh={refetch}
-          size="sm"
-        />
       </div>
 
       {/* Main stat */}
@@ -178,12 +249,12 @@ export function NetworkOverview() {
               return (
                 <div
                   key={name}
-                  className={`flex items-center justify-between p-2 rounded bg-secondary/30 ${svc ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
+                  className={`flex items-center justify-between gap-2 p-2 rounded bg-secondary/30 ${svc ? 'cursor-pointer hover:bg-secondary/50' : 'cursor-default'} transition-colors`}
                   onClick={() => svc && drillToService(svc.cluster || 'default', svc.namespace || 'default', svc.name)}
                   title={`${count} service${count !== 1 ? 's' : ''} in namespace ${name}${svc ? ' - Click to view' : ''}`}
                 >
-                  <span className="text-sm text-foreground truncate">{name}</span>
-                  <span className="text-xs text-muted-foreground">{count} services</span>
+                  <span className="text-sm text-foreground truncate min-w-0 flex-1">{name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{count} services</span>
                 </div>
               )
             })}

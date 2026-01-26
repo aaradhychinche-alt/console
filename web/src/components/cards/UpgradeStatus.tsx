@@ -374,11 +374,9 @@ Please proceed step by step and ask for confirmation before making any changes.`
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <ArrowUp className="w-4 h-4 text-yellow-400" />
-          <span className="text-sm font-medium text-muted-foreground">Upgrade Status</span>
           {pendingUpgrades > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
-              {pendingUpgrades} available
+              {pendingUpgrades} upgrades available
             </span>
           )}
         </div>
@@ -426,9 +424,9 @@ Please proceed step by step and ask for confirmation before making any changes.`
               className="cursor-pointer"
               onClick={() => drillToCluster(cluster.name, { tab: 'upgrade', version: cluster.currentVersion, targetVersion: cluster.targetVersion })}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-foreground truncate">{cluster.name}</span>
-                {getStatusIcon(cluster.status)}
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <span className="text-sm font-medium text-foreground truncate min-w-0 flex-1">{cluster.name}</span>
+                <span className="shrink-0">{getStatusIcon(cluster.status)}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="font-mono">{cluster.currentVersion}</span>

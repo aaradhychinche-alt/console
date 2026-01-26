@@ -1,8 +1,7 @@
 import { useState, useMemo, useCallback } from 'react'
-import { FileCode, CheckCircle, AlertTriangle, XCircle, Database, Search, AlertCircle } from 'lucide-react'
+import { CheckCircle, AlertTriangle, XCircle, Database, Search, Filter, ChevronDown, Server } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
-import { useGlobalFilters } from '../../hooks/useGlobalFilters'
-import { usePersistedClusterSelection } from '../../hooks/usePersistedClusterSelection'
+import { useChartFilters } from '../../lib/cards'
 import { Skeleton } from '../ui/Skeleton'
 import { ClusterBadge } from '../ui/ClusterBadge'
 import { CardControls, SortDirection } from '../ui/CardControls'
@@ -34,28 +33,26 @@ const SORT_OPTIONS = [
   { value: 'instances' as const, label: 'Instances' },
 ]
 
-export function CRDHealth({ config }: CRDHealthProps) {
+export function CRDHealth({ config: _config }: CRDHealthProps) {
   const { isLoading, isRefreshing, refetch, isFailed, consecutiveFailures, lastRefresh } = useClusters()
-  // Use persisted cluster selection - survives global filter changes
+
+  // Use chart filters hook for cluster filtering
   const {
-    selectedCluster,
-    setSelectedCluster,
-    availableClusters: clusters,
-    isOutsideGlobalFilter,
-  } = usePersistedClusterSelection({
-    storageKey: 'crd-health',
-    defaultValue: config?.cluster || 'all',
-    allowAll: true,
-  })
+    localClusterFilter,
+    toggleClusterFilter,
+    clearClusterFilter,
+    availableClusters,
+    filteredClusters: clusters,
+    showClusterFilter,
+    setShowClusterFilter,
+    clusterFilterRef,
+  } = useChartFilters({ storageKey: 'crd-health' })
+
   const [filterGroup, setFilterGroup] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortByOption>('status')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const [localSearch, setLocalSearch] = useState('')
-  const {
-    selectedClusters: globalSelectedClusters,
-    isAllClustersSelected,
-  } = useGlobalFilters()
 
   // Generate cluster-specific CRD data
   const getClusterCRDs = useCallback((clusterName: string): CRD[] => {
@@ -81,21 +78,12 @@ export function CRDHealth({ config }: CRDHealthProps) {
 
   // Mock CRD data - generates CRDs for each cluster
   const allCRDs: CRD[] = useMemo(() => {
-    if (selectedCluster && selectedCluster !== 'all') {
-      return getClusterCRDs(selectedCluster)
-    }
-
-    // When 'all' selected, show CRDs from all clusters matching global filter
-    const clustersToShow = isAllClustersSelected
-      ? clusters
-      : clusters.filter(c => globalSelectedClusters.includes(c.name))
-
     const crdsWithClusters: CRD[] = []
-    clustersToShow.forEach(c => {
+    clusters.forEach(c => {
       crdsWithClusters.push(...getClusterCRDs(c.name))
     })
     return crdsWithClusters
-  }, [selectedCluster, clusters, isAllClustersSelected, globalSelectedClusters, getClusterCRDs])
+  }, [clusters, getClusterCRDs])
 
   // Get unique groups
   const groups = useMemo(() => {
@@ -194,13 +182,61 @@ export function CRDHealth({ config }: CRDHealthProps) {
 
   return (
     <div className="h-full flex flex-col min-h-card content-loaded">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Controls - single row */}
+      <div className="flex items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2">
-          <FileCode className="w-4 h-4 text-teal-400" />
-          <span className="text-sm font-medium text-muted-foreground">CRD Health</span>
+          {localClusterFilter.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+              <Server className="w-3 h-3" />
+              {clusters.length}/{availableClusters.length}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Cluster Filter */}
+          {availableClusters.length >= 1 && (
+            <div ref={clusterFilterRef} className="relative">
+              <button
+                onClick={() => setShowClusterFilter(!showClusterFilter)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                  localClusterFilter.length > 0
+                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                    : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+                }`}
+                title="Filter by cluster"
+              >
+                <Filter className="w-3 h-3" />
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showClusterFilter && (
+                <div className="absolute top-full right-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                  <div className="p-1">
+                    <button
+                      onClick={clearClusterFilter}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      All clusters
+                    </button>
+                    {availableClusters.map(cluster => (
+                      <button
+                        key={cluster.name}
+                        onClick={() => toggleClusterFilter(cluster.name)}
+                        className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                          localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                        }`}
+                      >
+                        {cluster.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <CardControls
             limit={limit}
             onLimitChange={setLimit}
@@ -221,32 +257,6 @@ export function CRDHealth({ config }: CRDHealthProps) {
         </div>
       </div>
 
-      {/* Cluster selector */}
-      <div className="mb-4">
-        <select
-          value={selectedCluster}
-          onChange={(e) => setSelectedCluster(e.target.value)}
-          className={`w-full px-3 py-1.5 rounded-lg bg-secondary border text-sm text-foreground ${
-            isOutsideGlobalFilter ? 'border-orange-500/50' : 'border-border'
-          }`}
-        >
-          <option value="all">All Clusters</option>
-          {clusters.map(c => (
-            <option key={c.name} value={c.name}>{c.name}</option>
-          ))}
-          {/* Show the selected cluster even if outside global filter */}
-          {isOutsideGlobalFilter && (
-            <option value={selectedCluster}>{selectedCluster} (filtered out)</option>
-          )}
-        </select>
-        {isOutsideGlobalFilter && (
-          <div className="flex items-center gap-1 mt-1 text-xs text-orange-400">
-            <AlertCircle className="w-3 h-3" />
-            <span>Selection outside global filter</span>
-          </div>
-        )}
-      </div>
-
       {/* Local Search */}
       <div className="relative mb-4">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -259,7 +269,7 @@ export function CRDHealth({ config }: CRDHealthProps) {
         />
       </div>
 
-      {clusters.length === 0 ? (
+      {availableClusters.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           No clusters available
         </div>
@@ -267,8 +277,10 @@ export function CRDHealth({ config }: CRDHealthProps) {
         <>
           {/* Scope badge and filter */}
           <div className="flex items-center gap-2 mb-4">
-            {selectedCluster ? (
-              <ClusterBadge cluster={selectedCluster} />
+            {localClusterFilter.length === 1 ? (
+              <ClusterBadge cluster={localClusterFilter[0]} />
+            ) : localClusterFilter.length > 1 ? (
+              <span className="text-xs px-2 py-1 rounded bg-secondary text-muted-foreground">{localClusterFilter.length} clusters</span>
             ) : (
               <span className="text-xs px-2 py-1 rounded bg-secondary text-muted-foreground">All clusters</span>
             )}
@@ -354,7 +366,7 @@ export function CRDHealth({ config }: CRDHealthProps) {
 
           {/* Footer */}
           <div className="mt-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-            {groups.length} API groups {selectedCluster === 'all' ? 'across all clusters' : `on ${selectedCluster}`}
+            {groups.length} API groups {localClusterFilter.length === 1 ? `on ${localClusterFilter[0]}` : `across ${clusters.length} cluster${clusters.length !== 1 ? 's' : ''}`}
           </div>
         </>
       )}

@@ -547,12 +547,10 @@ export function NamespaceQuotas({ config }: NamespaceQuotasProps) {
   }
 
   return (
-    <div className="h-full flex flex-col min-h-card content-loaded">
+    <div className="h-full flex flex-col min-h-card content-loaded overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Gauge className="w-4 h-4 text-yellow-400" />
-          <span className="text-sm font-medium text-muted-foreground">Namespace Quotas</span>
           {isFetchingData && (
             <Loader2 className="w-3 h-3 text-yellow-400 animate-spin" />
           )}
@@ -631,17 +629,17 @@ export function NamespaceQuotas({ config }: NamespaceQuotasProps) {
         </div>
 
         {/* Scope badge */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 min-w-0 overflow-hidden">
           {selectedCluster === 'all' ? (
-            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">All Clusters</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 shrink-0">All Clusters</span>
           ) : (
-            <ClusterBadge cluster={selectedCluster} />
+            <div className="shrink-0"><ClusterBadge cluster={selectedCluster} /></div>
           )}
-          <span className="text-muted-foreground">/</span>
+          <span className="text-muted-foreground shrink-0">/</span>
           {selectedNamespace === 'all' ? (
-            <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">All Namespaces</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 shrink-0">All Namespaces</span>
           ) : (
-            <span className="text-sm text-foreground">{selectedNamespace}</span>
+            <span className="text-sm text-foreground truncate min-w-0">{selectedNamespace}</span>
           )}
         </div>
 

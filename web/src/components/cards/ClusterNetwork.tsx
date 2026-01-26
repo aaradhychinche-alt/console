@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Network, Server, Globe, Shield, ExternalLink } from 'lucide-react'
+import { Server, Globe, Shield, ExternalLink } from 'lucide-react'
 import { useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton } from '../ui/Skeleton'
@@ -74,11 +74,7 @@ export function ClusterNetwork({ config }: ClusterNetworkProps) {
   if (!selectedCluster) {
     return (
       <div className="h-full flex flex-col min-h-card">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Network className="w-4 h-4 text-cyan-400" />
-            <span className="text-sm font-medium text-muted-foreground">Cluster Network</span>
-          </div>
+        <div className="flex items-center justify-end mb-4">
           <select
             value={selectedCluster}
             onChange={(e) => setSelectedCluster(e.target.value)}
@@ -98,12 +94,11 @@ export function ClusterNetwork({ config }: ClusterNetworkProps) {
   }
 
   return (
-    <div className="h-full flex flex-col min-h-card content-loaded">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Network className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm font-medium text-foreground">{selectedCluster}</span>
+    <div className="h-full flex flex-col min-h-card content-loaded overflow-hidden">
+      {/* Controls */}
+      <div className="flex items-center justify-between mb-4 gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-sm font-medium text-foreground truncate">{selectedCluster}</span>
           <div className={`w-2 h-2 rounded-full ${cluster?.healthy ? 'bg-green-500' : 'bg-red-500'}`} />
         </div>
         <div className="flex items-center gap-2">
@@ -137,9 +132,9 @@ export function ClusterNetwork({ config }: ClusterNetworkProps) {
             <span className="text-sm font-medium text-cyan-300">API Server</span>
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Host</span>
-              <span className="text-sm text-foreground font-mono">{serverInfo.host}</span>
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <span className="text-xs text-muted-foreground shrink-0">Host</span>
+              <span className="text-sm text-foreground font-mono truncate">{serverInfo.host}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Port</span>
@@ -190,10 +185,10 @@ export function ClusterNetwork({ config }: ClusterNetworkProps) {
 
       {/* Full URL */}
       {cluster?.server && (
-        <div className="mt-4 pt-3 border-t border-border/50">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <ExternalLink className="w-3 h-3" />
-            <span className="truncate font-mono">{cluster.server}</span>
+        <div className="mt-4 pt-3 border-t border-border/50 min-w-0">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+            <ExternalLink className="w-3 h-3 shrink-0" />
+            <span className="truncate font-mono min-w-0">{cluster.server}</span>
           </div>
         </div>
       )}

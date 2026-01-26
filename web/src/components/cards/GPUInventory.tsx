@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Cpu, Server, Search, ChevronRight } from 'lucide-react'
+import { Cpu, Server, Search, ChevronRight, Filter, ChevronDown } from 'lucide-react'
 import { useGPUNodes } from '../../hooks/useMCP'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
@@ -8,6 +8,7 @@ import { CardControls, SortDirection } from '../ui/CardControls'
 import { Pagination, usePagination } from '../ui/Pagination'
 import { RefreshButton } from '../ui/RefreshIndicator'
 import { Skeleton } from '../ui/Skeleton'
+import { useChartFilters } from '../../lib/cards'
 
 interface GPUInventoryProps {
   config?: Record<string, unknown>
@@ -37,6 +38,19 @@ export function GPUInventory({ config }: GPUInventoryProps) {
   const { selectedClusters, isAllClustersSelected } = useGlobalFilters()
   const { drillToGPUNode } = useDrillDownActions()
 
+  // Local cluster filter
+  const {
+    localClusterFilter,
+    toggleClusterFilter,
+    clearClusterFilter,
+    availableClusters,
+    showClusterFilter,
+    setShowClusterFilter,
+    clusterFilterRef,
+  } = useChartFilters({
+    storageKey: 'gpu-inventory',
+  })
+
   // Only show skeleton when no cached data exists
   const isLoading = hookLoading && rawNodes.length === 0
 
@@ -45,12 +59,17 @@ export function GPUInventory({ config }: GPUInventoryProps) {
   const [limit, setLimit] = useState<number | 'unlimited'>(5)
   const [localSearch, setLocalSearch] = useState('')
 
-  // Filter nodes by global cluster selection and local search
+  // Filter nodes by global cluster selection, local cluster filter, and local search
   const filteredNodes = useMemo(() => {
     let result = rawNodes
 
     if (!isAllClustersSelected) {
       result = result.filter(n => selectedClusters.some(c => n.cluster.startsWith(c)))
+    }
+
+    // Apply local cluster filter
+    if (localClusterFilter.length > 0) {
+      result = result.filter(n => localClusterFilter.some(c => n.cluster.startsWith(c)))
     }
 
     // Apply local search filter
@@ -64,7 +83,7 @@ export function GPUInventory({ config }: GPUInventoryProps) {
     }
 
     return result
-  }, [rawNodes, selectedClusters, isAllClustersSelected, localSearch])
+  }, [rawNodes, selectedClusters, isAllClustersSelected, localClusterFilter, localSearch])
 
   // Sort nodes
   const sortedNodes = useMemo(() => {
@@ -128,8 +147,7 @@ export function GPUInventory({ config }: GPUInventoryProps) {
   if (filteredNodes.length === 0) {
     return (
       <div className="h-full flex flex-col content-loaded">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-muted-foreground">GPU Inventory</span>
+        <div className="flex items-center justify-end mb-3">
           <RefreshButton
             isRefreshing={isRefreshing}
             isFailed={isFailed}
@@ -150,17 +168,67 @@ export function GPUInventory({ config }: GPUInventoryProps) {
   }
 
   return (
-    <div className="h-full flex flex-col content-loaded">
+    <div className="h-full flex flex-col content-loaded overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-green-400" />
-          <span className="text-sm font-medium text-muted-foreground">GPU Inventory</span>
           <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
             {totalGPUs} GPUs
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Cluster count indicator */}
+          {localClusterFilter.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+              <Server className="w-3 h-3" />
+              {localClusterFilter.length}/{availableClusters.length}
+            </span>
+          )}
+
+          {/* Cluster filter dropdown */}
+          {availableClusters.length >= 1 && (
+            <div ref={clusterFilterRef} className="relative">
+              <button
+                onClick={() => setShowClusterFilter(!showClusterFilter)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                  localClusterFilter.length > 0
+                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                    : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+                }`}
+                title="Filter by cluster"
+              >
+                <Filter className="w-3 h-3" />
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showClusterFilter && (
+                <div className="absolute top-full right-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                  <div className="p-1">
+                    <button
+                      onClick={clearClusterFilter}
+                      className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      All clusters
+                    </button>
+                    {availableClusters.map(cluster => (
+                      <button
+                        key={cluster.name}
+                        onClick={() => toggleClusterFilter(cluster.name)}
+                        className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                          localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                        }`}
+                      >
+                        {cluster.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <CardControls
             limit={limit}
             onLimitChange={setLimit}
@@ -221,16 +289,18 @@ export function GPUInventory({ config }: GPUInventoryProps) {
             })}
             className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer group"
           >
-            <div className="flex items-center gap-2 mb-2">
-              <Server className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground truncate group-hover:text-purple-400">{node.name}</span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center gap-2 mb-2 min-w-0">
+              <Server className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-medium text-foreground truncate min-w-0 flex-1 group-hover:text-purple-400">{node.name}</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div className="flex items-center justify-between text-xs">
-              <ClusterBadge cluster={node.cluster} size="sm" />
-              <div className="flex items-center gap-2">
-                <span className="text-purple-400">{node.gpuType}</span>
-                <span className="font-mono">
+            <div className="flex items-center justify-between text-xs gap-2 min-w-0">
+              <div className="min-w-0 flex-1">
+                <ClusterBadge cluster={node.cluster} size="sm" />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-purple-400 truncate max-w-[80px]">{node.gpuType}</span>
+                <span className="font-mono shrink-0 whitespace-nowrap">
                   {node.gpuAllocated}/{node.gpuCount}
                 </span>
               </div>

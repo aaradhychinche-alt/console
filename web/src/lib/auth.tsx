@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { api } from './api'
+import { api, checkBackendAvailability } from './api'
 import { dashboardSync } from './dashboards/dashboardSync'
 
 interface User {
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         github_id: '12345',
         github_login: 'demo-user',
         email: 'demo@example.com',
-        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demo',
+        avatar_url: 'https://api.dicebear.com/7.x/pixel-art-neutral/svg?seed=kubestellar&backgroundColor=b6e3f4',
         role: 'viewer',
         onboarded: true,
       })
@@ -70,13 +70,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [logout])
 
-  const login = useCallback(() => {
+  const login = useCallback(async () => {
     // Demo mode enabled via:
     // 1. Explicit environment variable VITE_DEMO_MODE=true
     // 2. Netlify deploy previews (deploy-preview-* hostnames) - safe because these are ephemeral test environments
-    const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' ||
+    // 3. Backend is unavailable (graceful fallback for local development)
+    const explicitDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' ||
       window.location.hostname.includes('deploy-preview-') ||
       window.location.hostname.includes('netlify.app')
+
+    // Check backend availability (async, force fresh check) - this ensures we don't redirect to broken OAuth
+    const backendAvailable = await checkBackendAvailability(true)
+    const isDemoMode = explicitDemoMode || !backendAvailable
 
     if (isDemoMode) {
       // Demo mode provides read-only viewer access, not admin
@@ -87,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         github_id: '12345',
         github_login: 'demo-user',
         email: 'demo@example.com',
-        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demo',
+        avatar_url: 'https://api.dicebear.com/7.x/pixel-art-neutral/svg?seed=kubestellar&backgroundColor=b6e3f4',
         role: 'viewer', // Demo users get viewer role, not admin
         onboarded: true,
       })

@@ -111,6 +111,8 @@ import { KubeKong } from './KubeKong'
 import { PodPitfall } from './PodPitfall'
 // Node Invaders (Space Invaders) card
 import { NodeInvaders } from './NodeInvaders'
+// Pod Crosser (Frogger) card
+import { PodCrosser } from './PodCrosser'
 // Pod Brothers (Mario Bros) card
 import { PodBrothers } from './PodBrothers'
 // Kube Kart (racing) card
@@ -279,6 +281,7 @@ export const CARD_COMPONENTS: Record<string, CardComponent> = {
   kube_kong: KubeKong,
   pod_pitfall: PodPitfall,
   node_invaders: NodeInvaders,
+  pod_crosser: PodCrosser,
   // Pod Brothers (Mario Bros) card
   pod_brothers: PodBrothers,
   kube_kart: KubeKart,
@@ -353,17 +356,45 @@ export const DEMO_DATA_CARDS = new Set([
   'policy_violations',
   'compliance_score',
   // Data compliance cards - demo until tools are detected
+  // Note: cert_manager now uses real data via useCertManager hook
   'vault_secrets',
   'external_secrets',
-  'cert_manager',
   // Workload detection cards - demo until tools are detected
+  // Note: prow_jobs, prow_status, prow_history now use real data via useProw hook
+  // Note: llm_inference, llm_models now use real data via useLLMd hook
+  'ml_jobs',
+  'ml_notebooks',
+])
+
+/**
+ * Cards that display live/real-time data streams.
+ * These show a "Live" badge in the title when showing real data (not demo).
+ * Primarily time-series, trend, and event streaming cards.
+ */
+export const LIVE_DATA_CARDS = new Set([
+  // Time-series trend cards
+  'pod_health_trend',
+  'resource_trend',
+  'gpu_usage_trend',
+  // Real-time status cards
+  'cluster_metrics',
+  'events_timeline',
+  'gpu_utilization',
+  // Overview cards with live data
+  'service_status',
+  'storage_overview',
+  'network_overview',
+  'compute_overview',
+  'pvc_status',
+  // Prow CI/CD cards with real data
   'prow_jobs',
   'prow_status',
   'prow_history',
+  // llm-d inference cards with real data
   'llm_inference',
   'llm_models',
-  'ml_jobs',
-  'ml_notebooks',
+  // cert-manager card with real data
+  'cert_manager',
 ])
 
 /**
@@ -470,6 +501,7 @@ export const CARD_DEFAULT_WIDTHS: Record<string, number> = {
   kube_kong: 6,
   pod_pitfall: 6,
   node_invaders: 6,
+  pod_crosser: 6,
   pod_brothers: 6,
   kube_kart: 5,
   kube_pong: 5,

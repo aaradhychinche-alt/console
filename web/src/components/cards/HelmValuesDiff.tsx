@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { FileJson, ChevronRight, Plus, Edit, Search, RotateCcw } from 'lucide-react'
+import { ChevronRight, Plus, Edit, Search, RotateCcw } from 'lucide-react'
 import { useClusters, useHelmReleases, useHelmValues } from '../../hooks/useMCP'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
@@ -191,18 +191,14 @@ export function HelmValuesDiff({ config }: HelmValuesDiffProps) {
   }
 
   return (
-    <div className="h-full flex flex-col min-h-card content-loaded">
-      {/* Header */}
+    <div className="h-full flex flex-col min-h-card content-loaded overflow-hidden">
+      {/* Controls */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <FileJson className="w-4 h-4 text-amber-400" />
-          <span className="text-sm font-medium text-muted-foreground">Helm Values Diff</span>
-          {valueEntries.length > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-              {valueEntries.length} values
-            </span>
-          )}
-        </div>
+        {valueEntries.length > 0 ? (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+            {valueEntries.length} values
+          </span>
+        ) : <div />}
         <RefreshButton
           isRefreshing={valuesRefreshing || valuesLoading}
           isFailed={isFailed}
@@ -265,12 +261,12 @@ export function HelmValuesDiff({ config }: HelmValuesDiffProps) {
                 })
               }
             }}
-            className="flex items-center gap-2 mb-4 p-2 -mx-2 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group"
+            className="flex items-center gap-2 mb-4 p-2 -mx-2 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group min-w-0 overflow-hidden"
           >
-            <ClusterBadge cluster={selectedCluster} />
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm text-foreground group-hover:text-amber-400">{selectedRelease}</span>
-            <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="shrink-0"><ClusterBadge cluster={selectedCluster} /></div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="text-sm text-foreground group-hover:text-amber-400 truncate min-w-0">{selectedRelease}</span>
+            <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
           </div>
 
           {/* Local Search */}

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Server, CheckCircle, XCircle, WifiOff, Cpu, Loader2, ExternalLink, Search } from 'lucide-react'
+import { CheckCircle, XCircle, WifiOff, Cpu, Loader2, ExternalLink, Search } from 'lucide-react'
 import { useClusters, useGPUNodes, ClusterInfo } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { CardControls, SortDirection } from '../ui/CardControls'
@@ -214,18 +214,9 @@ export function ClusterHealth() {
       {/* Header with refresh */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span title="Kubernetes clusters"><Server className="w-4 h-4 text-purple-400" /></span>
-          <span className="text-sm font-medium text-muted-foreground" title={`${rawClusters.length} total clusters configured`}>
-            {rawClusters.length} Clusters
+          <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400" title={`${rawClusters.length} total clusters configured`}>
+            {rawClusters.length} clusters
           </span>
-          <RefreshButton
-            isRefreshing={isRefreshing}
-            isFailed={isFailed}
-            consecutiveFailures={consecutiveFailures}
-            lastRefresh={lastRefresh}
-            onRefresh={refetch}
-            size="sm"
-          />
         </div>
         <div className="flex items-center gap-2">
           <CardControls
@@ -310,12 +301,12 @@ export function ClusterHealth() {
               onClick={() => setSelectedCluster(cluster.name)}
               title={`Click to view details for ${cluster.name}`}
             >
-              <div className="flex items-center gap-2" title={statusTooltip}>
+              <div className="flex items-center gap-2 min-w-0 flex-1" title={statusTooltip}>
                 <ClusterStatusDot state={clusterState} />
-                <span title={providerLabel}>
+                <span title={providerLabel} className="shrink-0">
                   <CloudProviderIcon provider={provider} size={14} />
                 </span>
-                <span className="text-sm text-foreground">{cluster.name}</span>
+                <span className="text-sm text-foreground truncate">{cluster.name}</span>
                 {consoleUrl && (
                   <a
                     href={consoleUrl}
@@ -339,7 +330,7 @@ export function ClusterHealth() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                 <span title={clusterLoading ? 'Checking...' : !clusterUnreachable ? `${cluster.nodeCount || 0} worker nodes in cluster` : 'Offline - check network connection'}>
                   {clusterLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : !clusterUnreachable ? (cluster.nodeCount || 0) : '-'} nodes
                 </span>

@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { ChevronRight, ChevronDown, Server, Box, Layers, Database, Network, HardDrive, Search, AlertTriangle, RefreshCw, Folder, FileKey, FileText, Gauge, User, Clock, Container } from 'lucide-react'
-import { useClusters, usePodIssues, useNodes, useNamespaces, useDeployments, useServices, usePVCs, usePods, useConfigMaps, useSecrets, useServiceAccounts, useJobs, useHPAs } from '../../hooks/useMCP'
+import { useClusters, useNodes, useNamespaces, useDeployments, useServices, usePVCs, usePods, useConfigMaps, useSecrets, useServiceAccounts, useJobs, useHPAs } from '../../hooks/useMCP'
+import { useCachedPodIssues } from '../../hooks/useCachedData'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { StatusIndicator } from '../charts/StatusIndicator'
@@ -77,8 +78,9 @@ export function ClusterResourceTree({ config: _config }: ClusterResourceTreeProp
   const [clusterDataCache, setClusterDataCache] = useState<Map<string, ClusterDataCache>>(new Map())
 
   // Get filtered clusters based on global filter
+  // Include all clusters (don't filter by reachability - show clusters with unknown status)
   const filteredClusters = useMemo(() => {
-    let result = clusters.filter(c => c.reachable !== false)
+    let result = clusters
     if (!isAllClustersSelected) {
       result = result.filter(c => selectedClusters.includes(c.name))
     }
@@ -90,7 +92,7 @@ export function ClusterResourceTree({ config: _config }: ClusterResourceTreeProp
   }, [clusters, selectedClusters, isAllClustersSelected, searchFilter])
 
   // Fetch data for the selected cluster (only when a cluster is expanded)
-  const { issues: podIssues } = usePodIssues(selectedCluster || undefined)
+  const { issues: podIssues } = useCachedPodIssues(selectedCluster || undefined)
   const { nodes: allNodes } = useNodes(selectedCluster || undefined)
   const { namespaces: allNamespaces } = useNamespaces(selectedCluster || undefined)
   const { deployments: allDeployments } = useDeployments(selectedCluster || undefined)
@@ -510,10 +512,8 @@ export function ClusterResourceTree({ config: _config }: ClusterResourceTreeProp
       {/* Header */}
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-purple-400" />
-          <span className="text-sm font-medium text-foreground">Resource Tree</span>
           {selectedCluster && (
-            <span className="text-xs text-muted-foreground">• {selectedCluster}</span>
+            <span className="text-xs text-muted-foreground">{selectedCluster}</span>
           )}
         </div>
         <RefreshButton

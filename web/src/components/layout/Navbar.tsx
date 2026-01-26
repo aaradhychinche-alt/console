@@ -16,7 +16,7 @@ import { languages } from '../../lib/i18n'
 import { TourTrigger } from '../onboarding/Tour'
 import { UserProfileDropdown } from './UserProfileDropdown'
 import { AlertBadge } from '../ui/AlertBadge'
-import { FeatureRequestButton } from '../feedback'
+import { FeatureRequestButton, FeedbackModal } from '../feedback'
 import { cn } from '../../lib/cn'
 
 interface SearchResult {
@@ -111,6 +111,7 @@ export function Navbar() {
   const [showAgentStatus, setShowAgentStatus] = useState(false)
   const [showUpdateDropdown, setShowUpdateDropdown] = useState(false)
   const [tokenAnimating, setTokenAnimating] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
   const previousTokensRef = useRef<number>(usage.used)
   const searchRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -519,7 +520,8 @@ export function Navbar() {
                     availableClusters.map((cluster) => {
                       const isSelected = isAllClustersSelected || selectedClusters.includes(cluster)
                       const info = clusterInfoMap[cluster]
-                      const isHealthy = info?.healthy ?? true
+                      // Only show healthy if explicitly true, otherwise check other conditions
+                      const isHealthy = info?.healthy === true
                       const statusTooltip = getClusterStatusTooltip(cluster)
                       // Determine if cluster is unreachable vs unhealthy
                       const isUnreachable = info
@@ -527,6 +529,8 @@ export function Navbar() {
                            (!info.nodeCount || info.nodeCount === 0) ||
                            (info.errorType && ['timeout', 'network', 'certificate'].includes(info.errorType)))
                         : false
+                      // Check if health status is still loading (no info yet)
+                      const isLoading = !info || (info.nodeCount === undefined && info.reachable === undefined)
                       return (
                         <button
                           key={cluster}
@@ -547,15 +551,17 @@ export function Navbar() {
                           )}>
                             {isSelected && <Check className="w-3 h-3 text-white" />}
                           </div>
-                          {/* Status indicator - yellow wifi for unreachable, red alert for unhealthy, green check for healthy */}
-                          {isUnreachable ? (
+                          {/* Status indicator - loading spinner, yellow wifi for unreachable, orange alert for unhealthy, green check for healthy */}
+                          {isLoading ? (
+                            <div className="w-3 h-3 border border-muted-foreground/50 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                          ) : isUnreachable ? (
                             <WifiOff className="w-3 h-3 text-yellow-400 flex-shrink-0" />
                           ) : isHealthy ? (
                             <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0" />
                           ) : (
                             <AlertCircle className="w-3 h-3 text-orange-400 flex-shrink-0" />
                           )}
-                          <span className={cn('text-sm truncate', isUnreachable ? 'text-yellow-400' : !isHealthy && 'text-orange-400')}>{cluster}</span>
+                          <span className={cn('text-sm truncate', isUnreachable ? 'text-yellow-400' : !isHealthy && !isLoading && 'text-orange-400')}>{cluster}</span>
                         </button>
                       )
                     })
@@ -1027,8 +1033,12 @@ export function Navbar() {
           user={user}
           onLogout={logout}
           onPreferences={() => navigate('/settings')}
+          onFeedback={() => setShowFeedback(true)}
         />
       </div>
+
+      {/* Feedback Modal */}
+      <FeedbackModal isOpen={showFeedback} onClose={() => setShowFeedback(false)} />
     </nav>
   )
 }

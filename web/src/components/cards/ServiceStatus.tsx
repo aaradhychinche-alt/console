@@ -1,5 +1,6 @@
-import { Layers, Globe, Server, ExternalLink, Search, ChevronRight } from 'lucide-react'
-import { useServices, type Service } from '../../hooks/useMCP'
+import { Globe, Server, ExternalLink, Search, ChevronRight, Filter, ChevronDown, Check } from 'lucide-react'
+import type { Service } from '../../hooks/useMCP'
+import { useCachedServices } from '../../hooks/useCachedData'
 import { useDrillDownActions } from '../../hooks/useDrillDown'
 import { CardControls } from '../ui/CardControls'
 import { Pagination } from '../ui/Pagination'
@@ -52,7 +53,7 @@ export function ServiceStatus() {
     isFailed,
     consecutiveFailures,
     lastRefresh
-  } = useServices()
+  } = useCachedServices()
 
   // Only show skeleton when no cached data exists
   const isLoading = hookLoading && services.length === 0
@@ -73,6 +74,13 @@ export function ServiceStatus() {
     filters: {
       search: searchQuery,
       setSearch: setSearchQuery,
+      localClusterFilter,
+      toggleClusterFilter,
+      clearClusterFilter,
+      availableClusters,
+      showClusterFilter,
+      setShowClusterFilter,
+      clusterFilterRef,
     },
     sorting: {
       sortBy,
@@ -107,8 +115,6 @@ export function ServiceStatus() {
     clusterIP: services.filter(s => s.type === 'ClusterIP').length,
   }
 
-  const hasRealData = !isLoading && services.length > 0
-
   if (isLoading) {
     return (
       <div className="h-full flex flex-col min-h-card">
@@ -133,18 +139,63 @@ export function ServiceStatus() {
 
   return (
     <div className="h-full flex flex-col content-loaded">
-      {/* Header */}
+      {/* Controls */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm font-medium text-foreground">Service Status</span>
-          {hasRealData && (
-            <span className="text-xs text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
-              Live
+          {/* Cluster count indicator */}
+          {localClusterFilter.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+              <Server className="w-3 h-3" />
+              {localClusterFilter.length}/{availableClusters.length}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Cluster filter dropdown */}
+          {availableClusters.length >= 1 && (
+            <div ref={clusterFilterRef} className="relative">
+              <button
+                onClick={() => setShowClusterFilter(!showClusterFilter)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
+                  localClusterFilter.length > 0
+                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                    : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+                }`}
+                title="Filter by cluster"
+              >
+                <Filter className="w-3 h-3" />
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showClusterFilter && (
+                <div className="absolute top-full right-0 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg bg-card border border-border shadow-lg z-50">
+                  <div className="p-1">
+                    <button
+                      onClick={clearClusterFilter}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                        localClusterFilter.length === 0 ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                      }`}
+                    >
+                      All clusters
+                      {localClusterFilter.length === 0 && <Check className="w-3 h-3" />}
+                    </button>
+                    {availableClusters.map(cluster => (
+                      <button
+                        key={cluster.name}
+                        onClick={() => toggleClusterFilter(cluster.name)}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 text-xs text-left rounded transition-colors ${
+                          localClusterFilter.includes(cluster.name) ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-secondary text-foreground'
+                        }`}
+                      >
+                        {cluster.name}
+                        {localClusterFilter.includes(cluster.name) && <Check className="w-3 h-3" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <CardControls
             limit={itemsPerPage}
             onLimitChange={setItemsPerPage}
@@ -211,27 +262,27 @@ export function ServiceStatus() {
                 ports: service.ports,
                 clusterIP: service.clusterIP,
               })}
-              className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer group"
+              className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer group gap-2"
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 {getTypeIcon(service.type || 'ClusterIP')}
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-sm text-foreground truncate group-hover:text-cyan-400">{service.name}</div>
                   <div className="text-xs text-muted-foreground truncate">
                     {service.namespace} • {service.cluster}
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {service.ports && service.ports.length > 0 && (
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground truncate max-w-[80px]">
                     {service.ports.join(', ')}
                   </span>
                 )}
-                <span className={`px-1.5 py-0.5 rounded text-xs ${getTypeColor(service.type || 'ClusterIP')}`}>
+                <span className={`px-1.5 py-0.5 rounded text-xs shrink-0 ${getTypeColor(service.type || 'ClusterIP')}`}>
                   {service.type || 'ClusterIP'}
                 </span>
-                <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </div>
             </div>
           ))

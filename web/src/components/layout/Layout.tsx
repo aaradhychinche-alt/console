@@ -6,6 +6,7 @@ import { Sidebar } from './Sidebar'
 import { MissionSidebar, MissionSidebarToggle } from './MissionSidebar'
 import { useSidebarConfig } from '../../hooks/useSidebarConfig'
 import { useNavigationHistory } from '../../hooks/useNavigationHistory'
+import { useLastRoute } from '../../hooks/useLastRoute'
 import { useMissions } from '../../hooks/useMissions'
 import { useDemoMode } from '../../hooks/useDemoMode'
 import { useLocalAgent } from '../../hooks/useLocalAgent'
@@ -30,9 +31,12 @@ export function Layout({ children }: LayoutProps) {
   // Track navigation for behavior analysis
   useNavigationHistory()
 
+  // Persist and restore last route and scroll position
+  useLastRoute()
+
   return (
     <TourProvider>
-    <div className="min-h-screen bg-background">
+    <div className="h-screen bg-background overflow-hidden flex flex-col">
       {/* Tour overlay and prompt */}
       <TourOverlay />
       <TourPrompt />
@@ -121,10 +125,10 @@ export function Layout({ children }: LayoutProps) {
         </div>
       )}
 
-      <div className={cn("flex", (isDemoMode || showOfflineBanner) ? "pt-[88px]" : "pt-16")}>
+      <div className={cn("flex flex-1 overflow-hidden", (isDemoMode || showOfflineBanner) ? "pt-[88px]" : "pt-16")}>
         <Sidebar />
         <main className={cn(
-          'flex-1 p-6 transition-all duration-300',
+          'flex-1 p-6 transition-all duration-300 overflow-y-auto',
           config.collapsed ? 'ml-20' : 'ml-64',
           // Don't apply margin when fullscreen is active - sidebar covers everything
           isMissionSidebarOpen && !isMissionSidebarMinimized && !isMissionFullScreen && 'mr-96',
