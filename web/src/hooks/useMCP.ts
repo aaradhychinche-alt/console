@@ -2207,6 +2207,8 @@ export function useEvents(cluster?: string, namespace?: string, limit = 20) {
       if (!eventsCache) {
         setEvents(getDemoEvents())
       }
+      setIsLoading(false)
+      setIsRefreshing(false)
       return
     }
 
