@@ -463,7 +463,7 @@ export function OPAPolicies({ config: _config }: OPAPoliciesProps) {
     return result
   }, [effectiveClusters, isAllClustersSelected, selectedClusters, localClusterFilter, localSearch])
 
-  // Check Gatekeeper on filtered clusters
+  // Check Gatekeeper on filtered clusters - sequentially to avoid overwhelming kubectlProxy queue
   const checkAllClusters = useCallback(async () => {
     console.log('[OPA] checkAllClusters called, filteredClusters:', filteredClusters.map(c => c.name))
     if (filteredClusters.length === 0) return
@@ -474,23 +474,19 @@ export function OPAPolicies({ config: _config }: OPAPoliciesProps) {
       // Start with existing statuses (stale-while-revalidate pattern)
       const newStatuses: Record<string, GatekeeperStatus> = { ...statusesRef.current }
 
-      // Check all clusters in parallel for better performance
-      const checkPromises = filteredClusters.map(async (cluster) => {
+      // Check clusters sequentially to avoid overwhelming the kubectlProxy queue
+      for (const cluster of filteredClusters) {
         try {
           const status = await checkGatekeeperStatus(cluster.name)
-          return { name: cluster.name, status }
+          newStatuses[cluster.name] = status
+          // Update UI progressively as each cluster completes
+          setStatuses({ ...newStatuses })
         } catch (err) {
           console.error('[OPA] Error checking', cluster.name, err)
-          return { name: cluster.name, status: { cluster: cluster.name, installed: false, loading: false, error: String(err) } }
+          newStatuses[cluster.name] = { cluster: cluster.name, installed: false, loading: false, error: String(err) }
+          setStatuses({ ...newStatuses })
         }
-      })
-
-      const results = await Promise.all(checkPromises)
-      for (const { name, status } of results) {
-        newStatuses[name] = status
       }
-
-      setStatuses(newStatuses)
     } finally {
       setIsRefreshing(false)
       setHasChecked(true)
