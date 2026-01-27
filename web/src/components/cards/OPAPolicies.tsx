@@ -576,7 +576,7 @@ Let's start by discussing what kind of policy I need.`,
         <div className="flex items-center gap-1">
           <ClusterFilterDropdown
             localClusterFilter={localClusterFilter}
-            availableClusters={availableClusters}
+            availableClusters={effectiveClusters}
             showClusterFilter={showClusterFilter}
             setShowClusterFilter={setShowClusterFilter}
             toggleClusterFilter={toggleClusterFilter}
