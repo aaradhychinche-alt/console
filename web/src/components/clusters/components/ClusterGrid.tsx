@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { Pencil, Globe, User, ShieldAlert, ChevronRight, Star, WifiOff, RefreshCw, ExternalLink, AlertCircle, Cpu, Box, Server } from 'lucide-react'
+import { FlashingValue } from '../../ui/FlashingValue'
 import { ClusterInfo } from '../../../hooks/useMCP'
 import { StatusIndicator } from '../../charts/StatusIndicator'
 import { isClusterUnreachable, isClusterLoading } from '../utils'
@@ -184,25 +185,25 @@ const FullClusterCard = memo(function FullClusterCard({
         <div className="grid grid-cols-4 gap-4 text-center relative z-10">
           <div title={unreachable ? 'Offline' : hasCachedData && cluster.nodeCount !== undefined ? `${cluster.nodeCount} worker nodes` : 'Loading...'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData && cluster.nodeCount !== undefined ? cluster.nodeCount : '-'}
+              <FlashingValue value={hasCachedData && cluster.nodeCount !== undefined ? cluster.nodeCount : '-'} />
             </div>
             <div className="text-xs text-muted-foreground">Nodes</div>
           </div>
           <div title={unreachable ? 'Offline' : hasCachedData && cluster.cpuCores !== undefined ? `${cluster.cpuCores} CPU cores` : 'Loading...'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData && cluster.cpuCores !== undefined ? cluster.cpuCores : '-'}
+              <FlashingValue value={hasCachedData && cluster.cpuCores !== undefined ? cluster.cpuCores : '-'} />
             </div>
             <div className="text-xs text-muted-foreground">CPUs</div>
           </div>
           <div title={unreachable ? 'Offline' : hasCachedData && cluster.podCount !== undefined ? `${cluster.podCount} running pods` : 'Loading...'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData && cluster.podCount !== undefined ? cluster.podCount : '-'}
+              <FlashingValue value={hasCachedData && cluster.podCount !== undefined ? cluster.podCount : '-'} />
             </div>
             <div className="text-xs text-muted-foreground">Pods</div>
           </div>
           <div title={unreachable ? 'Offline' : gpuInfo ? `${gpuInfo.allocated} allocated / ${gpuInfo.total} total GPUs` : 'No GPUs detected'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData ? (gpuInfo ? gpuInfo.total : 0) : '-'}
+              <FlashingValue value={hasCachedData ? (gpuInfo ? gpuInfo.total : 0) : '-'} />
             </div>
             <div className="text-xs text-muted-foreground">GPUs</div>
           </div>
@@ -316,28 +317,32 @@ const ListClusterCard = memo(function ListClusterCard({
           <div className="flex items-center gap-4 text-sm flex-shrink-0">
             <div className="flex items-center gap-1.5" title={`${cluster.nodeCount || 0} nodes`}>
               <Server className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className={refreshing ? 'text-muted-foreground' : 'text-foreground'}>
-                {hasCachedData ? cluster.nodeCount : '-'}
-              </span>
+              <FlashingValue
+                value={hasCachedData ? cluster.nodeCount : '-'}
+                className={refreshing ? 'text-muted-foreground' : 'text-foreground'}
+              />
             </div>
             <div className="flex items-center gap-1.5" title={`${cluster.cpuCores || 0} CPUs`}>
               <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className={refreshing ? 'text-muted-foreground' : 'text-foreground'}>
-                {hasCachedData ? cluster.cpuCores : '-'}
-              </span>
+              <FlashingValue
+                value={hasCachedData ? cluster.cpuCores : '-'}
+                className={refreshing ? 'text-muted-foreground' : 'text-foreground'}
+              />
             </div>
             <div className="flex items-center gap-1.5" title={`${cluster.podCount || 0} pods`}>
               <Box className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className={refreshing ? 'text-muted-foreground' : 'text-foreground'}>
-                {hasCachedData ? cluster.podCount : '-'}
-              </span>
+              <FlashingValue
+                value={hasCachedData ? cluster.podCount : '-'}
+                className={refreshing ? 'text-muted-foreground' : 'text-foreground'}
+              />
             </div>
             {gpuInfo && gpuInfo.total > 0 && (
               <div className="flex items-center gap-1.5" title={`${gpuInfo.total} GPUs`}>
                 <Cpu className="w-3.5 h-3.5 text-purple-400" />
-                <span className={refreshing ? 'text-muted-foreground' : 'text-foreground'}>
-                  {gpuInfo.total}
-                </span>
+                <FlashingValue
+                  value={gpuInfo.total}
+                  className={refreshing ? 'text-muted-foreground' : 'text-foreground'}
+                />
               </div>
             )}
           </div>
@@ -431,25 +436,25 @@ const CompactClusterCard = memo(function CompactClusterCard({
         <div className="grid grid-cols-2 gap-1 text-center">
           <div className="p-1 rounded bg-secondary/30">
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData ? cluster.nodeCount : '-'}
+              <FlashingValue value={hasCachedData ? cluster.nodeCount : '-'} />
             </div>
             <div className="text-[10px] text-muted-foreground">Nodes</div>
           </div>
           <div className="p-1 rounded bg-secondary/30">
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData ? cluster.cpuCores : '-'}
+              <FlashingValue value={hasCachedData ? cluster.cpuCores : '-'} />
             </div>
             <div className="text-[10px] text-muted-foreground">CPUs</div>
           </div>
           <div className="p-1 rounded bg-secondary/30">
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData ? cluster.podCount : '-'}
+              <FlashingValue value={hasCachedData ? cluster.podCount : '-'} />
             </div>
             <div className="text-[10px] text-muted-foreground">Pods</div>
           </div>
           <div className="p-1 rounded bg-secondary/30">
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
-              {hasCachedData ? (gpuInfo?.total || 0) : '-'}
+              <FlashingValue value={hasCachedData ? (gpuInfo?.total || 0) : '-'} />
             </div>
             <div className="text-[10px] text-muted-foreground">GPUs</div>
           </div>

@@ -1543,3 +1543,29 @@
   box-shadow: inset 0 1px 0 0 rgba(122, 162, 247, 0.1);
 }
 
+/* Value flash animation - highlights when metrics change */
+@keyframes value-flash {
+  0% {
+    background-color: rgba(34, 197, 94, 0.4);
+    color: #22c55e;
+    transform: scale(1.1);
+  }
+  50% {
+    background-color: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+    transform: scale(1.05);
+  }
+  100% {
+    background-color: transparent;
+    color: inherit;
+    transform: scale(1);
+  }
+}
+
+.animate-value-flash {
+  animation: value-flash 1.5s ease-out;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 -4px;
+}
+
