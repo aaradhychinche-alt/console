@@ -58,9 +58,29 @@ When Copilot works on this issue, it should know:
 - Always handle errors
 - Use meaningful variable names
 
+## CRITICAL: Pre-Commit Checklist
+
+**Before EVERY commit, you MUST run these commands and verify they pass:**
+
+```bash
+cd web
+npm run build    # Must exit with code 0
+npm run lint     # Must have no errors
+```
+
+If either command fails:
+1. Read the error message carefully
+2. Fix the error
+3. Run both commands again
+4. Only commit after BOTH pass
+
+**DO NOT push commits that fail build or lint.** Pushing broken code wastes CI resources and delays the PR.
+
 ## Important Rules for Copilot
 
-1. **NEVER commit code that doesn't build** - Always verify with `npm run build`
-2. **NEVER add unrelated changes** - Stay focused on the issue
-3. **ALWAYS include `Fixes #ISSUE` in PR body** - This links the PR to the issue
-4. **ALWAYS post implementation plan before coding** - Transparency is key
+1. **NEVER commit code that doesn't build** - Run `npm run build` BEFORE every commit
+2. **NEVER commit code with lint errors** - Run `npm run lint` BEFORE every commit
+3. **NEVER add unrelated changes** - Stay focused on the issue
+4. **ALWAYS include `Fixes #ISSUE` in PR body** - This links the PR to the issue
+5. **ALWAYS post implementation plan before coding** - Transparency is key
+6. **If you call a function, verify it exists** - Search the codebase first
