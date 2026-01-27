@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/kubestellar/console/pkg/agent/protocol"
+	"github.com/kubestellar/console/pkg/k8s"
 )
 
 // Version is set by ldflags during build
@@ -41,6 +42,7 @@ type Server struct {
 	config         Config
 	upgrader       websocket.Upgrader
 	kubectl        *KubectlProxy
+	k8sClient      *k8s.MultiClusterClient // For rich cluster data queries
 	registry       *Registry
 	clients        map[*websocket.Conn]bool
 	clientsMux     sync.RWMutex
@@ -62,6 +64,13 @@ func NewServer(cfg Config) (*Server, error) {
 	kubectl, err := NewKubectlProxy(cfg.Kubeconfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kubectl proxy: %w", err)
+	}
+
+	// Initialize k8s client for rich cluster data queries
+	k8sClient, err := k8s.NewMultiClusterClient(cfg.Kubeconfig)
+	if err != nil {
+		log.Printf("Warning: failed to initialize k8s client: %v", err)
+		// Don't fail - kubectl functionality still works
 	}
 
 	// Initialize AI providers
@@ -93,6 +102,7 @@ func NewServer(cfg Config) (*Server, error) {
 	server := &Server{
 		config:         cfg,
 		kubectl:        kubectl,
+		k8sClient:      k8sClient,
 		registry:       GetRegistry(),
 		clients:        make(map[*websocket.Conn]bool),
 		allowedOrigins: allowedOrigins,
@@ -164,6 +174,12 @@ func (s *Server) Start() error {
 	// Clusters endpoint - returns fresh kubeconfig contexts
 	mux.HandleFunc("/clusters", s.handleClustersHTTP)
 
+	// Cluster data endpoints - direct k8s queries without backend
+	mux.HandleFunc("/gpu-nodes", s.handleGPUNodesHTTP)
+	mux.HandleFunc("/nodes", s.handleNodesHTTP)
+	mux.HandleFunc("/pods", s.handlePodsHTTP)
+	mux.HandleFunc("/cluster-health", s.handleClusterHealthHTTP)
+
 	// Rename context endpoint
 	mux.HandleFunc("/rename-context", s.handleRenameContextHTTP)
 
@@ -191,6 +207,9 @@ func (s *Server) Start() error {
 	log.Printf("KKC Agent v%s starting on %s", Version, addr)
 	log.Printf("Health: http://%s/health", addr)
 	log.Printf("WebSocket: ws://%s/ws", addr)
+
+	// Validate all configured API keys on startup (run in background to not delay startup)
+	go s.ValidateAllKeys()
 
 	return http.ListenAndServe(addr, mux)
 }
@@ -268,6 +287,195 @@ func (s *Server) handleClustersHTTP(w http.ResponseWriter, r *http.Request) {
 	s.kubectl.Reload()
 	clusters, current := s.kubectl.ListContexts()
 	json.NewEncoder(w).Encode(protocol.ClustersPayload{Clusters: clusters, Current: current})
+}
+
+// handleGPUNodesHTTP returns GPU nodes across all clusters
+func (s *Server) handleGPUNodesHTTP(w http.ResponseWriter, r *http.Request) {
+	s.setCORSHeaders(w, r)
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if s.k8sClient == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}, "error": "k8s client not initialized"})
+		return
+	}
+
+	cluster := r.URL.Query().Get("cluster")
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	var allNodes []k8s.GPUNode
+
+	if cluster != "" {
+		nodes, err := s.k8sClient.GetGPUNodes(ctx, cluster)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}, "error": err.Error()})
+			return
+		}
+		allNodes = nodes
+	} else {
+		// Query all clusters
+		clusters, err := s.k8sClient.ListClusters(ctx)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}, "error": err.Error()})
+			return
+		}
+
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		for _, cl := range clusters {
+			wg.Add(1)
+			go func(clusterName string) {
+				defer wg.Done()
+				clusterCtx, clusterCancel := context.WithTimeout(ctx, 15*time.Second)
+				defer clusterCancel()
+				nodes, err := s.k8sClient.GetGPUNodes(clusterCtx, clusterName)
+				if err == nil && len(nodes) > 0 {
+					mu.Lock()
+					allNodes = append(allNodes, nodes...)
+					mu.Unlock()
+				}
+			}(cl.Name)
+		}
+		wg.Wait()
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"nodes": allNodes, "source": "agent"})
+}
+
+// handleNodesHTTP returns nodes for a cluster
+func (s *Server) handleNodesHTTP(w http.ResponseWriter, r *http.Request) {
+	s.setCORSHeaders(w, r)
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if s.k8sClient == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}, "error": "k8s client not initialized"})
+		return
+	}
+
+	cluster := r.URL.Query().Get("cluster")
+	if cluster == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}, "error": "cluster parameter required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	nodes, err := s.k8sClient.GetNodes(ctx, cluster)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}, "error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"nodes": nodes, "source": "agent"})
+}
+
+// handlePodsHTTP returns pods for a cluster/namespace
+func (s *Server) handlePodsHTTP(w http.ResponseWriter, r *http.Request) {
+	s.setCORSHeaders(w, r)
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if s.k8sClient == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"pods": []interface{}{}, "error": "k8s client not initialized"})
+		return
+	}
+
+	cluster := r.URL.Query().Get("cluster")
+	namespace := r.URL.Query().Get("namespace")
+	if cluster == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"pods": []interface{}{}, "error": "cluster parameter required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	pods, err := s.k8sClient.GetPods(ctx, cluster, namespace)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"pods": []interface{}{}, "error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"pods": pods, "source": "agent"})
+}
+
+// handleClusterHealthHTTP returns health info for a cluster
+func (s *Server) handleClusterHealthHTTP(w http.ResponseWriter, r *http.Request) {
+	s.setCORSHeaders(w, r)
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if s.k8sClient == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "k8s client not initialized"})
+		return
+	}
+
+	cluster := r.URL.Query().Get("cluster")
+	if cluster == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "cluster parameter required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	health, err := s.k8sClient.GetClusterHealth(ctx, cluster)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(health)
+}
+
+// setCORSHeaders sets common CORS headers for HTTP endpoints
+func (s *Server) setCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if s.isAllowedOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
+	w.Header().Set("Access-Control-Allow-Private-Network", "true")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 }
 
 // handleRenameContextHTTP renames a kubeconfig context
@@ -493,10 +701,20 @@ func (s *Server) handleChatMessage(msg protocol.Message, forceAgent string) prot
 		return s.errorResponse(msg.ID, "agent_unavailable", fmt.Sprintf("Agent %s is not available - API key may be missing", agentName))
 	}
 
+	// Convert protocol history to provider history
+	var history []ChatMessage
+	for _, msg := range req.History {
+		history = append(history, ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
 	// Execute chat (non-streaming for WebSocket single response)
 	chatReq := &ChatRequest{
 		SessionID: req.SessionID,
 		Prompt:    req.Prompt,
+		History:   history,
 	}
 
 	resp, err := provider.Chat(context.Background(), chatReq)
@@ -761,6 +979,9 @@ func (s *Server) handleSettingsKeyByProvider(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Invalidate cached validity
+	cm.InvalidateKeyValidity(provider)
+
 	// Refresh provider availability
 	s.refreshProviderAvailability()
 
@@ -800,6 +1021,8 @@ func (s *Server) handleGetKeysStatus(w http.ResponseWriter, r *http.Request) {
 			// Test if the key is valid
 			valid, err := s.validateAPIKey(p.name)
 			status.Valid = &valid
+			// Cache the validity for IsAvailable() checks
+			cm.SetKeyValidity(p.name, valid)
 			if err != nil {
 				status.Error = err.Error()
 			}
@@ -856,6 +1079,9 @@ func (s *Server) handleSetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cache validity (we validated before saving)
+	cm.SetKeyValidity(req.Provider, true)
+
 	// Save model if provided
 	if req.Model != "" {
 		if err := cm.SetModel(req.Provider, req.Model); err != nil {
@@ -909,9 +1135,40 @@ func (s *Server) refreshProviderAvailability() {
 	GetConfigManager().Load()
 }
 
+// ValidateAllKeys validates all configured API keys and caches results
+// This should be called on server startup to detect invalid keys early
+func (s *Server) ValidateAllKeys() {
+	cm := GetConfigManager()
+	providers := []string{"claude", "openai", "gemini"}
+
+	for _, provider := range providers {
+		if cm.HasAPIKey(provider) {
+			// Check if we already know the validity
+			if valid := cm.IsKeyValid(provider); valid != nil {
+				continue // Already validated
+			}
+			// Validate the key
+			log.Printf("Validating %s API key...", provider)
+			valid, err := s.validateAPIKey(provider)
+			if err != nil {
+				// Network or other error - don't cache, will try again later
+				log.Printf("Warning: %s API key validation error (will retry): %v", provider, err)
+			} else {
+				// Cache the validity result
+				cm.SetKeyValidity(provider, valid)
+				if valid {
+					log.Printf("%s API key is valid", provider)
+				} else {
+					log.Printf("Warning: %s API key is INVALID", provider)
+				}
+			}
+		}
+	}
+}
+
 // validateClaudeKey tests an Anthropic API key
 func validateClaudeKey(ctx context.Context, apiKey string) (bool, error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", claudeAPIURL, strings.NewReader(`{"model":"claude-haiku-4-20250514","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`))
+	req, err := http.NewRequestWithContext(ctx, "POST", claudeAPIURL, strings.NewReader(`{"model":"claude-3-haiku-20240307","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`))
 	if err != nil {
 		return false, err
 	}
@@ -925,15 +1182,16 @@ func validateClaudeKey(ctx context.Context, apiKey string) (bool, error) {
 	}
 	defer resp.Body.Close()
 
-	// 200 = valid, 401 = invalid key, other = some other error
+	// 200 = valid, 401 = invalid key (return false with no error)
+	// For other errors, return error so we don't cache invalid state
 	if resp.StatusCode == http.StatusOK {
 		return true, nil
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return false, fmt.Errorf("invalid API key")
+		return false, nil // Invalid key - no error so it gets cached
 	}
 	body, _ := io.ReadAll(resp.Body)
-	return false, fmt.Errorf("API error: %s", string(body))
+	return false, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 }
 
 // validateOpenAIKey tests an OpenAI API key

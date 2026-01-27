@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"context"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
@@ -26,9 +29,9 @@ func NewRBACHandler(s store.Store, k8sClient *k8s.MultiClusterClient) *RBACHandl
 	return &RBACHandler{store: s, k8sClient: k8sClient}
 }
 
-// ListConsoleUsers returns all console users (admin only)
+// ListConsoleUsers returns all console users (frontend handles visibility/blurring)
 func (h *RBACHandler) ListConsoleUsers(c *fiber.Ctx) error {
-	// Check if current user is admin
+	// Check if current user is authenticated
 	userID := middleware.GetUserID(c)
 	currentUser, err := h.store.GetUser(userID)
 	if err != nil || currentUser == nil {
@@ -39,7 +42,6 @@ func (h *RBACHandler) ListConsoleUsers(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to list users")
 	}
-
 	return c.JSON(users)
 }
 
@@ -356,6 +358,29 @@ func (h *RBACHandler) ListK8sUsers(c *fiber.Ctx) error {
 	users, err := h.k8sClient.GetAllK8sUsers(ctx, cluster)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to list K8s users")
+	}
+
+	return c.JSON(users)
+}
+
+// ListOpenShiftUsers returns all OpenShift users (users.user.openshift.io) from a cluster
+func (h *RBACHandler) ListOpenShiftUsers(c *fiber.Ctx) error {
+	if h.k8sClient == nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "Kubernetes client not available")
+	}
+
+	cluster := c.Query("cluster")
+	if cluster == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "Cluster parameter required")
+	}
+
+	// Use a longer timeout for this query as large clusters can be slow
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	users, err := h.k8sClient.ListOpenShiftUsers(ctx, cluster)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to list OpenShift users: "+err.Error())
 	}
 
 	return c.JSON(users)

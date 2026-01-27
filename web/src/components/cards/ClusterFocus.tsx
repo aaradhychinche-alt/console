@@ -15,7 +15,7 @@ interface ClusterFocusProps {
 
 export function ClusterFocus({ config }: ClusterFocusProps) {
   const selectedCluster = config?.cluster
-  const { clusters: allClusters, isLoading: clustersLoading, isRefreshing, refetch, isFailed, consecutiveFailures, lastRefresh } = useClusters()
+  const { deduplicatedClusters: allClusters, isLoading: clustersLoading, isRefreshing, refetch, isFailed, consecutiveFailures, lastRefresh } = useClusters()
   const { nodes: gpuNodes } = useGPUNodes()
   const { issues: podIssues } = useCachedPodIssues(selectedCluster)
   const { issues: deploymentIssues } = useCachedDeploymentIssues(selectedCluster)
@@ -54,7 +54,7 @@ export function ClusterFocus({ config }: ClusterFocusProps) {
 
   const clusterGPUs = useMemo(() => {
     return gpuNodes
-      .filter(n => n.cluster.split('/')[0] === clusterName)
+      .filter(n => n.cluster === clusterName || n.cluster.includes(clusterName))
       .reduce((sum, n) => sum + n.gpuCount, 0)
   }, [gpuNodes, clusterName])
 

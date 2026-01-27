@@ -29,6 +29,40 @@ export function AgentIcon({ provider, className = 'w-5 h-5' }: AgentIconProps) {
           <path d="M12 8l1.5 3.5L17 13l-3.5 1.5L12 18l-1.5-3.5L7 13l3.5-1.5L12 8z" fill="#34A853" />
         </svg>
       )
+    case 'bob':
+      return (
+        <svg className={className} viewBox="0 0 100 100" fill="none">
+          {/* Bob icon - robot with hard hat and code brackets */}
+          {/* Hard hat */}
+          <ellipse cx="50" cy="22" rx="32" ry="18" fill="#4F46E5" />
+          <rect x="18" y="20" width="64" height="8" rx="2" fill="#3730A3" />
+          {/* Robot head/body */}
+          <rect x="20" y="28" width="60" height="55" rx="12" fill="#F9FAFB" stroke="#E5E7EB" strokeWidth="2" />
+          {/* Eyes */}
+          <circle cx="38" cy="48" r="8" fill="#1F2937" />
+          <circle cx="62" cy="48" r="8" fill="#4F46E5" />
+          <circle cx="40" cy="46" r="2" fill="white" />
+          <circle cx="64" cy="46" r="2" fill="white" />
+          {/* Code brackets </> */}
+          <path d="M35 62 L25 70 L35 78" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <path d="M65 62 L75 70 L65 78" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <path d="M45 60 L55 80" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" fill="none" />
+          {/* Side panels (ears) */}
+          <rect x="8" y="40" width="12" height="20" rx="3" fill="#9CA3AF" />
+          <rect x="80" y="40" width="12" height="20" rx="3" fill="#9CA3AF" />
+          {/* Hands at bottom */}
+          <path d="M25 83 L25 92 Q25 96 29 96 L38 96" stroke="#9CA3AF" strokeWidth="6" strokeLinecap="round" fill="none" />
+          <path d="M75 83 L75 92 Q75 96 71 96 L62 96" stroke="#9CA3AF" strokeWidth="6" strokeLinecap="round" fill="none" />
+        </svg>
+      )
+    case 'anthropic-local':
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+          {/* Claude Code local icon - A with terminal prompt */}
+          <path d="M12.04 2L1 22h5.48l2.49-4.71h6.06L17.52 22H23L12.04 2zm-.09 5.65l2.67 5.05H9.28l2.67-5.05z" fill="#D97706" />
+          <circle cx="18" cy="6" r="4" fill="#22C55E" />
+        </svg>
+      )
     default:
       // Generic AI/robot icon
       return (
