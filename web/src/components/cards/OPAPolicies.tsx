@@ -443,6 +443,9 @@ export function OPAPolicies({ config: _config }: OPAPoliciesProps) {
   // IMPORTANT: Don't filter by healthy status - the agent can reach clusters that browser health checks can't
   // The OPA card uses kubectl via the agent, not browser-based API calls
   const filteredClusters = useMemo(() => {
+    console.log('[OPA Filter] effectiveClusters:', effectiveClusters.map(c => c.name))
+    console.log('[OPA Filter] localClusterFilter:', localClusterFilter)
+
     // Start with effective clusters (agent clusters if shared state is empty)
     let result = effectiveClusters
 
@@ -454,6 +457,7 @@ export function OPAPolicies({ config: _config }: OPAPoliciesProps) {
     // Apply local cluster filter
     if (localClusterFilter.length > 0) {
       result = result.filter(c => localClusterFilter.includes(c.name))
+      console.log('[OPA Filter] After local filter:', result.map(c => c.name))
     }
     // Apply local search
     if (localSearch.trim()) {
