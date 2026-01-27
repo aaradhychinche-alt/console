@@ -1,8 +1,19 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { AlertCircle, RefreshCw, Terminal, Copy, CheckCircle } from 'lucide-react'
-import { useEvents } from '../../../hooks/useMCP'
 import { StatusIndicator } from '../../charts/StatusIndicator'
-import { useState } from 'react'
+
+interface ClusterEvent {
+  type: string
+  reason: string
+  message: string
+  object: string
+  namespace: string
+  cluster: string
+  count: number
+  age?: string
+  firstSeen?: string
+  lastSeen?: string
+}
 
 interface Props {
   data: Record<string, unknown>
@@ -39,12 +50,51 @@ export function EventsDrillDown({ data }: Props) {
   const objectName = data.objectName as string | undefined
   const clusterShort = cluster.split('/').pop() || cluster
 
-  const { events, isLoading, error, refetch } = useEvents(cluster, namespace, 50)
+  const [events, setEvents] = useState<ClusterEvent[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // Fetch events from local agent (no auth required)
+  const refetch = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      // Use local agent - for node events, check default namespace with higher limit
+      const params = new URLSearchParams()
+      params.append('cluster', clusterShort)
+      // For node events, use default namespace where node events are stored
+      if (objectName && !namespace) {
+        params.append('namespace', 'default')
+      } else if (namespace) {
+        params.append('namespace', namespace)
+      }
+      if (objectName) {
+        params.append('object', objectName)
+      }
+      params.append('limit', '100')
+
+      const response = await fetch(`http://127.0.0.1:8585/events?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        setEvents(data.events || [])
+      } else {
+        setError('Failed to fetch events')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch events')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [clusterShort, namespace, objectName])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
 
   const filteredEvents = useMemo(() => {
     if (!objectName) return events
-    return events.filter(e => e.object.includes(objectName))
+    return events.filter(e => e.object.toLowerCase().includes(objectName.toLowerCase()))
   }, [events, objectName])
 
   const copyCommand = () => {

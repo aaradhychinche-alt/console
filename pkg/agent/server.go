@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -178,6 +179,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/gpu-nodes", s.handleGPUNodesHTTP)
 	mux.HandleFunc("/nodes", s.handleNodesHTTP)
 	mux.HandleFunc("/pods", s.handlePodsHTTP)
+	mux.HandleFunc("/events", s.handleEventsHTTP)
 	mux.HandleFunc("/cluster-health", s.handleClusterHealthHTTP)
 
 	// Rename context endpoint
@@ -415,6 +417,64 @@ func (s *Server) handleNodesHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{"nodes": allNodes, "source": "agent"})
+}
+
+// handleEventsHTTP returns events for a cluster/namespace/object
+func (s *Server) handleEventsHTTP(w http.ResponseWriter, r *http.Request) {
+	s.setCORSHeaders(w, r)
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Note: Events endpoint doesn't require auth for local agent
+	// This allows the frontend to fetch events without backend auth
+
+	if s.k8sClient == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"events": []interface{}{}, "error": "k8s client not initialized"})
+		return
+	}
+
+	cluster := r.URL.Query().Get("cluster")
+	namespace := r.URL.Query().Get("namespace")
+	objectName := r.URL.Query().Get("object")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	if cluster == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"events": []interface{}{}, "error": "cluster parameter required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	// Get events from the cluster
+	events, err := s.k8sClient.GetEvents(ctx, cluster, namespace, limit)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"events": []interface{}{}, "error": err.Error()})
+		return
+	}
+
+	// Filter by object name if specified
+	if objectName != "" {
+		var filtered []k8s.Event
+		for _, e := range events {
+			if strings.Contains(e.Object, objectName) {
+				filtered = append(filtered, e)
+			}
+		}
+		events = filtered
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"events": events, "source": "agent"})
 }
 
 // handlePodsHTTP returns pods for a cluster/namespace
