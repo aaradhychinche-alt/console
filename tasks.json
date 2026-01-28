@@ -105,19 +105,23 @@
       "id": "upgrade-status-offline",
       "subject": "Upgrade status showing offline - needs caching support",
       "description": "The upgrade status card/feature is showing clusters as offline when they shouldn't be. Needs investigation and likely requires adding caching support to prevent false offline states during API delays or temporary connectivity issues. Similar pattern to how cluster health was fixed - should cache last known good state and show that while refreshing.",
-      "status": "in_progress",
+      "status": "completed",
       "priority": "high",
       "created": "2026-01-27",
-      "tags": ["bug", "upgrade-status", "caching", "offline"]
+      "completedAt": "2026-01-27",
+      "tags": ["bug", "upgrade-status", "caching", "offline"],
+      "resolution": "Added module-level version cache with 5-minute TTL to UpgradeStatus card. Cached versions are returned during failures. Added loading state with spinner icon for clusters being checked."
     },
     {
       "id": "cluster-health-status-fluctuating",
       "subject": "Cluster health status keeps changing to degraded/offline",
       "description": "In the Cluster Health card, individual cluster status indicators keep fluctuating between healthy, degraded, and offline states. The stats at the top may be correct (Healthy: 4) but individual cluster status dots are showing yellow/orange when they should be green. Need to stabilize the status display with hysteresis/debouncing to prevent constant state changes during refresh cycles.",
-      "status": "pending",
+      "status": "completed",
       "priority": "high",
       "created": "2026-01-27",
-      "tags": ["bug", "cluster-health", "status", "fluctuating", "ui"]
+      "completedAt": "2026-01-27",
+      "tags": ["bug", "cluster-health", "status", "fluctuating", "ui"],
+      "resolution": "Fixed by: 1) Detecting definitive connection errors (refused/reset/no host) and marking offline immediately, 2) Fixing isClusterHealthy() to check reachable flag, 3) Fixing getClusterStateFromInfo to pass reachable status, 4) Resetting nodeCount to 0 when confirmed offline."
     }
   ]
 }
