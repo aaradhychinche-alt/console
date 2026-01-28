@@ -29,6 +29,7 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'network_overview', position: { w: 4, h: 3 } },
       { card_type: 'pod_issues', position: { w: 6, h: 2 } },
       { card_type: 'deployment_issues', position: { w: 6, h: 2 } },
+      { card_type: 'cluster_locations', position: { w: 6, h: 3 } },
     ],
   },
   {
@@ -81,6 +82,7 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'namespace_quotas', position: { w: 6, h: 2 } },
       { card_type: 'namespace_rbac', position: { w: 6, h: 3 } },
       { card_type: 'namespace_events', position: { w: 6, h: 3 } },
+      { card_type: 'namespace_monitor', position: { w: 6, h: 3 } },
     ],
   },
 
@@ -180,6 +182,7 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'gpu_usage_trend', position: { w: 4, h: 2 } },
       { card_type: 'gpu_inventory', position: { w: 6, h: 3 } },
       { card_type: 'gpu_workloads', position: { w: 6, h: 3 } },
+      { card_type: 'gpu_utilization', position: { w: 6, h: 3 } },
     ],
   },
 
@@ -257,6 +260,10 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'network_overview', position: { w: 4, h: 3 } },
       { card_type: 'service_status', position: { w: 8, h: 3 } },
       { card_type: 'cluster_network', position: { w: 6, h: 2 } },
+      { card_type: 'service_exports', position: { w: 6, h: 2 } },
+      { card_type: 'service_imports', position: { w: 6, h: 2 } },
+      { card_type: 'gateway_status', position: { w: 6, h: 2 } },
+      { card_type: 'service_topology', position: { w: 6, h: 3 } },
       { card_type: 'event_stream', title: 'Network Events', config: { filter: 'network' }, position: { w: 6, h: 2 } },
     ],
   },
@@ -484,6 +491,61 @@ export const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
       { card_type: 'kube_kong', title: 'Kube Kong', position: { w: 4, h: 4 } },
       { card_type: 'kube_man', title: 'Kube Man', position: { w: 4, h: 4 } },
       { card_type: 'pod_pitfall', title: 'Pod Pitfall', position: { w: 4, h: 4 } },
+      { card_type: 'sudoku_game', title: 'Sudoku', position: { w: 4, h: 4 } },
+      { card_type: 'pod_brothers', title: 'Pod Brothers', position: { w: 4, h: 4 } },
+      { card_type: 'kube_kart', title: 'Kube Kart', position: { w: 4, h: 4 } },
+      { card_type: 'kube_pong', title: 'Kube Pong', position: { w: 4, h: 4 } },
+      { card_type: 'kube_snake', title: 'Kube Snake', position: { w: 4, h: 4 } },
+      { card_type: 'kube_galaga', title: 'Kube Galaga', position: { w: 4, h: 4 } },
+      { card_type: 'kube_craft', title: 'KubeCraft', position: { w: 4, h: 4 } },
+      { card_type: 'kube_chess', title: 'Kube Chess', position: { w: 4, h: 4 } },
+      { card_type: 'kube_craft_3d', title: 'KubeCraft 3D', position: { w: 4, h: 4 } },
+    ],
+  },
+
+  // Live Trends templates
+  {
+    id: 'live-trends',
+    name: 'Live Trends',
+    description: 'Real-time timeseries charts for events, pods, resources, and GPU utilization',
+    icon: '📈',
+    category: 'custom',
+    cards: [
+      { card_type: 'events_timeline', position: { w: 6, h: 3 } },
+      { card_type: 'pod_health_trend', position: { w: 6, h: 3 } },
+      { card_type: 'resource_trend', position: { w: 6, h: 3 } },
+      { card_type: 'gpu_utilization', position: { w: 6, h: 3 } },
+    ],
+  },
+
+  // Secrets & Certificates templates
+  {
+    id: 'secrets-management',
+    name: 'Secrets Management',
+    description: 'Vault secrets, external secrets, and certificate management',
+    icon: '🔑',
+    category: 'security',
+    cards: [
+      { card_type: 'vault_secrets', position: { w: 4, h: 3 } },
+      { card_type: 'external_secrets', position: { w: 4, h: 3 } },
+      { card_type: 'cert_manager', position: { w: 4, h: 3 } },
+    ],
+  },
+
+  // Utilities templates
+  {
+    id: 'utilities',
+    name: 'Utilities',
+    description: 'Kubectl terminal, network tools, browser, and external integrations',
+    icon: '🧰',
+    category: 'custom',
+    cards: [
+      { card_type: 'kubectl', position: { w: 6, h: 4 } },
+      { card_type: 'network_utils', position: { w: 6, h: 3 } },
+      { card_type: 'mobile_browser', position: { w: 6, h: 4 } },
+      { card_type: 'github_activity', position: { w: 6, h: 3 } },
+      { card_type: 'stock_market_ticker', position: { w: 4, h: 2 } },
+      { card_type: 'iframe_embed', position: { w: 8, h: 4 } },
     ],
   },
 
