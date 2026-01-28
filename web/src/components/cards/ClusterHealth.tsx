@@ -76,10 +76,10 @@ function getClusterStateFromInfo(cluster: ClusterInfo): ClusterState {
   // Check reachability - if explicitly marked unreachable, show as offline
   const isReachable = cluster.reachable !== false
 
-  // A cluster is healthy if reachable and has nodes
-  // If nodeCount > 0, consider healthy unless explicitly set to false
+  // A cluster is healthy if reachable and has nodes (same logic as isClusterHealthy for stats)
+  // nodeCount > 0 means we successfully connected and got node data = healthy
   const hasNodes = cluster.nodeCount !== undefined && cluster.nodeCount > 0
-  const isHealthy = isReachable && hasNodes && cluster.healthy !== false
+  const isHealthy = isReachable && hasNodes
 
   return getClusterState(isHealthy, isReachable, cluster.nodeCount, cluster.nodeCount)
 }
