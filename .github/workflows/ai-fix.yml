@@ -107,7 +107,7 @@ jobs:
         uses: otto-de/assign_issue_toCopilot_action@v1.0.1
         with:
           issue_number: ${{ steps.issue.outputs.number }}
-          github_token: ${{ secrets.COPILOT_PAT }}
+          github_token: ${{ secrets.CONSOLE_AUTO }}
 
       - name: Post instructions comment
         if: steps.check_processing.outputs.already_processing != 'true'

@@ -89,7 +89,7 @@ jobs:
         uses: otto-de/assign_issue_toCopilot_action@v1.0.1
         with:
           issue_number: ${{ github.event.issue.number }}
-          github_token: ${{ secrets.COPILOT_PAT }}
+          github_token: ${{ secrets.CONSOLE_AUTO }}
 
       - name: Update labels on assignment success
         if: steps.check_perms.outputs.authorized == 'true' && steps.assign_copilot.outputs.success == 'true'
