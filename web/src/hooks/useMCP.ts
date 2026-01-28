@@ -7,6 +7,10 @@ import { kubectlProxy } from '../lib/kubectlProxy'
 // Refresh interval for automatic polling (2 minutes) - manual refresh bypasses this
 const REFRESH_INTERVAL_MS = 120000
 
+// Polling intervals for cluster and GPU data freshness
+const CLUSTER_POLL_INTERVAL_MS = 60000  // 60 seconds
+const GPU_POLL_INTERVAL_MS = 30000      // 30 seconds
+
 // Minimum time to show the "Updating" indicator (ensures visibility for fast API responses)
 const MIN_REFRESH_INDICATOR_MS = 500
 
@@ -1746,6 +1750,17 @@ export function useClusters() {
       if (!sharedWebSocket.connecting && !sharedWebSocket.ws) {
         connectSharedWebSocket()
       }
+    }
+  }, [])
+
+  // Poll cluster data periodically to keep dashboard fresh
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      fullFetchClusters()
+    }, CLUSTER_POLL_INTERVAL_MS)
+
+    return () => {
+      clearInterval(pollInterval)
     }
   }, [])
 
@@ -3977,8 +3992,14 @@ export function useGPUNodes(cluster?: string) {
       fetchGPUNodes(cluster)
     }
 
+    // Poll GPU node data periodically
+    const pollInterval = setInterval(() => {
+      fetchGPUNodes(cluster, 'poll')
+    }, GPU_POLL_INTERVAL_MS)
+
     return () => {
       gpuNodeSubscribers.delete(handleUpdate)
+      clearInterval(pollInterval)
     }
   }, [cluster])
 
