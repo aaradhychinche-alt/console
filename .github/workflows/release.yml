@@ -39,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      release_name: ${{ steps.version.outputs.release_name }}
       release_type: ${{ steps.type.outputs.release_type }}
       is_prerelease: ${{ steps.type.outputs.is_prerelease }}
       agent_changed: ${{ steps.changes.outputs.agent_changed }}
@@ -163,23 +164,30 @@ jobs:
           case $RELEASE_TYPE in
             nightly)
               NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))-nightly.${DATE}"
+              RELEASE_NAME="$NEW_VERSION"
               ;;
             weekly)
-              NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))-weekly.${DATE}"
+              # Weekly produces stable version but with -weekly suffix in release name
+              NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              RELEASE_NAME="${NEW_VERSION}-weekly"
               ;;
             patch)
               NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              RELEASE_NAME="$NEW_VERSION"
               ;;
             minor)
               NEW_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+              RELEASE_NAME="$NEW_VERSION"
               ;;
             major)
               NEW_VERSION="v$((MAJOR + 1)).0.0"
+              RELEASE_NAME="$NEW_VERSION"
               ;;
           esac
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "New version: $NEW_VERSION"
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION (release name: $RELEASE_NAME)"
 
   test:
     runs-on: ubuntu-latest
@@ -274,13 +282,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_NAME: ${{ needs.determine-version.outputs.release_name }}
 
       - name: Create GitHub release (no agent)
         if: needs.determine-version.outputs.agent_changed != 'true'
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
           tag_name: ${{ needs.determine-version.outputs.version }}
-          name: ${{ needs.determine-version.outputs.version }}
+          name: ${{ needs.determine-version.outputs.release_name }}
           prerelease: ${{ needs.determine-version.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
           body: |

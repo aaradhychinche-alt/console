@@ -67,5 +67,7 @@ release:
   github:
     owner: kubestellar
     name: console
+  # Use RELEASE_NAME env var if set, otherwise fall back to tag
+  name_template: "{{ if .Env.RELEASE_NAME }}{{ .Env.RELEASE_NAME }}{{ else }}{{ .Tag }}{{ end }}"
   draft: false
   prerelease: auto
