@@ -8,9 +8,10 @@ on:
         required: true
         type: string
   pull_request_target:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review]
   check_run:
     types: [completed]
+  status: {}
 
 permissions:
   contents: write
@@ -36,6 +37,20 @@ jobs:
               prNumber = parseInt(context.payload.inputs.pr_number, 10);
             } else if (context.eventName === 'pull_request_target') {
               prNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'status') {
+              // Status event (e.g., Prow setting DCO) — find associated PRs
+              const sha = context.payload.sha;
+              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: sha
+              });
+              const openPr = prs.find(p => p.state === 'open');
+              if (!openPr) {
+                core.info('No open PR for this status event');
+                return;
+              }
+              prNumber = openPr.number;
             } else if (context.eventName === 'check_run') {
               const checkRun = context.payload.check_run;
               const prs = checkRun.pull_requests;
@@ -148,20 +163,46 @@ jobs:
               } catch (e) { /* ignore */ }
             }
 
-            // 4. Mark ready for review if draft
+            // 4. Mark ready for review if draft AND checks have passed
             if (pr.draft) {
-              core.info('Marking PR as ready for review...');
-              try {
-                await github.graphql(`
-                  mutation($prId: ID!) {
-                    markPullRequestReadyForReview(input: {pullRequestId: $prId}) {
-                      pullRequest { id }
-                    }
+              // Only auto-mark ready on check_run or status events (not on PR open)
+              const shouldCheckReady = context.eventName === 'check_run' ||
+                                       context.eventName === 'status' ||
+                                       context.eventName === 'workflow_dispatch';
+              if (shouldCheckReady) {
+                // Check if Netlify deploy preview passed
+                const { data: checkRuns } = await github.rest.checks.listForRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: headSha
+                });
+                const netlifyCheck = checkRuns.check_runs.find(c =>
+                  c.name && c.name.toLowerCase().includes('netlify') &&
+                  c.name.toLowerCase().includes('deploy-preview')
+                );
+                const netlifyPassed = netlifyCheck &&
+                  netlifyCheck.status === 'completed' &&
+                  netlifyCheck.conclusion === 'success';
+
+                if (netlifyPassed) {
+                  core.info('Netlify passed, marking PR as ready for review...');
+                  try {
+                    await github.graphql(`
+                      mutation($prId: ID!) {
+                        markPullRequestReadyForReview(input: {pullRequestId: $prId}) {
+                          pullRequest { id }
+                        }
+                      }
+                    `, { prId: pr.node_id });
+                    core.info('Marked as ready for review');
+                  } catch (e) {
+                    core.warning(`Failed to mark ready: ${e.message}`);
                   }
-                `, { prId: pr.node_id });
-                core.info('Marked as ready for review');
-              } catch (e) {
-                core.warning(`Failed to mark ready: ${e.message}`);
+                } else {
+                  core.info('Netlify check not yet passed, skipping ready marking');
+                }
+              } else {
+                core.info('Skipping ready check on PR open/sync — waiting for checks to pass');
               }
             }
 
