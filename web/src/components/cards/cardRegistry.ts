@@ -322,8 +322,8 @@ export const DEMO_DATA_CARDS = new Set([
   'gateway_status',
   // Service Topology - demo visualization
   'service_topology',
-  // Workload Deployment - uses real data when backend is running, falls back to demo
-  'workload_deployment',
+  // Workload Deployment - uses real data when backend is running, falls back to demo internally
+  // NOT in DEMO_DATA_CARDS because the static badge can't detect runtime data source
   // ArgoCD cards - all use mock data
   'argocd_applications',
   'argocd_health',
