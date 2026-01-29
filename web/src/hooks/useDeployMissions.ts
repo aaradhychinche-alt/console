@@ -68,10 +68,15 @@ function loadMissions(): DeployMission[] {
 }
 
 function saveMissions(missions: DeployMission[]) {
-  // Strip logs before persisting (transient data, re-fetched during polling)
+  // Keep logs for completed missions (they won't be re-fetched after the poll cutoff).
+  // Strip logs for active missions (transient data, re-fetched on each poll cycle).
+  const isTerminal = (s: DeployMissionStatus) => s === 'orbit' || s === 'abort'
   const clean = missions.slice(0, MAX_MISSIONS).map(m => ({
     ...m,
-    clusterStatuses: m.clusterStatuses.map(cs => ({ ...cs, logs: undefined })),
+    clusterStatuses: m.clusterStatuses.map(cs => ({
+      ...cs,
+      logs: isTerminal(m.status) ? cs.logs : undefined,
+    })),
   }))
   localStorage.setItem(MISSIONS_KEY, JSON.stringify(clean))
 }
@@ -146,10 +151,13 @@ export function useDeployMissions() {
       const updated = await Promise.all(
         current.map(async (mission) => {
           const isCompleted = mission.status === 'orbit' || mission.status === 'abort'
-          // Stop polling completed missions after cutoff
+          // Stop polling completed missions after cutoff — unless logs were
+          // never loaded (e.g. restored from localStorage after page reload).
           if (isCompleted && mission.completedAt &&
               (Date.now() - mission.completedAt) > COMPLETED_POLL_CUTOFF_MS) {
-            return mission
+            const hasAnyLogs = mission.clusterStatuses.some(cs => cs.logs && cs.logs.length > 0)
+            if (hasAnyLogs) return mission
+            // Fall through: do one more poll to recover logs
           }
 
           const pollCount = (mission.pollCount ?? 0) + 1
