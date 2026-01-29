@@ -36,8 +36,6 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useMissions, Mission, MissionStatus, MissionMessage } from '../../hooks/useMissions'
 import { useResolutions, detectIssueSignature, type Resolution } from '../../hooks/useResolutions'
 import { cn } from '../../lib/cn'
@@ -45,6 +43,7 @@ import { AgentSelector } from '../agent/AgentSelector'
 import { AgentBadge, AgentIcon } from '../agent/AgentIcon'
 import { ResolutionKnowledgePanel } from '../missions/ResolutionKnowledgePanel'
 import { SaveResolutionDialog } from '../missions/SaveResolutionDialog'
+import { CodeBlock } from '../ui/CodeBlock'
 
 // Rotating status messages for agent thinking
 const THINKING_MESSAGES = [
@@ -241,14 +240,12 @@ const MemoizedMessage = memo(function MemoizedMessage({ msg, missionAgent, isFul
       return isInline ? (
         <code className={className} {...props}>{children}</code>
       ) : (
-        <SyntaxHighlighter
-          style={oneDark}
+        <CodeBlock
           language={match?.[1] || 'text'}
-          PreTag="div"
-          customStyle={{ margin: 0, borderRadius: '0.375rem', fontSize: fontSize === 'lg' ? '0.875rem' : '0.75rem' }}
+          fontSize={fontSize}
         >
           {String(children).replace(/\n$/, '')}
-        </SyntaxHighlighter>
+        </CodeBlock>
       )
     },
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
