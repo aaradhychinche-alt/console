@@ -1,5 +1,10 @@
 # GitHub Agentic Workflows Configuration
 # See: https://github.com/githubnext/gh-aw
+#
+# IMPORTANT: After running `gh aw compile`, run the post-compile patch:
+#   .github/aw/patch-lock-files.sh
+# This adds the required GraphQL-Features header for Copilot agent assignment.
+# See patch-lock-files.sh for details.
 
 # AI Provider Configuration
 provider: copilot
