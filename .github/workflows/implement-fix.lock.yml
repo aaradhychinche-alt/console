@@ -6682,7 +6682,7 @@ jobs:
             `;
           
             try {
-              const response = await github.graphql(query, { owner, repo });
+              const response = await github.graphql(query, { owner, repo, headers: { 'GraphQL-Features': 'issues_copilot_assignment_api_support' } });
               const actors = response.repository.suggestedActors.nodes;
           
               const loginName = AGENT_LOGIN_NAMES[agentName];
@@ -6796,6 +6796,7 @@ jobs:
               const response = await github.graphql(mutation, {
                 assignableId: issueId,
                 actorIds: actorIds,
+                headers: { 'GraphQL-Features': 'issues_copilot_assignment_api_support' },
               });
           
               if (response && response.replaceActorsForAssignable && response.replaceActorsForAssignable.__typename) {
@@ -6837,8 +6838,8 @@ jobs:
                 core.debug(`Failed to serialize GraphQL error details: ${loggingErr instanceof Error ? loggingErr.message : String(loggingErr)}`);
               }
           
-              // Check for permission-related errors
-              if (errorMessage.includes("Resource not accessible by personal access token") || errorMessage.includes("Resource not accessible by integration") || errorMessage.includes("Insufficient permissions to assign")) {
+              // Check for permission-related errors (including Copilot bot access)
+              if (errorMessage.includes("Resource not accessible by personal access token") || errorMessage.includes("Resource not accessible by integration") || errorMessage.includes("Insufficient permissions to assign") || errorMessage.includes("Bot does not have access")) {
                 // Attempt fallback mutation addAssigneesToAssignable when replaceActorsForAssignable is forbidden
                 core.info("Primary mutation replaceActorsForAssignable forbidden. Attempting fallback addAssigneesToAssignable...");
                 try {
@@ -6857,6 +6858,7 @@ jobs:
                   const fallbackResp = await github.graphql(fallbackMutation, {
                     assignableId: issueId,
                     assigneeIds: [agentId],
+                    headers: { 'GraphQL-Features': 'issues_copilot_assignment_api_support' },
                   });
                   if (fallbackResp && fallbackResp.addAssigneesToAssignable) {
                     core.info(`Fallback succeeded: agent '${agentName}' added via addAssigneesToAssignable.`);
