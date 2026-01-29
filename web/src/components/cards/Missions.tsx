@@ -274,18 +274,30 @@ function MissionRow({ mission, isExpanded, onToggle, isActive }: MissionRowProps
         </div>
       </button>
 
-      {/* Progress bar */}
-      {isActive && mission.status !== 'orbit' && mission.status !== 'abort' && (
-        <div className="px-3 pb-2">
-          <div className="h-1 rounded-full bg-gray-800 overflow-hidden">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-500',
-                failedClusters > 0 ? 'bg-orange-500' : 'bg-blue-500',
-              )}
-              style={{ width: `${Math.max(progressPct, 5)}%` }}
-            />
-          </div>
+      {/* Progress bar — always visible so completed missions show final state */}
+      <div className="px-3 pb-2">
+        <div className="h-1 rounded-full bg-gray-800 overflow-hidden">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-500',
+              mission.status === 'orbit' ? 'bg-green-500' :
+              mission.status === 'abort' ? 'bg-red-500' :
+              failedClusters > 0 ? 'bg-orange-500' : 'bg-blue-500',
+            )}
+            style={{ width: `${(mission.status === 'orbit' || mission.status === 'abort') ? 100 : Math.max(progressPct, 5)}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Per-cluster progress — visible for active missions; completed missions show on expand */}
+      {isActive && !isExpanded && mission.clusterStatuses.length > 0 && (
+        <div className="px-3 pb-2 space-y-1">
+          {mission.clusterStatuses.map(cs => (
+            <ClusterStatusRow key={cs.cluster} status={cs} />
+          ))}
+          {mission.dependencies && mission.dependencies.length > 0 && (
+            <DependencySummary dependencies={mission.dependencies} />
+          )}
         </div>
       )}
 
