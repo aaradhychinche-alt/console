@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { RefreshCw, Hourglass } from 'lucide-react'
 
 interface DashboardHeaderProps {
@@ -18,7 +18,8 @@ interface DashboardHeaderProps {
   onAutoRefreshChange?: (checked: boolean) => void
   /** Unique ID for the auto-refresh checkbox (accessibility) */
   autoRefreshId?: string
-  /** Last updated timestamp */
+  /** Override: external lastUpdated timestamp. If omitted, the header
+   *  automatically tracks when isFetching transitions false → true → false. */
   lastUpdated?: Date | null
   /** Extra content rendered after the hourglass (e.g., alert badges) */
   afterTitle?: React.ReactNode
@@ -29,10 +30,13 @@ interface DashboardHeaderProps {
 /**
  * Shared dashboard header with consistent layout:
  * LEFT:  [Icon] Title / Subtitle  [Hourglass Updating]  [afterTitle]
- * RIGHT: [rightExtra] [Auto checkbox] [Refresh ↻] [Updated time]
+ * RIGHT: [rightExtra] [Auto checkbox] [Refresh ↻]
+ *        Updated X:XX:XX PM
  *
- * All dashboards should use this component to ensure consistent
- * hourglass positioning, refresh controls, and styling.
+ * The "Updated" timestamp is self-managed: it initializes to "now" on mount
+ * and updates automatically whenever isFetching transitions from true→false.
+ * Dashboards do NOT need to pass lastUpdated — the header derives it from
+ * isFetching. An external lastUpdated prop overrides the internal tracking.
  */
 export function DashboardHeader({
   title,
@@ -43,10 +47,24 @@ export function DashboardHeader({
   autoRefresh,
   onAutoRefreshChange,
   autoRefreshId,
-  lastUpdated,
+  lastUpdated: externalLastUpdated,
   afterTitle,
   rightExtra,
 }: DashboardHeaderProps) {
+  // Self-managed timestamp: updates when isFetching goes true → false
+  const [internalLastUpdated, setInternalLastUpdated] = useState<Date>(() => new Date())
+  const wasFetchingRef = useRef(isFetching)
+
+  useEffect(() => {
+    if (wasFetchingRef.current && !isFetching) {
+      setInternalLastUpdated(new Date())
+    }
+    wasFetchingRef.current = isFetching
+  }, [isFetching])
+
+  // Use external override if it has a value, otherwise use self-managed
+  const displayTimestamp = externalLastUpdated ?? internalLastUpdated
+
   return (
     <div className="flex items-center justify-between mb-6">
       {/* Left side: title + hourglass */}
@@ -70,36 +88,38 @@ export function DashboardHeader({
         {afterTitle}
       </div>
 
-      {/* Right side: controls */}
-      <div className="flex items-center gap-3">
-        {rightExtra}
-        {onAutoRefreshChange && (
-          <label
-            htmlFor={autoRefreshId || 'auto-refresh'}
-            className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground"
-            title="Auto-refresh every 30s"
+      {/* Right side: controls + timestamp below */}
+      <div className="flex flex-col items-end gap-0.5">
+        <div className="flex items-center gap-3">
+          {rightExtra}
+          {onAutoRefreshChange && (
+            <label
+              htmlFor={autoRefreshId || 'auto-refresh'}
+              className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground"
+              title="Auto-refresh every 30s"
+            >
+              <input
+                type="checkbox"
+                id={autoRefreshId || 'auto-refresh'}
+                checked={autoRefresh ?? false}
+                onChange={(e) => onAutoRefreshChange(e.target.checked)}
+                className="rounded border-border w-3.5 h-3.5"
+              />
+              Auto
+            </label>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={isFetching}
+            className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
+            title="Refresh data"
           >
-            <input
-              type="checkbox"
-              id={autoRefreshId || 'auto-refresh'}
-              checked={autoRefresh ?? false}
-              onChange={(e) => onAutoRefreshChange(e.target.checked)}
-              className="rounded border-border w-3.5 h-3.5"
-            />
-            Auto
-          </label>
-        )}
-        <button
-          onClick={onRefresh}
-          disabled={isFetching}
-          className="p-2 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
-          title="Refresh data"
-        >
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-        </button>
-        {lastUpdated && !isFetching && (
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        {displayTimestamp && (
           <span className="text-xs text-muted-foreground">
-            Updated {lastUpdated.toLocaleTimeString()}
+            Updated {displayTimestamp.toLocaleTimeString()}
           </span>
         )}
       </div>

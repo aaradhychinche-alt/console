@@ -33,6 +33,7 @@ export type DashboardStatsType =
   | 'alerts'
   | 'dashboard'
   | 'operators'
+  | 'deploy'
 
 /**
  * Default stat blocks for the Clusters dashboard
@@ -254,6 +255,20 @@ export const OPERATORS_STAT_BLOCKS: StatBlockConfig[] = [
 ]
 
 /**
+ * Default stat blocks for the Deploy dashboard
+ */
+export const DEPLOY_STAT_BLOCKS: StatBlockConfig[] = [
+  { id: 'deployments', name: 'Deployments', icon: 'Ship', visible: true, color: 'blue' },
+  { id: 'healthy', name: 'Healthy', icon: 'CheckCircle2', visible: true, color: 'green' },
+  { id: 'progressing', name: 'Progressing', icon: 'Clock', visible: true, color: 'cyan' },
+  { id: 'failed', name: 'Failed', icon: 'XCircle', visible: true, color: 'red' },
+  { id: 'helm', name: 'Helm Releases', icon: 'Package', visible: true, color: 'purple' },
+  { id: 'argocd', name: 'ArgoCD Apps', icon: 'Workflow', visible: true, color: 'orange' },
+  { id: 'namespaces', name: 'Namespaces', icon: 'FolderOpen', visible: true, color: 'cyan' },
+  { id: 'clusters', name: 'Clusters', icon: 'Server', visible: true, color: 'purple' },
+]
+
+/**
  * Get all stat blocks across all dashboard types
  */
 export const ALL_STAT_BLOCKS: StatBlockConfig[] = (() => {
@@ -273,6 +288,7 @@ export const ALL_STAT_BLOCKS: StatBlockConfig[] = (() => {
     ...ALERTS_STAT_BLOCKS,
     ...DASHBOARD_STAT_BLOCKS,
     ...OPERATORS_STAT_BLOCKS,
+    ...DEPLOY_STAT_BLOCKS,
   ]
 
   // Deduplicate by ID
@@ -321,6 +337,8 @@ export function getDefaultStatBlocks(dashboardType: DashboardStatsType): StatBlo
       return DASHBOARD_STAT_BLOCKS
     case 'operators':
       return OPERATORS_STAT_BLOCKS
+    case 'deploy':
+      return DEPLOY_STAT_BLOCKS
     default:
       return []
   }

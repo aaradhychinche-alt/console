@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, memo } from 'react'
 import { useSearchParams, useLocation } from 'react-router-dom'
-import { Rocket, Plus, LayoutGrid, ChevronDown, ChevronRight, GripVertical, GitBranch, RefreshCw } from 'lucide-react'
+import { Rocket, Plus, LayoutGrid, ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
 import { DashboardHeader } from '../shared/DashboardHeader'
+import { StatsOverview, StatBlockValue } from '../ui/StatsOverview'
+import { useUniversalStats, createMergedStatValueGetter } from '../../hooks/useUniversalStats'
 import {
   DndContext,
   closestCenter,
@@ -23,7 +25,8 @@ import { FloatingDashboardActions } from '../dashboard/FloatingDashboardActions'
 import { DashboardTemplate } from '../dashboard/templates'
 import { formatCardTitle } from '../../lib/formatCardTitle'
 import { useDashboard, DashboardCard } from '../../lib/dashboards'
-import { useDeployments } from '../../hooks/useMCP'
+import { useDeployments, useHelmReleases } from '../../hooks/useMCP'
+import { useCachedDeployments } from '../../hooks/useCachedData'
 import { useRefreshIndicator } from '../../hooks/useRefreshIndicator'
 import { useCardPublish, type DeployResultPayload } from '../../lib/cardEvents'
 import { DeployConfirmDialog } from './DeployConfirmDialog'
@@ -155,7 +158,10 @@ export function Deploy() {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const { isLoading: deploymentsLoading, isRefreshing: deploymentsRefreshing, lastUpdated, refetch } = useDeployments()
+  const { deployments: cachedDeployments } = useCachedDeployments()
+  const { releases: helmReleases } = useHelmReleases()
   const { showIndicator, triggerRefresh } = useRefreshIndicator(refetch)
+  const { getStatValue: getUniversalStatValue } = useUniversalStats()
 
   // Use the shared dashboard hook for cards, DnD, modals, auto-refresh
   const {
@@ -191,6 +197,37 @@ export function Deploy() {
 
   const isRefreshing = deploymentsRefreshing || showIndicator
   const isFetching = deploymentsLoading || isRefreshing || showIndicator
+
+  // Deploy stats from cached data (works in demo mode too)
+  const runningCount = cachedDeployments.filter(d => d.status === 'running' || (d.readyReplicas === d.replicas && d.replicas > 0)).length
+  const progressingCount = cachedDeployments.filter(d => d.status === 'deploying').length
+  const failedCount = cachedDeployments.filter(d => d.status === 'failed').length
+
+  const getDeployStatValue = useCallback((blockId: string): StatBlockValue => {
+    switch (blockId) {
+      case 'deployments':
+        return { value: cachedDeployments.length, sublabel: 'total deployments' }
+      case 'healthy':
+        return { value: runningCount, sublabel: 'running' }
+      case 'progressing':
+        return { value: progressingCount, sublabel: 'deploying' }
+      case 'failed':
+        return { value: failedCount, sublabel: 'failed' }
+      case 'helm':
+        return { value: helmReleases.length, sublabel: 'releases' }
+      case 'argocd':
+        return { value: 0, sublabel: 'applications', isDemo: true }
+      // 'namespaces' and 'clusters' fall through to universal stats
+      // which returns total counts from useClusters()
+      default:
+        return { value: '-' }
+    }
+  }, [cachedDeployments.length, runningCount, progressingCount, failedCount, helmReleases.length])
+
+  const getStatValue = useCallback(
+    (blockId: string) => createMergedStatValueGetter(getDeployStatValue, getUniversalStatValue)(blockId),
+    [getDeployStatValue, getUniversalStatValue]
+  )
 
   // Pending deploy state for confirmation dialog
   const [pendingDeploy, setPendingDeploy] = useState<{
@@ -369,26 +406,15 @@ export function Deploy() {
         lastUpdated={lastUpdated}
       />
 
-      {/* Deploy Stats Banner */}
-      <div className="mb-6 glass rounded-lg p-4 border border-blue-500/20 bg-gradient-to-r from-blue-500/10 via-cyan-500/10 to-green-500/10">
-        <div className="flex items-center justify-center gap-8 flex-wrap">
-          <div className="flex items-center gap-2 text-sm">
-            <Rocket className="w-5 h-5 text-blue-400" />
-            <span className="text-muted-foreground">Deployment Cards:</span>
-            <span className="font-bold text-blue-400">{cards.length}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <GitBranch className="w-5 h-5 text-green-400" />
-            <span className="text-muted-foreground">GitOps:</span>
-            <span className="font-bold text-green-400">ArgoCD + Flux</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <RefreshCw className="w-5 h-5 text-cyan-400" />
-            <span className="text-muted-foreground">Focus:</span>
-            <span className="font-bold text-cyan-400">Continuous Deployment</span>
-          </div>
-        </div>
-      </div>
+      {/* Stats Overview */}
+      <StatsOverview
+        dashboardType="deploy"
+        getStatValue={getStatValue}
+        hasData={!deploymentsLoading}
+        isLoading={deploymentsLoading}
+        lastUpdated={lastUpdated}
+        collapsedStorageKey="kubestellar-deploy-stats-collapsed"
+      />
 
       {/* Dashboard Cards Section */}
       <div className="mb-6">
