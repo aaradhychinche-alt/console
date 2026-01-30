@@ -80,12 +80,14 @@ export function ResourceMarshall() {
   // Fetch namespaces for selected cluster
   const { namespaces, isLoading: nsLoading } = useNamespaces(selectedCluster || undefined)
 
-  // Fetch workloads for selected cluster + namespace
+  // Fetch workloads only when both cluster and namespace are selected.
+  // Passing enabled=false prevents fetching all workloads across clusters.
+  const hasSelection = !!selectedCluster && !!selectedNamespace
   const workloadOpts = useMemo(() => {
     if (!selectedCluster || !selectedNamespace) return undefined
     return { cluster: selectedCluster, namespace: selectedNamespace }
   }, [selectedCluster, selectedNamespace])
-  const { data: workloads, isLoading: wlLoading } = useWorkloads(workloadOpts)
+  const { data: workloads, isLoading: wlLoading } = useWorkloads(workloadOpts, hasSelection)
 
   // Dependency resolution
   const { data: depData, isLoading: depLoading, error: depError, resolve, reset } = useResolveDependencies()
