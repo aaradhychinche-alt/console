@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Box, WifiOff, X, Settings } from 'lucide-react'
+import { Box, WifiOff, X, Settings, Rocket } from 'lucide-react'
 import { Navbar } from './navbar/index'
 import { Sidebar } from './Sidebar'
 import { MissionSidebar, MissionSidebarToggle } from './mission-sidebar'
@@ -12,8 +12,9 @@ import { useDemoMode, isDemoModeForced } from '../../hooks/useDemoMode'
 import { useLocalAgent } from '../../hooks/useLocalAgent'
 import { cn } from '../../lib/cn'
 import { TourOverlay, TourPrompt } from '../onboarding/Tour'
-import { DemoInstallBanner, InstallModal } from '../onboarding/DemoInstallGuide'
+import { DemoInstallBanner } from '../onboarding/DemoInstallGuide'
 import { TourProvider } from '../../hooks/useTour'
+import { SetupInstructionsDialog } from '../setup/SetupInstructionsDialog'
 
 interface LayoutProps {
   children: ReactNode
@@ -25,7 +26,7 @@ export function Layout({ children }: LayoutProps) {
   const { isDemoMode, toggleDemoMode } = useDemoMode()
   const { status: agentStatus } = useLocalAgent()
   const [offlineBannerDismissed, setOfflineBannerDismissed] = useState(false)
-  const [showInstallModal, setShowInstallModal] = useState(false)
+  const [showSetupDialog, setShowSetupDialog] = useState(false)
 
   // Show offline banner when agent is disconnected (not demo mode, not connecting)
   const showOfflineBanner = !isDemoMode && agentStatus === 'disconnected' && !offlineBannerDismissed
@@ -77,7 +78,14 @@ export function Layout({ children }: LayoutProps) {
               Showing sample data from all cloud providers
             </span>
             <button
-              onClick={() => isDemoModeForced ? setShowInstallModal(true) : toggleDemoMode()}
+              onClick={() => setShowSetupDialog(true)}
+              className="ml-2 flex items-center gap-1.5 px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-full text-xs font-medium transition-colors"
+            >
+              <Rocket className="w-3.5 h-3.5" />
+              Want your own local KubeStellar Console?
+            </button>
+            <button
+              onClick={() => isDemoModeForced ? setShowSetupDialog(true) : toggleDemoMode()}
               className="ml-2 p-1 hover:bg-yellow-500/20 rounded transition-colors"
               title={isDemoModeForced ? "Install your own console" : "Exit demo mode"}
             >
@@ -150,8 +158,11 @@ export function Layout({ children }: LayoutProps) {
       <MissionSidebar />
       <MissionSidebarToggle />
 
-      {/* Install modal — shown when user tries to exit forced demo mode */}
-      {showInstallModal && <InstallModal onClose={() => setShowInstallModal(false)} />}
+      {/* Setup Instructions Dialog — also shown when user tries to exit forced demo mode */}
+      <SetupInstructionsDialog
+        isOpen={showSetupDialog}
+        onClose={() => setShowSetupDialog(false)}
+      />
     </div>
     </TourProvider>
   )

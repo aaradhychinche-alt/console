@@ -2,14 +2,14 @@ import { useState, useRef, useEffect } from 'react'
 import { Server, Box, Wifi, WifiOff } from 'lucide-react'
 import { useLocalAgent } from '../../../hooks/useLocalAgent'
 import { useDemoMode, isDemoModeForced } from '../../../hooks/useDemoMode'
-import { InstallModal } from '../../onboarding/DemoInstallGuide'
+import { SetupInstructionsDialog } from '../../setup/SetupInstructionsDialog'
 import { cn } from '../../../lib/cn'
 
 export function AgentStatusIndicator() {
   const { status: agentStatus, health: agentHealth, connectionEvents, isConnected, isDegraded, dataErrorCount, lastDataError } = useLocalAgent()
   const { isDemoMode, toggleDemoMode } = useDemoMode()
   const [showAgentStatus, setShowAgentStatus] = useState(false)
-  const [showInstallModal, setShowInstallModal] = useState(false)
+  const [showSetupDialog, setShowSetupDialog] = useState(false)
   const agentRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown when clicking outside
@@ -70,7 +70,7 @@ export function AgentStatusIndicator() {
               <button
                 onClick={() => {
                   if (isDemoModeForced && isDemoMode) {
-                    setShowInstallModal(true)
+                    setShowSetupDialog(true)
                     setShowAgentStatus(false)
                   } else {
                     toggleDemoMode()
@@ -189,7 +189,7 @@ export function AgentStatusIndicator() {
           </div>
         </div>
       )}
-      {showInstallModal && <InstallModal onClose={() => setShowInstallModal(false)} />}
+      <SetupInstructionsDialog isOpen={showSetupDialog} onClose={() => setShowSetupDialog(false)} />
     </div>
   )
 }
