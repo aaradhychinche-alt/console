@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react'
 import type { AgentInfo, AgentsListPayload, AgentSelectedPayload, ChatStreamPayload } from '../types/agent'
+import { getDemoMode } from './useDemoMode'
 
 export type MissionStatus = 'pending' | 'running' | 'waiting_input' | 'completed' | 'failed'
 
@@ -196,6 +197,11 @@ export function MissionProvider({ children }: { children: ReactNode }) {
 
   // Connect to local agent WebSocket
   const ensureConnection = useCallback(() => {
+    // In demo mode, skip WebSocket connection to avoid console errors
+    if (getDemoMode()) {
+      return Promise.reject(new Error('Agent unavailable in demo mode'))
+    }
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return Promise.resolve()
     }

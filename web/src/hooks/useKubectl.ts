@@ -8,6 +8,8 @@
  * - Cleans up on unmount
  */
 
+import { getDemoMode } from './useDemoMode'
+
 const AGENT_WS_URL = 'ws://127.0.0.1:8585/ws'
 const RECONNECT_DELAY = 1000
 const REQUEST_TIMEOUT = 30000
@@ -41,6 +43,11 @@ class KubectlService {
 
   private connect() {
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+      return
+    }
+
+    // In demo mode, skip WebSocket connection to avoid console errors
+    if (getDemoMode()) {
       return
     }
 

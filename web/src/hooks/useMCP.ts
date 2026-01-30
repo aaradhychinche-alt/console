@@ -1857,21 +1857,6 @@ export function useClusters() {
     const sharedMetricsClusters = shareMetricsBetweenSameServerClusters(localState.clusters)
     const result = deduplicateClustersByServer(sharedMetricsClusters)
 
-    // Debug: log what deduplication produced
-    if (result.length > 0) {
-      const sample = result.find(c => c.cpuCores && c.cpuCores > 100) || result[0]
-      console.log('[Dedup] Result sample:', {
-        name: sample?.name,
-        cpuCores: sample?.cpuCores,
-        cpuRequestsCores: sample?.cpuRequestsCores,
-        memoryGB: sample?.memoryGB,
-        memoryRequestsGB: sample?.memoryRequestsGB,
-        aliases: sample?.aliases?.length,
-        totalClusters: result.length,
-        withRequests: result.filter(c => c.cpuRequestsCores).length,
-      })
-    }
-
     return result
   }, [localState.clusters])
 

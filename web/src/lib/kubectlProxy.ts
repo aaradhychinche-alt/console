@@ -5,6 +5,8 @@
  * which has access to the user's kubeconfig.
  */
 
+import { getDemoMode } from '../hooks/useDemoMode'
+
 const KC_AGENT_WS_URL = 'ws://127.0.0.1:8585/ws'
 
 type MessageType = 'kubectl' | 'health' | 'clusters' | 'result' | 'error'
@@ -57,6 +59,11 @@ class KubectlProxy {
    * Ensure WebSocket is connected
    */
   private async ensureConnected(): Promise<void> {
+    // In demo mode, skip WebSocket connection to avoid console errors
+    if (getDemoMode()) {
+      throw new Error('Agent unavailable in demo mode')
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       return
     }

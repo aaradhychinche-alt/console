@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { getDemoMode } from './useDemoMode'
 
 export interface AgentHealth {
   status: string
@@ -62,7 +63,14 @@ interface AgentState {
 type Listener = (state: AgentState) => void
 
 class AgentManager {
-  private state: AgentState = {
+  private state: AgentState = getDemoMode() ? {
+    status: 'disconnected',
+    health: DEMO_DATA,
+    error: 'Demo mode - agent connection skipped',
+    connectionEvents: [],
+    dataErrorCount: 0,
+    lastDataError: null,
+  } : {
     status: 'connecting',
     health: null,
     error: null,
@@ -85,6 +93,17 @@ class AgentManager {
   start() {
     if (this.isStarted) return
     this.isStarted = true
+
+    // In demo mode, skip agent connection entirely to avoid console errors
+    if (getDemoMode()) {
+      this.setState({
+        status: 'disconnected',
+        health: DEMO_DATA,
+        error: 'Demo mode - agent connection skipped',
+      })
+      return
+    }
+
     this.addEvent('connecting', 'Attempting to connect to local agent...')
     this.checkAgent()
     this.currentPollInterval = POLL_INTERVAL

@@ -5,6 +5,8 @@
  * is unavailable, then to a random generic icon.
  */
 
+import { getDemoMode } from '../hooks/useDemoMode'
+
 const KC_AGENT_WS_URL = 'ws://127.0.0.1:8585/ws'
 
 // All Lucide icons available in the sidebar
@@ -85,6 +87,11 @@ const KEYWORD_MAP: Record<string, string> = {
  * Times out after 5 seconds.
  */
 function askAgentForIcon(name: string): Promise<string | null> {
+  // In demo mode, skip WebSocket connection to avoid console errors
+  if (getDemoMode()) {
+    return Promise.resolve(null)
+  }
+
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
       resolve(null)
