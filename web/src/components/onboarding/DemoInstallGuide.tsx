@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { X, Copy, Check, ExternalLink, Settings, Rocket, Terminal, Key, Download, ChevronRight, Github } from 'lucide-react'
-import { useDemoMode } from '../../hooks/useDemoMode'
+import { useDemoMode, isDemoModeForced } from '../../hooks/useDemoMode'
 import { cn } from '../../lib/cn'
 
 const DISMISSED_KEY = 'kc-demo-install-dismissed'
@@ -44,7 +44,7 @@ function StepNumber({ n }: { n: number }) {
   )
 }
 
-function InstallModal({ onClose }: { onClose: () => void }) {
+export function InstallModal({ onClose }: { onClose: () => void }) {
   const { toggleDemoMode } = useDemoMode()
 
   return (
@@ -196,12 +196,14 @@ function InstallModal({ onClose }: { onClose: () => void }) {
               <ExternalLink className="w-3 h-3" />
             </a>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => { toggleDemoMode(); onClose() }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/20 text-yellow-400 transition-colors"
-              >
-                Exit Demo
-              </button>
+              {!isDemoModeForced && (
+                <button
+                  onClick={() => { toggleDemoMode(); onClose() }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/20 text-yellow-400 transition-colors"
+                >
+                  Exit Demo
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="text-xs px-4 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 hover:bg-purple-500/30 text-purple-300 font-medium transition-colors"
