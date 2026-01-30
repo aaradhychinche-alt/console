@@ -20,6 +20,7 @@ import { RefreshCw, GitBranch, FolderGit, Box, Loader2, GripVertical } from 'luc
 import { DashboardHeader } from '../shared/DashboardHeader'
 import { SyncDialog } from './SyncDialog'
 import { api } from '../../lib/api'
+import { getDemoMode } from '../../hooks/useDemoMode'
 import { CardWrapper } from '../cards/CardWrapper'
 import { CARD_COMPONENTS, DEMO_DATA_CARDS } from '../cards/cardRegistry'
 import { AddCardModal } from '../dashboard/AddCardModal'
@@ -320,8 +321,10 @@ export function GitOps() {
   const isRefreshing = dataRefreshing || showIndicator
   const isFetching = isRefreshing || showIndicator
 
-  // Detect drift for all apps on mount
+  // Detect drift for all apps on mount (skip in demo mode - no backend)
   useEffect(() => {
+    if (getDemoMode()) return
+
     async function detectAllDrift() {
       setIsDetecting(true)
       const results = new Map<string, DriftResult>()
@@ -346,7 +349,6 @@ export function GitOps() {
           })
         } catch (err) {
           // On error, mark as unknown (not drifted)
-          console.error(`Failed to detect drift for ${appConfig.name}:`, err)
           results.set(appConfig.name, {
             drifted: false,
             resources: [],

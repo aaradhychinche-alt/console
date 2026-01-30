@@ -6,6 +6,7 @@ import { CardSearchInput, CardControlsRow, CardPaginationFooter } from '../../li
 import { useClusters } from '../../hooks/useMCP'
 import { useMissions } from '../../hooks/useMissions'
 import { kubectlProxy } from '../../lib/kubectlProxy'
+import { getDemoMode } from '../../hooks/useDemoMode'
 
 // Sort options for clusters
 type SortByOption = 'name' | 'violations' | 'policies'
@@ -1051,18 +1052,18 @@ export function OPAPolicies({ config: _config }: OPAPoliciesProps) {
   const { deduplicatedClusters: clusters } = useClusters()
   const { startMission } = useMissions()
 
-  // Fetch clusters directly from agent as fallback
+  // Fetch clusters directly from agent as fallback (skip in demo mode)
   const [agentClusters, setAgentClusters] = useState<{ name: string; healthy?: boolean }[]>([])
   useEffect(() => {
+    if (getDemoMode()) return
     fetch('http://127.0.0.1:8585/clusters')
       .then(res => res.json())
       .then(data => {
         if (data.clusters) {
-          console.log('[OPA] Fetched clusters from agent:', data.clusters.map((c: { name: string }) => c.name))
           setAgentClusters(data.clusters.map((c: { name: string }) => ({ name: c.name, healthy: true })))
         }
       })
-      .catch(err => console.error('[OPA] Failed to fetch clusters:', err))
+      .catch(() => { /* agent not available */ })
   }, [])
 
   // Use agent clusters if shared state is empty - memoize for stability
