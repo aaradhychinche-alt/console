@@ -44,19 +44,22 @@ async function checkServiceHealth(providerIds: string[]): Promise<Map<string, He
   const result = new Map<string, HealthStatus>()
 
   // Try backend proxy first (handles CORS redirects, all providers)
-  try {
-    const response = await fetch(`${KC_AGENT_URL}/providers/health`, {
-      signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT),
-    })
-    if (response.ok) {
-      const data: BackendHealthResponse = await response.json()
-      for (const p of data.providers) {
-        const status = (['operational', 'degraded', 'down'].includes(p.status) ? p.status : 'unknown') as HealthStatus
-        result.set(p.id, status)
+  // Skip in demo mode — no local agent on Netlify deployments
+  if (!getDemoMode()) {
+    try {
+      const response = await fetch(`${KC_AGENT_URL}/providers/health`, {
+        signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT),
+      })
+      if (response.ok) {
+        const data: BackendHealthResponse = await response.json()
+        for (const p of data.providers) {
+          const status = (['operational', 'degraded', 'down'].includes(p.status) ? p.status : 'unknown') as HealthStatus
+          result.set(p.id, status)
+        }
       }
+    } catch {
+      // Backend proxy unavailable — fall through to direct checks
     }
-  } catch {
-    // Backend proxy unavailable — fall through to direct checks
   }
 
   // Direct Statuspage.io fallback for providers not covered by backend

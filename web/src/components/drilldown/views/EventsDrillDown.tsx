@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { AlertCircle, RefreshCw, Terminal, Copy, CheckCircle } from 'lucide-react'
 import { StatusIndicator } from '../../charts/StatusIndicator'
+import { getDemoMode } from '../../../hooks/useDemoMode'
 
 interface ClusterEvent {
   type: string
@@ -62,6 +63,11 @@ export function EventsDrillDown({ data }: Props) {
 
   // Fetch events from local agent (no auth required)
   const refetch = useCallback(async (silent = false) => {
+    // Skip agent requests in demo mode (no local agent on Netlify)
+    if (getDemoMode()) {
+      setIsLoading(false)
+      return
+    }
     if (!silent) setIsLoading(true)
     setError(null)
     try {

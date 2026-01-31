@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { getDemoMode } from './useDemoMode'
 import { clusterCacheRef } from './mcp/shared'
 
 // Types
@@ -62,6 +63,9 @@ async function fetchWorkloadsViaAgent(opts?: {
   cluster?: string
   namespace?: string
 }): Promise<Workload[] | null> {
+  // Skip agent requests entirely in demo mode (no local agent on Netlify)
+  if (getDemoMode()) return null
+
   const clusters = clusterCacheRef.clusters
     .filter(c => c.reachable !== false && !c.name.includes('/'))
   if (clusters.length === 0) return null

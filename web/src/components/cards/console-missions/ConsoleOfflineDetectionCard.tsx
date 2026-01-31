@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { AlertCircle, CheckCircle, Clock, ChevronRight } from 'lucide-react'
+import { getDemoMode } from '../../../hooks/useDemoMode'
 import { useMissions } from '../../../hooks/useMissions'
 import { useGPUNodes } from '../../../hooks/useMCP'
 import { useGlobalFilters } from '../../../hooks/useGlobalFilters'
@@ -22,6 +23,12 @@ export function ConsoleOfflineDetectionCard(_props: ConsoleMissionCardProps) {
 
   // Fetch nodes from local agent (no auth required)
   useEffect(() => {
+    // Skip agent requests in demo mode (no local agent on Netlify)
+    if (getDemoMode()) {
+      setNodesLoading(false)
+      return
+    }
+
     const fetchNodes = async () => {
       setNodesLoading(true)
       try {

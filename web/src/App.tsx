@@ -13,6 +13,7 @@ import { CardEventProvider } from './lib/cardEvents'
 import { ToastProvider } from './components/ui/Toast'
 import { AlertsProvider } from './contexts/AlertsContext'
 import { RewardsProvider } from './hooks/useRewards'
+import { ChunkErrorBoundary } from './components/ChunkErrorBoundary'
 
 // Lazy load all page components for better code splitting
 const Login = lazy(() => import('./components/auth/Login').then(m => ({ default: m.Login })))
@@ -177,6 +178,7 @@ function App() {
       <DashboardProvider>
       <DrillDownProvider>
       <DrillDownModal />
+      <ChunkErrorBoundary>
       <Suspense fallback={<LoadingFallback />}>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -553,6 +555,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
+      </ChunkErrorBoundary>
       </DrillDownProvider>
       </DashboardProvider>
       </AlertsProvider>
