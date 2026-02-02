@@ -90,9 +90,10 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('react-router')) {
             return 'router'
           }
-          // Split dnd-kit into its own chunk
+          // Bundle dnd-kit with React to avoid useLayoutEffect issues
+          // (Previously split separately but caused React import errors)
           if (id.includes('@dnd-kit')) {
-            return 'dnd'
+            return 'vendor'
           }
           // Split node_modules into vendor chunks
           if (id.includes('node_modules')) {
