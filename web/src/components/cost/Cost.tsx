@@ -376,7 +376,7 @@ export function Cost() {
   } : null
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="Cost Management"

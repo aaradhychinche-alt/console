@@ -395,7 +395,7 @@ export function Deploy() {
   } : null
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="KubeStellar Deploy"

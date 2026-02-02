@@ -782,7 +782,7 @@ export function Dashboard() {
 
   if (isLoading && localCards.length === 0) {
     return (
-      <div className="pt-16">
+      <div className="">
         {/* Header skeleton */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -818,7 +818,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="Dashboard"

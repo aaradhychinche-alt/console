@@ -226,7 +226,7 @@ export function Alerts() {
 
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="Alerts"

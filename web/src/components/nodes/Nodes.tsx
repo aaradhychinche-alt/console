@@ -297,7 +297,7 @@ export function Nodes() {
   } : null
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="Nodes"

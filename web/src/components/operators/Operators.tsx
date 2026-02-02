@@ -326,7 +326,7 @@ export function Operators() {
   } : null
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="Operators"

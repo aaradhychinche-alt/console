@@ -308,7 +308,7 @@ export function Logs() {
   } : null
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title="Logs & Events"

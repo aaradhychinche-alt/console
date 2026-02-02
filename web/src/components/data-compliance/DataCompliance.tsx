@@ -306,7 +306,7 @@ export function DataCompliance() {
   } : null
 
   return (
-    <div className="pt-16">
+    <div className="">
       {/* Header */}
       <DashboardHeader
         title={<>Data Compliance <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"><FlaskConical className="w-3 h-3" />Demo</span></>}
