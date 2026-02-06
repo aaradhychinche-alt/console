@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Monitor, Download, Copy, Check, ExternalLink, Smartphone } from 'lucide-react'
+import { Monitor, Download, Copy, Check, ExternalLink, Smartphone, Globe, Apple, Chrome } from 'lucide-react'
+import { cn } from '../../../lib/cn'
 
 // The widget code that gets downloaded - includes drag functionality
 const WIDGET_CODE = `/**
@@ -294,9 +295,40 @@ export const render = ({ output }) => {
 };
 `;
 
+interface WidgetOption {
+  id: string
+  name: string
+  description: string
+  platform: string[]
+  icon: typeof Monitor
+  color: string
+  recommended?: boolean
+}
+
+const WIDGET_OPTIONS: WidgetOption[] = [
+  {
+    id: 'browser',
+    name: 'Browser Widget',
+    description: 'Open in any browser. Use Safari PiP or Chrome Always-on-Top.',
+    platform: ['macos', 'windows', 'linux'],
+    icon: Globe,
+    color: 'text-blue-400 bg-blue-500/20',
+    recommended: true,
+  },
+  {
+    id: 'uebersicht',
+    name: 'Übersicht Widget',
+    description: 'Native macOS desktop widget. Draggable and always visible.',
+    platform: ['macos'],
+    icon: Apple,
+    color: 'text-purple-400 bg-purple-500/20',
+  },
+]
+
 export function WidgetSettingsSection() {
   const [copied, setCopied] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
+  const [selectedWidget, setSelectedWidget] = useState<string | null>(null)
 
   const handleDownload = () => {
     const blob = new Blob([WIDGET_CODE], { type: 'text/javascript' })
@@ -323,139 +355,215 @@ export function WidgetSettingsSection() {
   return (
     <div id="widget-settings" className="glass rounded-xl p-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-lg bg-cyan-500/20">
-          <Monitor className="w-5 h-5 text-cyan-400" />
+        <div className="p-2 rounded-lg bg-secondary">
+          <Monitor className="w-5 h-5 text-muted-foreground" />
         </div>
         <div>
           <h2 className="text-lg font-medium text-foreground">Desktop Widget</h2>
-          <p className="text-sm text-muted-foreground">Add KubeStellar to your desktop with Übersicht</p>
+          <p className="text-sm text-muted-foreground">Monitor clusters from your desktop</p>
         </div>
       </div>
 
-      {/* Widget Preview */}
-      <div className="mb-6 p-4 rounded-lg bg-gray-900/50 border border-border">
-        <div className="text-xs text-muted-foreground mb-3">Preview</div>
-        <div className="flex justify-center">
-          <div
-            style={{
-              backgroundColor: 'rgba(17, 24, 39, 0.95)',
-              borderRadius: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              padding: '12px',
-              minWidth: '200px',
-              fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
-            }}
-          >
-            {/* Drag handle preview */}
-            <div className="text-center mb-2">
-              <span className="text-gray-500 text-sm tracking-widest">⋮⋮</span>
-            </div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm font-semibold text-white">KubeStellar Console</span>
-              <span className="ml-auto text-[10px] text-gray-500">↗</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <div className="text-lg font-bold text-green-400">0</div>
-                <div className="text-[9px] text-gray-400 uppercase">Offline</div>
+      {/* Widget Selection Grid */}
+      <div className="grid gap-3 mb-4">
+        {WIDGET_OPTIONS.map((widget) => {
+          const Icon = widget.icon
+          const isSelected = selectedWidget === widget.id
+          return (
+            <button
+              key={widget.id}
+              onClick={() => setSelectedWidget(isSelected ? null : widget.id)}
+              className={cn(
+                'w-full p-4 rounded-lg border text-left transition-all',
+                isSelected
+                  ? 'bg-purple-500/10 border-purple-500/30'
+                  : 'bg-secondary/30 border-border hover:border-purple-500/30 hover:bg-secondary/50'
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div className={cn('p-2 rounded-lg shrink-0', widget.color.split(' ')[1])}>
+                  <Icon className={cn('w-5 h-5', widget.color.split(' ')[0])} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{widget.name}</span>
+                    {widget.recommended && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{widget.description}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    {widget.platform.includes('macos') && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground flex items-center gap-1">
+                        <Apple className="w-3 h-3" /> macOS
+                      </span>
+                    )}
+                    {widget.platform.includes('windows') && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                        Windows
+                      </span>
+                    )}
+                    {widget.platform.includes('linux') && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                        Linux
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className={cn(
+                  'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1',
+                  isSelected ? 'border-purple-500 bg-purple-500' : 'border-muted-foreground/30'
+                )}>
+                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                </div>
               </div>
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <div className="text-lg font-bold text-blue-400">3/3</div>
-                <div className="text-[9px] text-gray-400 uppercase">Ready</div>
-              </div>
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <div className="text-lg font-bold text-green-400">4/8</div>
-                <div className="text-[9px] text-gray-400 uppercase">GPUs</div>
-              </div>
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <div className="text-lg font-bold text-green-400">3</div>
-                <div className="text-[9px] text-gray-400 uppercase">Total</div>
-              </div>
-            </div>
-            <div className="text-center text-[11px] text-green-400 mt-2 pt-2 border-t border-gray-700">
-              ✓ All nodes healthy
-            </div>
-          </div>
-        </div>
-        <div className="text-center mt-3 text-xs text-muted-foreground">
-          Draggable • Click stats to open console • Auto-refreshes every 30s
-        </div>
+            </button>
+          )
+        })}
       </div>
 
-      {/* Installation Options */}
-      <div className="space-y-4">
-        {/* Option 1: Browser Widget */}
-        <div className="p-4 rounded-lg bg-secondary/30 border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Monitor className="w-4 h-4 text-blue-400" />
-            <span className="font-medium text-sm">Option 1: Browser Widget Page</span>
+      {/* Installation Panel - Browser Widget */}
+      {selectedWidget === 'browser' && (
+        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 space-y-4">
+          <div className="flex items-center gap-2 text-blue-400">
+            <Globe className="w-4 h-4" />
+            <span className="font-medium text-sm">Browser Widget Setup</span>
           </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            Open a minimal widget view in Safari or Chrome for Picture-in-Picture or Always-on-Top.
-          </p>
+
           <a
             href="/widget"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
           >
             <ExternalLink className="w-4 h-4" />
             Open Widget Page
           </a>
-          <div className="mt-3 text-xs text-muted-foreground">
-            <p>Tip: In Safari, right-click the tab and select "Enter Picture in Picture" for a floating widget.</p>
+
+          <div className="space-y-3 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2">
+              <Chrome className="w-4 h-4 mt-0.5 text-blue-400 shrink-0" />
+              <div>
+                <span className="font-medium text-foreground">Chrome/Edge:</span> Install an "Always on Top" extension, then pin the widget tab.
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Apple className="w-4 h-4 mt-0.5 text-blue-400 shrink-0" />
+              <div>
+                <span className="font-medium text-foreground">Safari:</span> Right-click the tab → "Enter Picture in Picture" for a floating widget.
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Option 2: Übersicht Download */}
-        <div className="p-4 rounded-lg bg-secondary/30 border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Smartphone className="w-4 h-4 text-purple-400" />
-            <span className="font-medium text-sm">Option 2: Übersicht Widget (macOS)</span>
+      {/* Installation Panel - Übersicht Widget */}
+      {selectedWidget === 'uebersicht' && (
+        <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20 space-y-4">
+          <div className="flex items-center gap-2 text-purple-400">
+            <Smartphone className="w-4 h-4" />
+            <span className="font-medium text-sm">Übersicht Widget Setup</span>
           </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            Download the widget file and place it in your Übersicht widgets folder.
-          </p>
+
           <div className="flex gap-2">
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium transition-colors"
             >
               {downloaded ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
               {downloaded ? 'Downloaded!' : 'Download Widget'}
             </button>
             <button
               onClick={handleCopy}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
+              title="Copy widget code"
             >
               {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copied!' : 'Copy Code'}
             </button>
           </div>
-          <div className="mt-3 text-xs text-muted-foreground">
-            <p className="font-medium mb-1">Installation:</p>
-            <ol className="list-decimal list-inside space-y-1 text-muted-foreground/80">
+
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">Installation steps:</p>
+            <ol className="list-decimal list-inside space-y-1 pl-1">
               <li>Download the widget file above</li>
-              <li>Move to <code className="bg-secondary px-1 rounded">{widgetPath}</code></li>
+              <li>Move to <code className="bg-secondary px-1 rounded text-[10px]">{widgetPath}</code></li>
               <li>Ensure kc-agent is running on port 8585</li>
               <li>Restart Übersicht</li>
             </ol>
           </div>
-        </div>
 
-        {/* Get Übersicht link */}
-        <div className="flex items-center justify-between pt-2">
           <a
             href="https://tracesof.net/uebersicht/"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            className="inline-flex items-center gap-1 text-xs text-purple-400 hover:underline"
           >
             Get Übersicht for macOS <ExternalLink className="w-3 h-3" />
           </a>
         </div>
-      </div>
+      )}
+
+      {/* Widget Preview */}
+      {selectedWidget && (
+        <div className="mt-4 p-4 rounded-lg bg-gray-900/50 border border-border">
+          <div className="text-xs text-muted-foreground mb-3">Widget Preview</div>
+          <div className="flex justify-center">
+            <div
+              style={{
+                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                padding: '12px',
+                minWidth: '200px',
+                fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+              }}
+            >
+              {/* Drag handle preview */}
+              <div className="text-center mb-2">
+                <span className="text-gray-500 text-sm tracking-widest">⋮⋮</span>
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-sm font-semibold text-white">KubeStellar Console</span>
+                <span className="ml-auto text-[10px] text-gray-500">↗</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-green-400">0</div>
+                  <div className="text-[9px] text-gray-400 uppercase">Offline</div>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-blue-400">3/3</div>
+                  <div className="text-[9px] text-gray-400 uppercase">Ready</div>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-green-400">4/8</div>
+                  <div className="text-[9px] text-gray-400 uppercase">GPUs</div>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-green-400">3</div>
+                  <div className="text-[9px] text-gray-400 uppercase">Total</div>
+                </div>
+              </div>
+              <div className="text-center text-[11px] text-green-400 mt-2 pt-2 border-t border-gray-700">
+                ✓ All nodes healthy
+              </div>
+            </div>
+          </div>
+          <div className="text-center mt-3 text-xs text-muted-foreground">
+            Draggable • Click stats to open console • Auto-refreshes every 30s
+          </div>
+        </div>
+      )}
+
+      {/* Collapsed state hint */}
+      {!selectedWidget && (
+        <p className="text-xs text-center text-muted-foreground mt-2">
+          Select a widget type above to see installation options
+        </p>
+      )}
     </div>
   )
 }

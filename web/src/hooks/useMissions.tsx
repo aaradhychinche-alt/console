@@ -322,7 +322,18 @@ export function MissionProvider({ children }: { children: ReactNode }) {
           console.log('[Missions] Connection closed')
           wsRef.current = null
           setAgentsLoading(false) // Stop loading spinner on disconnect
-          setAgents([]) // Clear agents so "Configure AI" button shows
+          // Don't clear agents - keep them cached for display
+          // Users can still see available agents even if temporarily disconnected
+
+          // Auto-reconnect after a short delay (if not in demo mode)
+          if (!getDemoMode()) {
+            setTimeout(() => {
+              console.log('[Missions] Attempting auto-reconnect...')
+              ensureConnection().catch(() => {
+                // Silent fail - will retry on next user interaction
+              })
+            }, 3000)
+          }
 
           // Fail any pending missions that were waiting for a response
           if (pendingRequests.current.size > 0) {

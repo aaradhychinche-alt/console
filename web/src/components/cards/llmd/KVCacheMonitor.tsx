@@ -66,7 +66,7 @@ function PremiumGauge({ value, maxValue, label, sublabel, size = 140 }: PremiumG
   }
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center overflow-hidden" style={{ width: size + 20, maxWidth: size + 20 }}>
       <div className="relative" style={{ width: size, height: size }}>
         <svg viewBox={`0 0 ${viewSize} ${viewSize}`} className="w-full h-full">
           <defs>
@@ -142,9 +142,9 @@ function PremiumGauge({ value, maxValue, label, sublabel, size = 140 }: PremiumG
         </svg>
       </div>
 
-      <span className="text-sm text-white font-medium truncate max-w-full mt-1">{label}</span>
+      <span className="text-sm text-white font-medium truncate w-full text-center mt-1">{label}</span>
       {sublabel && (
-        <span className="text-xs text-muted-foreground">{sublabel}</span>
+        <span className="text-xs text-muted-foreground truncate w-full text-center">{sublabel}</span>
       )}
     </div>
   )
@@ -738,18 +738,19 @@ export function KVCacheMonitor() {
           {viewMode === 'gauges' ? (
             <motion.div
               key="gauges"
-              className={`grid h-full place-items-center overflow-auto ${
-                stats.length <= 3 ? 'grid-cols-3 gap-4' :
-                stats.length <= 6 ? 'grid-cols-3 gap-3' :
-                stats.length <= 9 ? 'grid-cols-3 gap-2' :
-                'grid-cols-4 gap-2'
+              className={`h-full overflow-auto ${
+                stats.length <= 2 ? 'flex items-center justify-evenly gap-12' :
+                stats.length <= 3 ? 'grid grid-cols-3 gap-6 place-items-center' :
+                stats.length <= 6 ? 'grid grid-cols-3 gap-3 place-items-center' :
+                stats.length <= 9 ? 'grid grid-cols-3 gap-2 place-items-center' :
+                'grid grid-cols-4 gap-2 place-items-center'
               }`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
             >
               {stats.slice(0, 12).map((stat) => {
-                const gaugeSize = stats.length <= 3 ? 130 : stats.length <= 6 ? 110 : stats.length <= 9 ? 100 : 85
+                const gaugeSize = stats.length <= 2 ? 120 : stats.length <= 3 ? 130 : stats.length <= 6 ? 110 : stats.length <= 9 ? 100 : 85
                 return (
                   <div
                     key={stat.podName}

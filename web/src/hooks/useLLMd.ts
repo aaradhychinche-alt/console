@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { kubectlProxy } from '../lib/kubectlProxy'
+import { getDemoMode } from './useDemoMode'
 
 // Refresh interval for automatic polling (2 minutes)
 const REFRESH_INTERVAL_MS = 120000
@@ -22,7 +23,7 @@ export interface LLMdServer {
   gpu?: string
   gpuCount?: number
   hasAutoscaler?: boolean
-  autoscalerType?: 'hpa' | 'va' | 'both'
+  autoscalerType?: 'hpa' | 'va' | 'vpa' | 'both'
   // Related component status
   gatewayStatus?: 'running' | 'stopped' | 'unknown'
   gatewayType?: 'istio' | 'kgateway' | 'envoy'
@@ -208,6 +209,12 @@ export function useLLMdServers(clusters: string[] = ['vllm-d', 'platform-eval'])
   const initialLoadDone = useRef(false)
 
   const refetch = useCallback(async (silent = false) => {
+    // Skip fetching in demo mode — no agent available
+    if (getDemoMode()) {
+      setIsLoading(false)
+      return
+    }
+
     console.log(`[useLLMdServers] refetch called, silent=${silent}`)
 
     // Progressive loading: reset state
@@ -241,7 +248,11 @@ export function useLLMdServers(clusters: string[] = ['vllm-d', 'platform-eval'])
               allDeployments.push(...items)
             }
           } catch (err) {
-            console.error(`[useLLMdServers] Error fetching deployments from ${cluster}:`, err)
+            // Suppress demo mode errors - they're expected when agent is unavailable
+            const errMsg = err instanceof Error ? err.message : String(err)
+            if (!errMsg.includes('demo mode')) {
+              console.error(`[useLLMdServers] Error fetching deployments from ${cluster}:`, err)
+            }
           }
 
           console.log(`[useLLMdServers] Found ${allDeployments.length} deployments from ${cluster}`)
@@ -399,7 +410,11 @@ export function useLLMdServers(clusters: string[] = ['vllm-d', 'platform-eval'])
             }
           }
         } catch (err) {
-          console.error(`Error fetching from cluster ${cluster}:`, err)
+          // Suppress demo mode errors - they're expected when agent is unavailable
+          const errMsg = err instanceof Error ? err.message : String(err)
+          if (!errMsg.includes('demo mode')) {
+            console.error(`Error fetching from cluster ${cluster}:`, err)
+          }
         }
       }
 
@@ -408,7 +423,11 @@ export function useLLMdServers(clusters: string[] = ['vllm-d', 'platform-eval'])
       setLastRefresh(new Date())
       initialLoadDone.current = true
     } catch (err) {
-      console.error('[useLLMdServers] Error in refetch:', err)
+      // Suppress demo mode errors
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (!errMsg.includes('demo mode')) {
+        console.error('[useLLMdServers] Error in refetch:', err)
+      }
       setConsecutiveFailures(prev => prev + 1)
       setLastRefresh(new Date())
       if (!silent) {
@@ -476,6 +495,12 @@ export function useLLMdModels(clusters: string[] = ['vllm-d', 'platform-eval']) 
   const initialLoadDone = useRef(false)
 
   const refetch = useCallback(async (silent = false) => {
+    // Skip fetching in demo mode — no agent available
+    if (getDemoMode()) {
+      setIsLoading(false)
+      return
+    }
+
     console.log(`[useLLMdModels] refetch called, silent=${silent}, clusters=${clusters.join(',')}`)
 
     // Progressive loading: reset state
@@ -532,7 +557,11 @@ export function useLLMdModels(clusters: string[] = ['vllm-d', 'platform-eval']) 
             }
           }
         } catch (err) {
-          console.error(`Error fetching InferencePools from cluster ${cluster}:`, err)
+          // Suppress demo mode errors - they're expected when agent is unavailable
+          const errMsg = err instanceof Error ? err.message : String(err)
+          if (!errMsg.includes('demo mode')) {
+            console.error(`Error fetching InferencePools from cluster ${cluster}:`, err)
+          }
         }
       }
 

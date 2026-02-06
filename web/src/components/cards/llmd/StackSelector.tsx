@@ -7,7 +7,6 @@
  */
 import { useState, useRef, useEffect, useMemo, memo, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Server, Layers, RefreshCw, Cpu, Search, X } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useOptionalStack } from '../../../contexts/StackContext'
 import type { LLMdStack } from '../../../hooks/useStackDiscovery'
 
@@ -90,10 +89,14 @@ const StackOption = memo(function StackOption({ stack, isSelected, onSelect }: S
   const handleClick = useCallback(() => {
     onSelect(stack.id)
   }, [onSelect, stack.id])
-  const prefillCount = stack.components.prefill.reduce((sum, c) => sum + c.replicas, 0)
-  const decodeCount = stack.components.decode.reduce((sum, c) => sum + c.replicas, 0)
-  const unifiedCount = stack.components.both.reduce((sum, c) => sum + c.replicas, 0)
-  const gpuInfo = estimateAccelerators(stack)
+
+  // Memoize expensive calculations to avoid recalculating on every scroll
+  const { prefillCount, decodeCount, unifiedCount, gpuInfo } = useMemo(() => ({
+    prefillCount: stack.components.prefill.reduce((sum, c) => sum + c.replicas, 0),
+    decodeCount: stack.components.decode.reduce((sum, c) => sum + c.replicas, 0),
+    unifiedCount: stack.components.both.reduce((sum, c) => sum + c.replicas, 0),
+    gpuInfo: estimateAccelerators(stack),
+  }), [stack])
 
   return (
     <button
@@ -101,6 +104,7 @@ const StackOption = memo(function StackOption({ stack, isSelected, onSelect }: S
       className={`w-full px-3 py-2.5 text-left hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-0 ${
         isSelected ? 'bg-slate-700/70' : ''
       }`}
+      style={{ contain: 'layout style paint' }}
     >
       {/* Row 1: Name and replica counts */}
       <div className="flex items-center justify-between mb-1">
@@ -235,6 +239,13 @@ export function StackSelector() {
 
   const { stacks, isLoading, selectedStack, selectedStackId, setSelectedStackId, refetch, isDemoMode } = stackContext
 
+  // Debug: Log stacks when dropdown is open
+  useEffect(() => {
+    if (isOpen && stacks.length > 0) {
+      console.log('[StackSelector] stacks:', stacks.length, 'clusters:', [...new Set(stacks.map(s => s.cluster))])
+    }
+  }, [isOpen, stacks])
+
   // Filter and sort stacks
   const filteredAndSortedStacks = useMemo(() => {
     let result = stacks
@@ -296,14 +307,17 @@ export function StackSelector() {
     }
   }
 
-  // Group stacks by cluster
-  const stacksByCluster = filteredAndSortedStacks.reduce((acc, stack) => {
-    if (!acc[stack.cluster]) {
-      acc[stack.cluster] = []
-    }
-    acc[stack.cluster].push(stack)
-    return acc
-  }, {} as Record<string, LLMdStack[]>)
+  // Group stacks by cluster (with fallback for undefined cluster names)
+  const stacksByCluster = useMemo(() => {
+    return filteredAndSortedStacks.reduce((acc, stack) => {
+      const clusterName = stack.cluster || 'unknown'
+      if (!acc[clusterName]) {
+        acc[clusterName] = []
+      }
+      acc[clusterName].push(stack)
+      return acc
+    }, {} as Record<string, LLMdStack[]>)
+  }, [filteredAndSortedStacks])
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -381,16 +395,11 @@ export function StackSelector() {
         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Dropdown menu */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 mt-1 w-[36rem] bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden"
-          >
+      {/* Dropdown menu - use CSS transitions instead of framer-motion for better scroll performance */}
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 mt-1 w-[36rem] bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+        >
             {/* Header with search */}
             <div className="border-b border-slate-700">
               {/* Title */}
@@ -479,30 +488,37 @@ export function StackSelector() {
               </div>
             </div>
 
-            {/* Stack list - contains scroll to prevent page scroll */}
-            <div className="max-h-80 overflow-y-auto overscroll-contain">
-              {Object.entries(stacksByCluster).sort(([a], [b]) => a.localeCompare(b)).map(([cluster, clusterStacks]) => (
-                <div key={cluster}>
-                  {/* Cluster header */}
-                  <div className="px-3 py-1.5 bg-slate-900/50 border-b border-slate-700 sticky top-0">
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                      {cluster}
-                    </span>
+            {/* Stack list - use layout containment for scroll performance */}
+            <div
+              className="max-h-80 min-h-[100px] overflow-y-auto overscroll-contain"
+              style={{ contain: 'layout', willChange: 'scroll-position' }}
+            >
+              {filteredAndSortedStacks.length > 0 ? (
+                Object.entries(stacksByCluster).sort(([a], [b]) => a.localeCompare(b)).map(([cluster, clusterStacks]) => (
+                  <div key={cluster}>
+                    {/* Cluster header - solid background for sticky scroll */}
+                    <div className="px-3 py-1.5 bg-slate-800 border-b border-slate-700 sticky top-0 z-10">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                        {cluster}
+                      </span>
+                    </div>
+
+                    {/* Stacks in cluster */}
+                    {clusterStacks.map(stack => (
+                      <StackOption
+                        key={stack.id}
+                        stack={stack}
+                        isSelected={stack.id === selectedStackId}
+                        onSelect={handleSelectStack}
+                      />
+                    ))}
                   </div>
-
-                  {/* Stacks in cluster */}
-                  {clusterStacks.map(stack => (
-                    <StackOption
-                      key={stack.id}
-                      stack={stack}
-                      isSelected={stack.id === selectedStackId}
-                      onSelect={handleSelectStack}
-                    />
-                  ))}
+                ))
+              ) : isLoading ? (
+                <div className="px-3 py-4 text-center text-slate-500 text-sm">
+                  Loading stacks...
                 </div>
-              ))}
-
-              {filteredAndSortedStacks.length === 0 && !isLoading && (
+              ) : (
                 <div className="px-3 py-4 text-center text-slate-500 text-sm">
                   {searchQuery ? 'No stacks match your search' : 'No llm-d stacks found'}
                 </div>
@@ -530,9 +546,8 @@ export function StackSelector() {
                 <span>~{totalAccelerators} accelerators</span>
               </span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
     </div>
   )
 }

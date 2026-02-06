@@ -9,6 +9,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
 import { useStackDiscovery, type LLMdStack, type LLMdStackComponent } from '../hooks/useStackDiscovery'
 import { useDemoMode } from '../hooks/useDemoMode'
+import { useClusters } from '../hooks/useMCP'
 
 const STORAGE_KEY = 'kubestellar-llmd-stack'
 
@@ -180,12 +181,19 @@ const StackContext = createContext<StackContextType | null>(null)
 
 interface StackProviderProps {
   children: React.ReactNode
-  clusters?: string[]
 }
 
-export function StackProvider({ children, clusters = ['pok-prod-001', 'vllm-d'] }: StackProviderProps) {
+export function StackProvider({ children }: StackProviderProps) {
   const { isDemoMode } = useDemoMode()
-  const { stacks: liveStacks, isLoading: liveLoading, error: liveError, refetch: liveRefetch, lastRefresh: liveLastRefresh } = useStackDiscovery(clusters)
+
+  // Get all reachable clusters dynamically - no hardcoding!
+  const { deduplicatedClusters } = useClusters()
+  const clusterNames = useMemo(() => {
+    const reachable = deduplicatedClusters.filter(c => c.reachable !== false)
+    return reachable.map(c => c.name)
+  }, [deduplicatedClusters])
+
+  const { stacks: liveStacks, isLoading: liveLoading, error: liveError, refetch: liveRefetch, lastRefresh: liveLastRefresh } = useStackDiscovery(clusterNames)
 
   // Use demo stacks when in demo mode, otherwise live stacks
   const demoStacks = useMemo(() => createDemoStacks(), [])

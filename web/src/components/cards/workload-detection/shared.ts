@@ -19,14 +19,11 @@ const LLMD_CLUSTER_KEYWORDS = [
 ]
 
 // Default clusters known to have llm-d stacks (fallback)
-// pok-prod-* clusters often have production LLM workloads
+// These are used when cluster discovery hasn't completed yet
 export const LLMD_CLUSTERS = [
   'vllm-d',
+  'pok-prod-001',
   'platform-eval',
-  'pok-prod-0001',
-  'pok-prod-0002',
-  'pokprod001',
-  'pokprod002',
 ]
 
 /**
@@ -38,7 +35,18 @@ export function useLLMdClusters(
   gpuClusterNames: Set<string> = new Set()
 ): string[] {
   return useMemo(() => {
+    // If clusters not loaded yet, use known fallback clusters
+    if (clusters.length === 0) {
+      console.log('[useLLMdClusters] No clusters loaded, using fallback:', LLMD_CLUSTERS)
+      return LLMD_CLUSTERS
+    }
+
     const reachable = clusters.filter(c => c.reachable !== false)
+
+    // If no reachable clusters, use fallback
+    if (reachable.length === 0) {
+      return LLMD_CLUSTERS
+    }
 
     // Find clusters that likely have LLM workloads based on:
     // 1. Clusters with GPU nodes
@@ -49,12 +57,21 @@ export function useLLMdClusters(
         LLMD_CLUSTER_KEYWORDS.some(kw => nameLower.includes(kw))
     }).map(c => c.name)
 
-    // If no candidates found, return all reachable clusters (the useCachedLLMdServers
-    // will scan them for llm-d namespaces)
+    // If no candidates found via keywords, use known fallback clusters that exist
     if (candidates.length === 0) {
-      return reachable.slice(0, 10).map(c => c.name)
+      const reachableNames = new Set(reachable.map(c => c.name))
+      const fallbackMatches = LLMD_CLUSTERS.filter(name => reachableNames.has(name))
+      if (fallbackMatches.length > 0) {
+        console.log('[useLLMdClusters] No keyword matches, using fallback:', fallbackMatches)
+        return fallbackMatches
+      }
+      // Last resort: return first 10 reachable clusters
+      const lastResort = reachable.slice(0, 10).map(c => c.name)
+      console.log('[useLLMdClusters] Last resort - first 10 reachable:', lastResort)
+      return lastResort
     }
 
+    console.log('[useLLMdClusters] Found candidates:', candidates)
     return candidates
   }, [clusters, gpuClusterNames])
 }

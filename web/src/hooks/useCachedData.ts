@@ -154,8 +154,8 @@ async function fetchFromAllClusters<T>(
 
 /** Get reachable cluster names from the shared cluster cache (deduplicated) */
 function getAgentClusters(): Array<{ name: string; context?: string }> {
-  // No local agent on Netlify — return empty to skip all agent requests
-  if (isDemoModeForced) return []
+  // No local agent in demo mode — return empty to skip all agent requests
+  if (isDemoMode()) return []
   // Skip long context-path names (contain '/') — these are duplicates of short-named aliases
   // e.g. "default/api-fmaas-vllm-d-...:6443/..." duplicates "vllm-d"
   return clusterCacheRef.clusters
@@ -692,7 +692,7 @@ function formatTimeAgo(timestamp: string): string {
 
 async function fetchProwJobs(prowCluster: string, namespace: string): Promise<ProwJob[]> {
   // Skip fetching in demo mode — no agent available
-  if (isDemoModeForced) return []
+  if (isDemoMode()) return []
 
   const response = await kubectlProxy.exec(
     ['get', 'prowjobs', '-n', namespace, '-o', 'json', '--sort-by=.metadata.creationTimestamp'],
@@ -885,7 +885,7 @@ function extractGPUInfo(deployment: DeploymentResource): { gpu?: string; gpuCoun
 
 async function fetchLLMdServers(clusters: string[]): Promise<LLMdServer[]> {
   // Skip fetching in demo mode — no agent available
-  if (isDemoModeForced) return []
+  if (isDemoMode()) return []
 
   const allServers: LLMdServer[] = []
 
@@ -902,12 +902,27 @@ async function fetchLLMdServers(clusters: string[]): Promise<LLMdServer[]> {
       if (allDeployments.length === 0) continue
 
       const autoscalerMap = new Map<string, 'hpa' | 'va' | 'both'>()
+      const autoscalerItems: LLMdServer[] = []
       try {
         const hpaResp = await kubectlProxy.exec(['get', 'hpa', '-A', '-o', 'json'], { context: cluster, timeout: 10000 })
         if (hpaResp.exitCode === 0) {
           for (const hpa of (JSON.parse(hpaResp.output).items || []) as HPAResource[]) {
             if (hpa.spec.scaleTargetRef.kind === 'Deployment') {
               autoscalerMap.set(`${hpa.metadata.namespace}/${hpa.spec.scaleTargetRef.name}`, 'hpa')
+              // Add HPA as a separate item for the Autoscaler section
+              autoscalerItems.push({
+                id: `${cluster}-${hpa.metadata.namespace}-${hpa.metadata.name}-hpa`,
+                name: hpa.metadata.name,
+                namespace: hpa.metadata.namespace,
+                cluster,
+                model: `→ ${hpa.spec.scaleTargetRef.name}`,
+                type: 'unknown',
+                componentType: 'autoscaler',
+                autoscalerType: 'hpa',
+                status: 'running',
+                replicas: 1,
+                readyReplicas: 1,
+              })
             }
           }
         }
@@ -920,7 +935,45 @@ async function fetchLLMdServers(clusters: string[]): Promise<LLMdServer[]> {
             if (va.spec.targetRef?.name) {
               const key = `${va.metadata.namespace}/${va.spec.targetRef.name}`
               autoscalerMap.set(key, autoscalerMap.has(key) ? 'both' : 'va')
+              // Add WVA/VariantAutoscaling as a separate item
+              autoscalerItems.push({
+                id: `${cluster}-${va.metadata.namespace}-${va.metadata.name}-wva`,
+                name: va.metadata.name,
+                namespace: va.metadata.namespace,
+                cluster,
+                model: `→ ${va.spec.targetRef.name}`,
+                type: 'unknown',
+                componentType: 'autoscaler',
+                autoscalerType: 'va',
+                status: 'running',
+                replicas: 1,
+                readyReplicas: 1,
+              })
             }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Also fetch VPA
+      try {
+        const vpaResp = await kubectlProxy.exec(['get', 'vpa', '-A', '-o', 'json'], { context: cluster, timeout: 10000 })
+        if (vpaResp.exitCode === 0) {
+          const vpaData = JSON.parse(vpaResp.output)
+          for (const vpa of (vpaData.items || []) as Array<{ metadata: { name: string; namespace: string }; spec?: { targetRef?: { name?: string } } }>) {
+            const targetName = vpa.spec?.targetRef?.name || 'unknown'
+            autoscalerItems.push({
+              id: `${cluster}-${vpa.metadata.namespace}-${vpa.metadata.name}-vpa`,
+              name: vpa.metadata.name,
+              namespace: vpa.metadata.namespace,
+              cluster,
+              model: `→ ${targetName}`,
+              type: 'unknown',
+              componentType: 'autoscaler',
+              autoscalerType: 'vpa',
+              status: 'running',
+              replicas: 1,
+              readyReplicas: 1,
+            })
           }
         }
       } catch { /* ignore */ }
@@ -984,8 +1037,15 @@ async function fetchLLMdServers(clusters: string[]): Promise<LLMdServer[]> {
           ...gpuInfo,
         })
       }
+
+      // Add autoscaler items as separate section entries
+      allServers.push(...autoscalerItems)
     } catch (err) {
-      console.error(`Error fetching from cluster ${cluster}:`, err)
+      // Suppress demo mode errors - they're expected when agent is unavailable
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (!errMsg.includes('demo mode')) {
+        console.error(`Error fetching from cluster ${cluster}:`, err)
+      }
     }
   }
   return allServers
@@ -1036,7 +1096,7 @@ export function useCachedLLMdServers(
 
 async function fetchLLMdModels(clusters: string[]): Promise<LLMdModel[]> {
   // Skip fetching in demo mode — no agent available
-  if (isDemoModeForced) return []
+  if (isDemoMode()) return []
 
   const allModels: LLMdModel[] = []
   for (const cluster of clusters) {
@@ -1056,7 +1116,11 @@ async function fetchLLMdModels(clusters: string[]): Promise<LLMdModel[]> {
         })
       }
     } catch (err) {
-      console.error(`Error fetching InferencePools from cluster ${cluster}:`, err)
+      // Suppress demo mode errors - they're expected when agent is unavailable
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (!errMsg.includes('demo mode')) {
+        console.error(`Error fetching InferencePools from cluster ${cluster}:`, err)
+      }
     }
   }
   return allModels

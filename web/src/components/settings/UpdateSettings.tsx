@@ -77,10 +77,10 @@ export function UpdateSettings() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div
-            className={`p-2 rounded-lg ${hasUpdate ? 'bg-green-500/20' : 'bg-blue-500/20'}`}
+            className={`p-2 rounded-lg ${hasUpdate ? 'bg-green-500/20' : 'bg-secondary'}`}
           >
             <Download
-              className={`w-5 h-5 ${hasUpdate ? 'text-green-400' : 'text-blue-400'}`}
+              className={`w-5 h-5 ${hasUpdate ? 'text-green-400' : 'text-muted-foreground'}`}
             />
           </div>
           <div>

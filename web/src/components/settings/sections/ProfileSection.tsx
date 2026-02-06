@@ -60,8 +60,8 @@ export function ProfileSection({ initialEmail, initialSlackId, refreshUser }: Pr
   return (
     <div id="profile-settings" className="glass rounded-xl p-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-lg bg-indigo-500/20">
-          <User className="w-5 h-5 text-indigo-400" />
+        <div className="p-2 rounded-lg bg-secondary">
+          <User className="w-5 h-5 text-muted-foreground" />
         </div>
         <div>
           <h2 className="text-lg font-medium text-foreground">Profile</h2>

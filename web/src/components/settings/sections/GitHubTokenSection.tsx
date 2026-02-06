@@ -145,8 +145,8 @@ export function GitHubTokenSection({ forceVersionCheck }: GitHubTokenSectionProp
   return (
     <div id="github-token-settings" className="glass rounded-xl p-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-lg bg-gray-500/20">
-          <Github className="w-5 h-5 text-gray-400" />
+        <div className="p-2 rounded-lg bg-secondary">
+          <Github className="w-5 h-5 text-muted-foreground" />
         </div>
         <div>
           <h2 className="text-lg font-medium text-foreground">GitHub Integration</h2>

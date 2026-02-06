@@ -28,8 +28,8 @@ export function TokenUsageSection({ usage, updateSettings, resetUsage }: TokenUs
     <div id="token-usage-settings" className="glass rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-yellow-500/20">
-            <Coins className="w-5 h-5 text-yellow-400" />
+          <div className="p-2 rounded-lg bg-secondary">
+            <Coins className="w-5 h-5 text-muted-foreground" />
           </div>
           <div>
             <h2 className="text-lg font-medium text-foreground">Token Usage</h2>

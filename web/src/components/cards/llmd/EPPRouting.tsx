@@ -556,10 +556,10 @@ export function EPPRouting() {
         })
       }
 
-      // Decode nodes - spread from y=34 to y=66 (matching demo NODES)
+      // Decode nodes - spread from y=5 to y=95 (full vertical range)
       const maxDecode = Math.min(decodeCount, 10)
       for (let i = 0; i < maxDecode; i++) {
-        const y = maxDecode === 1 ? 50 : 34 + (32 * i) / (maxDecode - 1)
+        const y = maxDecode === 1 ? 50 : 5 + (90 * i) / (maxDecode - 1)
         nodes.push({
           id: `decode-${i}`,
           label: `Decode-${i}`,
@@ -903,7 +903,7 @@ export function EPPRouting() {
       {/* Main visualization area */}
       <div className={`flex-1 relative ${isExpanded ? 'min-h-[500px]' : 'min-h-[200px]'}`}>
         <svg
-          viewBox="0 3 100 105"
+          viewBox="-5 -5 120 120"
           className="w-full h-full overflow-visible"
           preserveAspectRatio="xMidYMid meet"
           style={{ overflow: 'visible' }}

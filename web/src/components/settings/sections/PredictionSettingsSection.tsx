@@ -55,8 +55,8 @@ export function PredictionSettingsSection({
     <div id="prediction-settings" className="glass rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-500/20">
-            <TrendingUp className="w-5 h-5 text-blue-400" />
+          <div className="p-2 rounded-lg bg-secondary">
+            <TrendingUp className="w-5 h-5 text-muted-foreground" />
           </div>
           <div>
             <h2 className="text-lg font-medium text-foreground">Predictive Failure Detection</h2>

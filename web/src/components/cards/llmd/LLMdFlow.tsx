@@ -653,10 +653,10 @@ export function LLMdFlow() {
         })
       }
 
-      // Position decode nodes - spread from y=34 to y=66
+      // Position decode nodes - spread from y=5 to y=95 (full vertical range)
       for (let i = 0; i < maxDecode; i++) {
         const key = `decode${i}`
-        const y = maxDecode === 1 ? 50 : 34 + (32 * i) / (maxDecode - 1)
+        const y = maxDecode === 1 ? 50 : 5 + (90 * i) / (maxDecode - 1)
         positions[key] = { x: 92, y }
         labels[key] = `Decode-${i}`
         // Direct EPP to decode connections (for cached KV)

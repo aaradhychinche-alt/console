@@ -8,6 +8,7 @@
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { kubectlProxy } from '../lib/kubectlProxy'
+import { getDemoMode } from './useDemoMode'
 import type { LLMdServer } from './useLLMd'
 
 // Refresh interval (2 minutes)
@@ -163,7 +164,7 @@ function saveCachedStacks(stacks: LLMdStack[]) {
  *
  * Uses localStorage caching for instant initial display.
  */
-export function useStackDiscovery(clusters: string[] = ['pok-prod-001', 'vllm-d']) {
+export function useStackDiscovery(clusters: string[]) {
   // Initialize from cache for instant display
   const cached = useMemo(() => loadCachedStacks(), [])
   const isCacheValid = cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)
@@ -176,11 +177,25 @@ export function useStackDiscovery(clusters: string[] = ['pok-prod-001', 'vllm-d'
   const isRefetching = useRef(false) // Guard against concurrent refetches
 
   const refetch = useCallback(async (silent = false) => {
+    // Skip fetching in demo mode — no agent available
+    if (getDemoMode()) {
+      setIsLoading(false)
+      return
+    }
+
+    // Wait for clusters to be loaded before fetching
+    if (clusters.length === 0) {
+      console.log('[useStackDiscovery] Waiting for clusters to load...')
+      return
+    }
+
     // Prevent concurrent refetches
     if (isRefetching.current) {
       return
     }
     isRefetching.current = true
+
+    console.log('[useStackDiscovery] Fetching stacks from clusters:', clusters)
 
     if (!silent) {
       setIsLoading(true)
@@ -509,7 +524,11 @@ export function useStackDiscovery(clusters: string[] = ['pok-prod-001', 'vllm-d'
           // when the cluster is temporarily unreachable
 
         } catch (err) {
-          console.error(`[useStackDiscovery] Error fetching from ${cluster}:`, err)
+          // Suppress demo mode errors - they're expected when agent is unavailable
+          const errMsg = err instanceof Error ? err.message : String(err)
+          if (!errMsg.includes('demo mode') && !errMsg.includes('timed out')) {
+            console.error(`[useStackDiscovery] Error fetching from ${cluster}:`, err)
+          }
         }
       }
 
@@ -517,7 +536,11 @@ export function useStackDiscovery(clusters: string[] = ['pok-prod-001', 'vllm-d'
       setLastRefresh(new Date())
       initialLoadDone.current = true
     } catch (err) {
-      console.error('[useStackDiscovery] Error:', err)
+      // Suppress demo mode errors
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (!errMsg.includes('demo mode')) {
+        console.error('[useStackDiscovery] Error:', err)
+      }
       setError(err instanceof Error ? err.message : 'Failed to discover stacks')
     } finally {
       setIsLoading(false)
@@ -526,13 +549,17 @@ export function useStackDiscovery(clusters: string[] = ['pok-prod-001', 'vllm-d'
   }, [clusters.join(',')])
 
   useEffect(() => {
+    // Wait for clusters to be available
+    if (clusters.length === 0) {
+      return
+    }
     // If we have valid cache, do a silent refresh in background
     // Otherwise do a full fetch with loading state
     refetch(Boolean(isCacheValid))
     const interval = setInterval(() => refetch(true), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refetch])
+  }, [refetch, clusters.length])
 
   return {
     stacks,
