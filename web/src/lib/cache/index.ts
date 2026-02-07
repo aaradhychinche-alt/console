@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import { isDemoMode, subscribeDemoMode } from '../demoMode'
 
 // ============================================================================
 // Configuration
@@ -292,6 +293,48 @@ class IndexedDBStorage {
 const idbStorage = new IndexedDBStorage()
 
 // ============================================================================
+// Demo Mode Integration - Clear caches when demo mode toggles ON
+// ============================================================================
+
+let lastDemoMode: boolean | null = null
+
+/**
+ * Clear all in-memory cache stores. Called when demo mode toggles.
+ * This ensures cards get fresh demo data instead of stale live data.
+ */
+function clearAllInMemoryCaches(): void {
+  const count = cacheRegistry.size
+  for (const store of cacheRegistry.values()) {
+    (store as CacheStore<unknown>).resetToInitialData()
+  }
+  if (count > 0) {
+    console.log(`[Cache] Reset ${count} caches to initial data for demo mode`)
+  }
+}
+
+// Subscribe to demo mode changes at module level
+if (typeof window !== 'undefined') {
+  // Import is already at top of file, use it here
+  const checkDemoModeChange = () => {
+    const currentDemoMode = isDemoMode()
+    if (lastDemoMode !== null && lastDemoMode !== currentDemoMode) {
+      if (currentDemoMode) {
+        // Switching TO demo mode - clear all caches so cards show demo data
+        clearAllInMemoryCaches()
+      }
+      // Note: When switching FROM demo mode, we don't clear - let cards refetch live data
+    }
+    lastDemoMode = currentDemoMode
+  }
+
+  // Check on initial load
+  checkDemoModeChange()
+
+  // Subscribe to demo mode changes
+  subscribeDemoMode(checkDemoModeChange)
+}
+
+// ============================================================================
 // Cache Store (Module-level singleton)
 // ============================================================================
 
@@ -402,6 +445,22 @@ class CacheStore<T> {
     if (this.state.isLoading) {
       this.setState({ isLoading: false, lastRefresh: Date.now() })
     }
+  }
+
+  /**
+   * Reset store to initial data state. Called when demo mode toggles ON
+   * to ensure cards show demo data instead of cached live data.
+   */
+  resetToInitialData(): void {
+    this.initialDataLoaded = false
+    this.setState({
+      data: this.initialData,
+      isLoading: false,
+      isRefreshing: false,
+      error: null,
+      isFailed: false,
+      consecutiveFailures: 0,
+    })
   }
 
   // Fetching
@@ -562,6 +621,13 @@ export function useCache<T>({
   merge,
   shared = true,
 }: UseCacheOptions<T>): UseCacheResult<T> {
+  // Subscribe to demo mode - this ensures we re-render when demo mode changes
+  const demoMode = useSyncExternalStore(subscribeDemoMode, isDemoMode, isDemoMode)
+
+  // Effective enabled: both the passed prop AND not in demo mode
+  // This handles cases where enabled: !isDemoMode() was passed but component didn't re-render
+  const effectiveEnabled = enabled && !demoMode
+
   // Get or create cache store
   const storeRef = useRef<CacheStore<T> | null>(null)
 
@@ -588,9 +654,9 @@ export function useCache<T>({
   mergeRef.current = merge
 
   const refetch = useCallback(async () => {
-    if (!enabled) return
+    if (!effectiveEnabled) return
     await store.fetch(() => fetcherRef.current(), mergeRef.current)
-  }, [enabled, store])
+  }, [effectiveEnabled, store])
 
   const clearAndRefetch = useCallback(async () => {
     await store.clear()
@@ -601,7 +667,7 @@ export function useCache<T>({
   const effectiveInterval = refreshInterval ?? REFRESH_RATES[category]
 
   useEffect(() => {
-    if (!enabled) {
+    if (!effectiveEnabled) {
       // In demo/disabled mode, no fetch will run — mark loading as done
       store.markReady()
       return
@@ -615,7 +681,7 @@ export function useCache<T>({
       const intervalId = setInterval(refetch, effectiveInterval)
       return () => clearInterval(intervalId)
     }
-  }, [enabled, autoRefresh, effectiveInterval, refetch, store])
+  }, [effectiveEnabled, autoRefresh, effectiveInterval, refetch, store])
 
   // Cleanup non-shared stores on unmount
   useEffect(() => {
@@ -626,8 +692,10 @@ export function useCache<T>({
     }
   }, [shared])
 
+  // When disabled (demo mode), return initialData instead of cached live data
+  // This ensures demo mode shows demo content while preserving cache for live mode
   return {
-    data: state.data,
+    data: effectiveEnabled ? state.data : initialData,
     isLoading: state.isLoading,
     isRefreshing: state.isRefreshing,
     error: state.error,
