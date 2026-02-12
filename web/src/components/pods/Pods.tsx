@@ -219,22 +219,29 @@ export function Pods() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {clusters
             .filter(cluster => isAllClustersSelected || globalSelectedClusters.includes(cluster.name))
-            .map((cluster) => (
-            <div key={cluster.name} className="glass p-3 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <StatusIndicator
-                  status={cluster.reachable === false ? 'unreachable' : cluster.healthy ? 'healthy' : 'error'}
-                  size="sm"
-                />
-                <span className="font-medium text-foreground text-sm truncate">
-                  {cluster.context || cluster.name.split('/').pop()}
-                </span>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {cluster.reachable !== false ? (cluster.podCount ?? '-') : '-'} pods
-              </div>
-            </div>
-          ))}
+            .map((cluster) => {
+              const clusterStatus = cluster.reachable === false ? 'unreachable' : cluster.healthy ? 'healthy' : 'error'
+              return (
+                <div key={cluster.name} className="glass p-3 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <PortalTooltip content={STATUS_TOOLTIPS[clusterStatus]}>
+                      <span>
+                        <StatusIndicator
+                          status={clusterStatus}
+                          size="sm"
+                        />
+                      </span>
+                    </PortalTooltip>
+                    <span className="font-medium text-foreground text-sm truncate">
+                      {cluster.context || cluster.name.split('/').pop()}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {cluster.reachable !== false ? (cluster.podCount ?? '-') : '-'} pods
+                  </div>
+                </div>
+              )
+            })}
         </div>
       </div>
     </DashboardPage>
