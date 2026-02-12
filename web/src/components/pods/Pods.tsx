@@ -45,6 +45,16 @@ export function Pods() {
   // Show skeleton during mode switching for smooth transitions
   const showSkeletons = (podIssues.length === 0 && isLoading) || isModeSwitching
 
+  // Handler for keyboard navigation on pod issue cards
+  const handlePodIssueKeyDown = useCallback((e: React.KeyboardEvent, cluster: string | undefined, namespace: string, name: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault() // Prevent default for both Enter and Space to match button behavior
+      if (cluster) {
+        drillToPod(cluster, namespace, name)
+      }
+    }
+  }, [drillToPod])
+
   // Filter pod issues by global cluster selection
   const filteredPodIssues = useMemo(() => {
     // Apply cluster filtering using the built-in helper
@@ -158,6 +168,9 @@ export function Pods() {
             <div
               key={i}
               onClick={() => issue.cluster && drillToPod(issue.cluster, issue.namespace, issue.name)}
+              onKeyDown={(e) => handlePodIssueKeyDown(e, issue.cluster, issue.namespace, issue.name)}
+              role="button"
+              tabIndex={0}
               className={`glass p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.01] border-l-4 ${
                 issue.reason === 'CrashLoopBackOff' || issue.reason === 'OOMKilled' ? 'border-l-red-500' :
                 issue.reason === 'Pending' || issue.reason === 'ContainerCreating' ? 'border-l-yellow-500' :
