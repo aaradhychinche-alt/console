@@ -5,6 +5,7 @@ import { ClusterInfo } from '../../../hooks/useMCP'
 import { StatusIndicator } from '../../charts/StatusIndicator'
 import { isClusterUnreachable, isClusterLoading } from '../utils'
 import { CloudProviderIcon, detectCloudProvider, getProviderLabel, getProviderColor, getConsoleUrl } from '../../ui/CloudProviderIcon'
+import { useTranslation } from 'react-i18next'
 
 // Guarantees spinner runs for at least 1 full rotation (1s) even if data returns faster.
 // Uses refs for condition checks to avoid stale closure issues when refreshing
@@ -105,6 +106,7 @@ const FullClusterCard = memo(function FullClusterCard({
   onRenameCluster,
   onRefreshCluster,
 }: Omit<ClusterCardProps, 'layoutMode'>) {
+  const { t } = useTranslation()
   const loading = isClusterLoading(cluster)
   const unreachable = isClusterUnreachable(cluster)
   const hasCachedData = cluster.nodeCount !== undefined && cluster.nodeCount > 0
@@ -169,7 +171,7 @@ const FullClusterCard = memo(function FullClusterCard({
                     unreachable ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30' :
                     'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
                   }`}
-                  title={spinning ? 'Refreshing...' : unreachable ? 'Retry connection' : 'Refresh cluster data'}
+                  title={spinning ? t('common.refreshing') : unreachable ? 'Retry connection' : 'Refresh cluster data'}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${spinning ? 'animate-spin' : ''}`} />
                 </button>
@@ -248,25 +250,25 @@ const FullClusterCard = memo(function FullClusterCard({
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData && cluster.nodeCount !== undefined ? cluster.nodeCount : '-'} />
             </div>
-            <div className="text-xs text-muted-foreground">Nodes</div>
+            <div className="text-xs text-muted-foreground">{t('common.nodes')}</div>
           </div>
           <div title={unreachable ? 'CPU: Cluster offline' : hasCachedData && cluster.cpuCores !== undefined ? `CPU: ${cluster.cpuCores} total CPU cores` : 'CPU: Loading...'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData && cluster.cpuCores !== undefined ? cluster.cpuCores : '-'} />
             </div>
-            <div className="text-xs text-muted-foreground">CPUs</div>
+            <div className="text-xs text-muted-foreground">{t('common.cpus')}</div>
           </div>
           <div title={unreachable ? 'Pods: Cluster offline' : hasCachedData && cluster.podCount !== undefined ? `Pods: ${cluster.podCount} running pods` : 'Pods: Loading...'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData && cluster.podCount !== undefined ? cluster.podCount : '-'} />
             </div>
-            <div className="text-xs text-muted-foreground">Pods</div>
+            <div className="text-xs text-muted-foreground">{t('common.pods')}</div>
           </div>
           <div title={unreachable ? 'GPU: Cluster offline' : gpuInfo ? `GPU: ${gpuInfo.allocated}/${gpuInfo.total} GPUs allocated` : 'GPU: No GPUs detected'}>
             <div className={`text-lg font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData && !unreachable ? (gpuInfo ? gpuInfo.total : 0) : '-'} />
             </div>
-            <div className="text-xs text-muted-foreground">GPUs</div>
+            <div className="text-xs text-muted-foreground">{t('common.gpus')}</div>
           </div>
         </div>
 
@@ -288,7 +290,7 @@ const FullClusterCard = memo(function FullClusterCard({
           )}
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Source: {cluster.source || 'kubeconfig'}</span>
-            <span title="View details"><ChevronRight className="w-4 h-4 text-primary" /></span>
+            <span title={t('common.viewDetails')}><ChevronRight className="w-4 h-4 text-primary" /></span>
           </div>
         </div>
       </div>
@@ -305,6 +307,7 @@ const ListClusterCard = memo(function ListClusterCard({
   onSelectCluster,
   onRefreshCluster,
 }: Omit<ClusterCardProps, 'layoutMode' | 'isConnected' | 'onRenameCluster'>) {
+  const { t } = useTranslation()
   const loading = isClusterLoading(cluster)
   const unreachable = isClusterUnreachable(cluster)
   const hasCachedData = cluster.nodeCount !== undefined && cluster.nodeCount > 0
@@ -435,7 +438,7 @@ const ListClusterCard = memo(function ListClusterCard({
                   unreachable ? 'text-yellow-400 hover:bg-yellow-500/20' :
                   'text-muted-foreground hover:bg-secondary hover:text-foreground'
                 }`}
-                title={spinning ? 'Refreshing...' : 'Refresh'}
+                title={spinning ? t('common.refreshing') : t('common.refresh')}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${spinning ? 'animate-spin' : ''}`} />
               </button>
@@ -459,6 +462,7 @@ const CompactClusterCard = memo(function CompactClusterCard({
   gpuInfo,
   onSelectCluster,
 }: Omit<ClusterCardProps, 'layoutMode' | 'isConnected' | 'permissionsLoading' | 'isClusterAdmin' | 'onRenameCluster' | 'onRefreshCluster'>) {
+  const { t } = useTranslation()
   const unreachable = isClusterUnreachable(cluster)
   const hasCachedData = cluster.nodeCount !== undefined && cluster.nodeCount > 0
   const refreshing = cluster.refreshing === true
@@ -517,25 +521,25 @@ const CompactClusterCard = memo(function CompactClusterCard({
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData ? cluster.nodeCount : '-'} />
             </div>
-            <div className="text-[10px] text-muted-foreground">Nodes</div>
+            <div className="text-[10px] text-muted-foreground">{t('common.nodes')}</div>
           </div>
           <div className="p-1 rounded bg-secondary/30" title={unreachable ? 'CPU: Cluster offline' : hasCachedData ? `CPU: ${cluster.cpuCores} cores` : 'CPU: Loading...'}>
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData ? cluster.cpuCores : '-'} />
             </div>
-            <div className="text-[10px] text-muted-foreground">CPUs</div>
+            <div className="text-[10px] text-muted-foreground">{t('common.cpus')}</div>
           </div>
           <div className="p-1 rounded bg-secondary/30" title={unreachable ? 'Pods: Cluster offline' : hasCachedData ? `Pods: ${cluster.podCount} running` : 'Pods: Loading...'}>
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData ? cluster.podCount : '-'} />
             </div>
-            <div className="text-[10px] text-muted-foreground">Pods</div>
+            <div className="text-[10px] text-muted-foreground">{t('common.pods')}</div>
           </div>
           <div className="p-1 rounded bg-secondary/30" title={unreachable ? 'GPU: Cluster offline' : gpuInfo ? `GPU: ${gpuInfo.allocated}/${gpuInfo.total} allocated` : 'GPU: None detected'}>
             <div className={`text-sm font-bold ${refreshing ? 'text-muted-foreground' : 'text-foreground'}`}>
               <FlashingValue value={hasCachedData && !unreachable ? (gpuInfo?.total || 0) : '-'} />
             </div>
-            <div className="text-[10px] text-muted-foreground">GPUs</div>
+            <div className="text-[10px] text-muted-foreground">{t('common.gpus')}</div>
           </div>
         </div>
       </div>

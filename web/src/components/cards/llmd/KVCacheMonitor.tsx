@@ -15,6 +15,7 @@ import { HorseshoeGauge } from './shared/HorseshoeGauge'
 import { useOptionalStack } from '../../../contexts/StackContext'
 import { useCardDemoState, useReportCardDataState } from '../CardDataContext'
 import { useCardExpanded } from '../CardWrapper'
+import { useTranslation } from 'react-i18next'
 
 // Premium gauge with glowing arcs and ambient lighting
 interface PremiumGaugeProps {
@@ -243,6 +244,7 @@ function InfoSparkline({ data, color, width = 100, height = 30 }: { data: number
 }
 
 export function KVCacheMonitor() {
+  const { t } = useTranslation()
   const stackContext = useOptionalStack()
   const [stats, setStats] = useState<KVCacheStats[]>([])
   const [viewMode, setViewMode] = useState<'gauges' | 'horseshoe' | 'heatmap'>('gauges')
@@ -624,7 +626,7 @@ export function KVCacheMonitor() {
           <div className="text-lg font-bold text-cyan-400" style={{ textShadow: '0 0 10px rgba(6,182,212,0.5)' }}>
             {stats.length}
           </div>
-          <div className="text-xs text-muted-foreground">Pods</div>
+          <div className="text-xs text-muted-foreground">{t('common.pods')}</div>
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import {
   CardControlsRow, CardListItem, CardPaginationFooter,
   CardAIActions,
 } from '../../lib/cards'
+import { useTranslation } from 'react-i18next'
 
 type SortByOption = 'status' | 'name' | 'restarts' | 'cluster'
 
@@ -29,6 +30,7 @@ const getIssueIcon = (status: string): { icon: typeof MemoryStick; tooltip: stri
 }
 
 export function PodIssues() {
+  const { t } = useTranslation()
   const {
     issues: rawIssues,
     isLoading: hookLoading,
@@ -158,7 +160,7 @@ export function PodIssues() {
       <CardSearchInput
         value={localSearch}
         onChange={setLocalSearch}
-        placeholder="Search issues..."
+        placeholder={t('common.searchIssues')}
         className="mb-3"
       />
 

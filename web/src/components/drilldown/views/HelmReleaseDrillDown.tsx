@@ -15,6 +15,7 @@ import {
   useModalAI,
   type ResourceContext,
 } from '../../modals'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   data: Record<string, unknown>
@@ -66,6 +67,7 @@ interface HelmHistoryRaw {
 }
 
 export function HelmReleaseDrillDown({ data }: Props) {
+  const { t } = useTranslation()
   const cluster = data.cluster as string
   const namespace = data.namespace as string
   const releaseName = data.release as string
@@ -336,7 +338,7 @@ Please:
               className="flex items-center gap-2 hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 px-3 py-1.5 rounded-lg transition-all group cursor-pointer"
             >
               <Layers className="w-4 h-4 text-purple-400" />
-              <span className="text-muted-foreground">Namespace:</span>
+              <span className="text-muted-foreground">{t('drilldown.fields.namespace')}</span>
               <span className="font-mono text-purple-400 group-hover:text-purple-300 transition-colors">{namespace}</span>
               <svg className="w-3 h-3 text-purple-400/50 group-hover:text-purple-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -347,7 +349,7 @@ Please:
               className="flex items-center gap-2 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/30 px-3 py-1.5 rounded-lg transition-all group cursor-pointer"
             >
               <Server className="w-4 h-4 text-blue-400" />
-              <span className="text-muted-foreground">Cluster:</span>
+              <span className="text-muted-foreground">{t('drilldown.fields.cluster')}</span>
               <ClusterBadge cluster={cluster.split('/').pop() || cluster} size="sm" />
               <svg className="w-3 h-3 text-blue-400/50 group-hover:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -410,7 +412,7 @@ Please:
                   <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       <GitBranch className="w-4 h-4" />
-                      <span>Chart: {chartName || releaseInfo?.chart || 'Loading...'}</span>
+                      <span>Chart: {chartName || releaseInfo?.chart || t('common.loading')}</span>
                     </div>
                     {(chartVersion || releaseInfo?.app_version) && (
                       <div className="flex items-center gap-1.5">
@@ -441,11 +443,11 @@ Please:
               </div>
               <div className="p-4 rounded-lg border border-border bg-card/50">
                 <div className="text-2xl font-bold text-foreground">{parsedResources.filter(r => r.kind === 'Deployment').length}</div>
-                <div className="text-xs text-muted-foreground">Deployments</div>
+                <div className="text-xs text-muted-foreground">{t('common.deployments')}</div>
               </div>
               <div className="p-4 rounded-lg border border-border bg-card/50">
                 <div className="text-2xl font-bold text-foreground">{parsedResources.filter(r => r.kind === 'Service').length}</div>
-                <div className="text-xs text-muted-foreground">Services</div>
+                <div className="text-xs text-muted-foreground">{t('common.services')}</div>
               </div>
               <div className="p-4 rounded-lg border border-border bg-card/50">
                 <div className="text-2xl font-bold text-foreground">{parsedResources.length}</div>

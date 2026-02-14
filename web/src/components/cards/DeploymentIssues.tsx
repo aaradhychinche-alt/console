@@ -12,6 +12,7 @@ import {
   CardControlsRow, CardListItem, CardPaginationFooter,
   CardAIActions,
 } from '../../lib/cards'
+import { useTranslation } from 'react-i18next'
 
 type SortByOption = 'status' | 'name' | 'cluster'
 
@@ -33,6 +34,7 @@ const getIssueIcon = (status: string): { icon: typeof AlertCircle; tooltip: stri
 }
 
 function DeploymentIssuesInternal({ config }: DeploymentIssuesProps) {
+  const { t } = useTranslation()
   const clusterConfig = config?.cluster as string | undefined
   const namespaceConfig = config?.namespace as string | undefined
   const {
@@ -175,7 +177,7 @@ function DeploymentIssuesInternal({ config }: DeploymentIssuesProps) {
       <CardSearchInput
         value={localSearch}
         onChange={setLocalSearch}
-        placeholder="Search issues..."
+        placeholder={t('common.searchIssues')}
         className="mb-3"
       />
 
@@ -250,6 +252,7 @@ function DeploymentIssuesInternal({ config }: DeploymentIssuesProps) {
 }
 
 export function DeploymentIssues(props: DeploymentIssuesProps) {
+  const { t: _t } = useTranslation()
   return (
     <DynamicCardErrorBoundary cardId="DeploymentIssues">
       <DeploymentIssuesInternal {...props} />

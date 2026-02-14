@@ -10,6 +10,7 @@ import { ClusterDetailModal } from '../clusters/ClusterDetailModal'
 import { CloudProviderIcon, detectCloudProvider, getProviderLabel, CloudProvider } from '../ui/CloudProviderIcon'
 import { isClusterUnreachable, isClusterTokenExpired } from '../clusters/utils'
 import { useCardLoadingState } from './CardDataContext'
+import { useTranslation } from 'react-i18next'
 
 // Console URL generation for cloud providers
 function getConsoleUrl(provider: CloudProvider, clusterName: string, apiServerUrl?: string): string | null {
@@ -75,6 +76,7 @@ const CLUSTER_SORT_COMPARATORS = {
 
 
 export function ClusterHealth() {
+  const { t } = useTranslation()
   const {
     deduplicatedClusters: rawClusters,
     isLoading: isLoadingHook,
@@ -268,7 +270,7 @@ export function ClusterHealth() {
       <CardSearchInput
         value={search}
         onChange={setSearch}
-        placeholder="Search clusters..."
+        placeholder={t('common.searchClusters')}
         className="mb-4"
       />
 
@@ -277,7 +279,7 @@ export function ClusterHealth() {
         <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20" title={`${healthyClusters} clusters are healthy and responding`}>
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle className="w-4 h-4 text-green-400" />
-            <span className="text-xs text-green-400">Healthy</span>
+            <span className="text-xs text-green-400">{t('common.healthy')}</span>
           </div>
           <span className="text-2xl font-bold text-foreground">{healthyClusters}</span>
         </div>

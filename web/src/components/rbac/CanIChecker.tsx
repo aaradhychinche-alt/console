@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { Shield, Check, X, Loader2, AlertCircle, ChevronDown } from 'lucide-react'
 import { useCanI } from '../../hooks/usePermissions'
 import { useClusters, useNamespaces } from '../../hooks/useMCP'
+import { useTranslation } from 'react-i18next'
 
 const COMMON_VERBS = ['get', 'list', 'create', 'update', 'delete', 'watch', 'patch']
 
@@ -87,6 +88,7 @@ const COMMON_RESOURCES = [
 ]
 
 export function CanIChecker() {
+  const { t } = useTranslation()
   const { clusters: rawClusters } = useClusters()
   const clusters = rawClusters.map(c => c.name)
   const { checkPermission, checking, result, error, reset } = useCanI()
@@ -501,7 +503,7 @@ export function CanIChecker() {
           <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30" data-testid="can-i-error">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-red-500" />
-              <span className="font-medium text-red-500">Error</span>
+              <span className="font-medium text-red-500">{t('common.error')}</span>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{error}</p>
           </div>

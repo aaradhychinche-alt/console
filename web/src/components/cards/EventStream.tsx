@@ -11,6 +11,7 @@ import {
   CardControlsRow, CardPaginationFooter,
 } from '../../lib/cards'
 import { useCardLoadingState } from './CardDataContext'
+import { useTranslation } from 'react-i18next'
 
 type SortByOption = 'time' | 'count' | 'type'
 
@@ -21,6 +22,7 @@ const SORT_OPTIONS = [
 ]
 
 function EventStreamInternal() {
+  const { t } = useTranslation()
   // Fetch more events from API to enable pagination (using cached data hook)
   const {
     events: rawEvents,
@@ -164,7 +166,7 @@ function EventStreamInternal() {
       <CardSearchInput
         value={localSearch}
         onChange={setLocalSearch}
-        placeholder="Search events..."
+        placeholder={t('common.searchEvents')}
         className="mb-3"
       />
 
@@ -229,6 +231,7 @@ function EventStreamInternal() {
 }
 
 export function EventStream() {
+  const { t: _t } = useTranslation()
   return (
     <DynamicCardErrorBoundary cardId="EventStream">
       <EventStreamInternal />

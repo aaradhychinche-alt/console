@@ -15,6 +15,7 @@ import { useGPUNodes, useClusters } from '../../hooks/useMCP'
 import { useGlobalFilters } from '../../hooks/useGlobalFilters'
 import { Skeleton, SkeletonStats } from '../ui/Skeleton'
 import { useCardLoadingState } from './CardDataContext'
+import { useTranslation } from 'react-i18next'
 
 interface GPUDataPoint {
   time: string
@@ -40,6 +41,7 @@ function normalizeClusterName(cluster: string): string {
 }
 
 export function GPUUsageTrend() {
+  const { t } = useTranslation()
   const {
     nodes: gpuNodes,
     isLoading: hookLoading,
@@ -308,7 +310,7 @@ export function GPUUsageTrend() {
         <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20" title={`${currentTotals.available} total GPUs available`}>
           <div className="flex items-center gap-1 mb-1">
             <Cpu className="w-3 h-3 text-blue-400" />
-            <span className="text-xs text-blue-400">Total</span>
+            <span className="text-xs text-blue-400">{t('common.total')}</span>
           </div>
           <span className="text-sm font-bold text-foreground">{currentTotals.available}</span>
         </div>

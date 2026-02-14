@@ -10,6 +10,7 @@ import { LimitedAccessWarning } from '../ui/LimitedAccessWarning'
 import { useCardData, CardClusterFilter, CardSearchInput, CardAIActions } from '../../lib/cards'
 import { SEVERITY_COLORS, SeverityLevel } from '../../lib/accessibility'
 import { useCardLoadingState, useCardDemoState } from './CardDataContext'
+import { useTranslation } from 'react-i18next'
 
 // Demo security issues data for demo mode
 function getDemoSecurityIssues(): SecurityIssue[] {
@@ -92,6 +93,7 @@ const getSeverityColor = (severity: string) => {
 }
 
 export function SecurityIssues({ config }: SecurityIssuesProps) {
+  const { t } = useTranslation()
   const clusterConfig = config?.cluster as string | undefined
   const namespaceConfig = config?.namespace as string | undefined
   const { shouldUseDemoData: isDemoMode } = useCardDemoState({ requires: 'agent' })
@@ -279,7 +281,7 @@ export function SecurityIssues({ config }: SecurityIssuesProps) {
       <CardSearchInput
         value={localSearch}
         onChange={setLocalSearch}
-        placeholder="Search issues..."
+        placeholder={t('common.searchIssues')}
         className="mb-3"
       />
 

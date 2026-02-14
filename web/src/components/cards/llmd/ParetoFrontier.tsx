@@ -21,6 +21,7 @@ import {
   getModelShort,
   type ParetoPoint,
 } from '../../../lib/llmd/benchmarkMockData'
+import { useTranslation } from 'react-i18next'
 
 // ---------------------------------------------------------------------------
 // Chart presets — each defines X-axis, Y-axis, title, and optional info pills
@@ -228,6 +229,7 @@ interface ParetoFrontierProps {
 }
 
 export function ParetoFrontier({ config }: ParetoFrontierProps) {
+  const { t: _t } = useTranslation()
   const chartRef = useRef<ReactECharts>(null)
 
   // ---- Data ----
@@ -628,6 +630,7 @@ function FilterDropdown({
   optionLabels?: Record<string, string>
   noAllOption?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
@@ -636,7 +639,7 @@ function FilterDropdown({
         onChange={e => onChange(e.target.value)}
         className="bg-secondary border border-border rounded px-2 py-1 text-[11px] text-foreground min-w-[100px]"
       >
-        {!noAllOption && <option value="all">All</option>}
+        {!noAllOption && <option value="all">{t('common.all')}</option>}
         {options.map(o => (
           <option key={o} value={o}>{optionLabels?.[o] ?? o}</option>
         ))}

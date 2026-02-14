@@ -16,6 +16,7 @@ import {
   parseRSSFeed, stripHTML, decodeHTMLEntities,
   isValidThumbnail, normalizeRedditLink, formatTimeAgo,
 } from './RSSParser'
+import { useTranslation } from 'react-i18next'
 
 type SortByOption = 'date' | 'title'
 
@@ -45,6 +46,7 @@ function getDemoRSSItems(): FeedItem[] {
 }
 
 function RSSFeedInternal({ config }: RSSFeedProps) {
+  const { t } = useTranslation()
   const { isDemoMode } = useDemoMode()
   const [feeds, setFeeds] = useState<FeedConfig[]>(() => {
     if (config?.feedUrl) {
@@ -707,7 +709,7 @@ function RSSFeedInternal({ config }: RSSFeedProps) {
             onClick={() => fetchFeed(true)}
             disabled={isRefreshing}
             className="p-1.5 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            title={lastRefresh ? `Refresh (last: ${formatTimeAgo(lastRefresh)})` : 'Refresh'}
+            title={lastRefresh ? `Refresh (last: ${formatTimeAgo(lastRefresh)})` : t('common.refresh')}
           >
             <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
           </button>
@@ -1381,6 +1383,7 @@ function RSSFeedInternal({ config }: RSSFeedProps) {
 }
 
 export function RSSFeed(props: RSSFeedProps) {
+  const { t: _t } = useTranslation()
   return (
     <DynamicCardErrorBoundary cardId="RSSFeed">
       <RSSFeedInternal {...props} />

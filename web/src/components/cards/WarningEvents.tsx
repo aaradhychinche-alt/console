@@ -8,6 +8,7 @@ import { useCardLoadingState } from './CardDataContext'
 import { useCardData, commonComparators } from '../../lib/cards/cardHooks'
 import { CardSearchInput, CardControlsRow, CardPaginationFooter, CardAIActions } from '../../lib/cards/CardComponents'
 import type { ClusterEvent } from '../../hooks/useMCP'
+import { useTranslation } from 'react-i18next'
 
 function getTimeAgo(timestamp: string | undefined): string {
   if (!timestamp) return 'Unknown'
@@ -33,6 +34,7 @@ const SORT_OPTIONS = [
 ]
 
 export function WarningEvents() {
+  const { t } = useTranslation()
   const {
     events,
     isLoading,
@@ -169,7 +171,7 @@ export function WarningEvents() {
       <CardSearchInput
         value={search}
         onChange={setSearch}
-        placeholder="Search warnings..."
+        placeholder={t('common.searchWarnings')}
       />
 
       {/* Warning events list */}

@@ -12,6 +12,7 @@ import { useOptionalStack } from '../../../contexts/StackContext'
 import { useCardDemoState, useReportCardDataState } from '../CardDataContext'
 import { getBenchmarkResults, type BenchmarkResult } from '../../../lib/llmd/mockData'
 import type { LLMdStack } from '../../../hooks/useStackDiscovery'
+import { useTranslation } from 'react-i18next'
 
 type ViewMode = 'comparison' | 'latency' | 'stacks'
 type ModelFilter = 'all' | string
@@ -61,6 +62,7 @@ function getStackComparisonData(stacks: LLMdStack[]): StackComparisonData[] {
 }
 
 export function LLMdBenchmarks() {
+  const { t } = useTranslation()
   const stackContext = useOptionalStack()
   const { shouldUseDemoData, showDemoBadge } = useCardDemoState({ requires: 'stack' })
 
@@ -221,7 +223,7 @@ export function LLMdBenchmarks() {
               </div>
               <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2 text-center">
                 <div className="text-white font-bold">{stackStats.healthyStacks}</div>
-                <div className="text-xs text-muted-foreground">Healthy</div>
+                <div className="text-xs text-muted-foreground">{t('common.healthy')}</div>
               </div>
               <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-2 text-center">
                 <div className="text-white font-bold">{stackStats.disaggStacks}</div>
