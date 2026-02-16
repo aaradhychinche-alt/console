@@ -179,12 +179,12 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
               <span className="text-2xl font-bold text-foreground">{podIssues.length}</span>
             </div>
             <div
-              className={`p-3 rounded-lg ${deploymentIssues.length > 0 ? 'bg-orange-500/10 border border-orange-500/20 cursor-pointer hover:bg-orange-500/20' : 'bg-secondary/30 cursor-default'} transition-colors`}
+              className={`p-3 rounded-lg ${deploymentIssues.length > 0 ? 'bg-red-500/10 border border-red-500/20 cursor-pointer hover:bg-red-500/20' : 'bg-secondary/30 cursor-default'} transition-colors`}
               onClick={() => deploymentIssues.length > 0 && deploymentIssues[0] && drillToDeployment(selectedCluster, deploymentIssues[0].namespace, deploymentIssues[0].name)}
               title={deploymentIssues.length > 0 ? `${deploymentIssues.length} deployment issue${deploymentIssues.length !== 1 ? 's' : ''} - Click to view first issue` : 'No deployment issues detected'}
             >
               <div className="flex items-center gap-2 mb-1">
-                <Activity className={`w-4 h-4 ${deploymentIssues.length > 0 ? 'text-orange-400' : 'text-green-400'}`} />
+                <Activity className={`w-4 h-4 ${deploymentIssues.length > 0 ? 'text-red-400' : 'text-green-400'}`} />
                 <span className="text-xs text-muted-foreground">Deployment Issues</span>
               </div>
               <span className="text-2xl font-bold text-foreground">{deploymentIssues.length}</span>
@@ -208,12 +208,12 @@ export function NamespaceOverview({ config }: NamespaceOverviewProps) {
                 {deploymentIssues.slice(0, 3).map((issue, idx) => (
                   <div
                     key={`dep-${idx}`}
-                    className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20 cursor-pointer hover:bg-orange-500/20 transition-colors"
+                    className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 cursor-pointer hover:bg-red-500/20 transition-colors"
                     onClick={() => drillToDeployment(selectedCluster, issue.namespace, issue.name)}
                     title={`${issue.name}: ${issue.readyReplicas}/${issue.replicas} replicas ready - Click to view details`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                       <span className="text-sm text-foreground truncate">{issue.name}</span>
                       <span className="text-xs text-muted-foreground ml-auto shrink-0">
                         {issue.readyReplicas}/{issue.replicas}
