@@ -79,6 +79,7 @@ export function DeploymentProgress({ config }: DeploymentProgressProps) {
   const {
     deployments,
     isLoading,
+    isDemoFallback,
     isFailed,
     consecutiveFailures,
     error
@@ -88,6 +89,7 @@ export function DeploymentProgress({ config }: DeploymentProgressProps) {
   // Report loading state to CardWrapper for skeleton/refresh behavior
   useCardLoadingState({
     isLoading,
+    isDemoData: isDemoFallback,
     hasAnyData: deployments.length > 0,
     isFailed,
     consecutiveFailures,

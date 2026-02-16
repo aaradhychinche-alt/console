@@ -51,6 +51,7 @@ export function ServiceStatus() {
   const {
     services,
     isLoading: hookLoading,
+    isDemoFallback,
     isFailed,
     consecutiveFailures,
     error
@@ -61,6 +62,7 @@ export function ServiceStatus() {
   // Report data state to CardWrapper for failure badge rendering
   const { showSkeleton } = useCardLoadingState({
     isLoading: hookLoading,
+    isDemoData: isDemoFallback,
     hasAnyData: services.length > 0,
     isFailed,
     consecutiveFailures,

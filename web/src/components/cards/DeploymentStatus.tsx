@@ -81,6 +81,7 @@ export function DeploymentStatus() {
   const {
     deployments: allDeployments,
     isLoading: hookLoading,
+    isDemoFallback,
     isFailed,
     consecutiveFailures,
   } = useCachedDeployments()
@@ -88,6 +89,7 @@ export function DeploymentStatus() {
   // Report data state to CardWrapper for failure badge rendering
   const { showSkeleton } = useCardLoadingState({
     isLoading: hookLoading,
+    isDemoData: isDemoFallback,
     hasAnyData: allDeployments.length > 0,
     isFailed,
     consecutiveFailures,

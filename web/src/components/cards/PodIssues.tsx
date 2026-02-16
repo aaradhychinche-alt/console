@@ -34,6 +34,7 @@ export function PodIssues() {
   const {
     issues: rawIssues,
     isLoading: hookLoading,
+    isDemoFallback,
     isFailed,
     consecutiveFailures,
     error
@@ -42,6 +43,7 @@ export function PodIssues() {
   // Report loading state to CardWrapper for skeleton/refresh behavior
   const { showSkeleton, showEmptyState } = useCardLoadingState({
     isLoading: hookLoading,
+    isDemoData: isDemoFallback,
     hasAnyData: rawIssues.length > 0,
     isFailed,
     consecutiveFailures,
