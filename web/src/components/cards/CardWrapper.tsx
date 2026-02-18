@@ -1303,7 +1303,7 @@ export function CardWrapper({
               </button>
               {showMenu && menuPosition && createPortal(
                 <div
-                  className="fixed w-48 bg-gray-900 border border-white/10 rounded-lg py-1 z-50 shadow-xl"
+                  className="fixed w-48 glass rounded-lg py-1 z-50 shadow-xl"
                   style={{ top: menuPosition.top, right: menuPosition.right }}
                 >
                   <button
@@ -1345,7 +1345,7 @@ export function CardWrapper({
                       </button>
                       {showResizeMenu && (
                         <div className={cn(
-                          'absolute top-0 w-36 bg-gray-900 border border-white/10 rounded-lg py-1 z-20 shadow-xl',
+                          'absolute top-0 w-36 glass rounded-lg py-1 z-20',
                           resizeMenuOnLeft ? 'right-full mr-1' : 'left-full ml-1'
                         )}>
                           {WIDTH_OPTIONS.map((option) => (
