@@ -8,7 +8,6 @@
  * never in source code or build config). It is used server-side to call the
  * GitHub API and is never exposed to the client.
  */
-declare const process: { env: Record<string, string | undefined> };
 import { getStore } from "@netlify/blobs";
 
 const CACHE_STORE = "nightly-e2e";
@@ -287,7 +286,7 @@ export default async (req: Request) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  const token = process.env.GITHUB_TOKEN ?? "";
+  const token = Netlify.env.get("GITHUB_TOKEN") ?? "";
   if (!token) {
     return new Response(
       JSON.stringify({ error: "GITHUB_TOKEN not configured" }),
