@@ -170,6 +170,7 @@ const KagentiAgentDiscovery = lazy(() => _kagentiBundle.then(m => ({ default: m.
 const KagentiSecurity = lazy(() => _kagentiBundle.then(m => ({ default: m.KagentiSecurity })))
 const KagentiSecurityPosture = lazy(() => _kagentiBundle.then(m => ({ default: m.KagentiSecurityPosture })))
 const KagentiTopology = lazy(() => _kagentiBundle.then(m => ({ default: m.KagentiTopology })))
+const CrossplaneManagedResources = lazy(() => import('./crossplane-status/CrossplaneManagedResources').then(m => ({ default: m.CrossplaneManagedResources })))
 // Cloud Native Buildpacks card
 const BuildpacksStatus = lazy(() => import('./buildpacks-status').then(m => ({ default: m.BuildpacksStatus })))
 
@@ -390,6 +391,8 @@ const RAW_CARD_COMPONENTS: Record<string, CardComponent> = {
   kagenti_security: KagentiSecurity,
   kagenti_security_posture: KagentiSecurityPosture,
   kagenti_topology: KagentiTopology,
+  // Crossplane cards
+  crossplane_managed_resources: CrossplaneManagedResources,
 
   // Cluster admin cards
   predictive_health: PredictiveHealth,
@@ -524,6 +527,8 @@ export const DEMO_DATA_CARDS = new Set([
   'kagenti_security',
   'kagenti_topology',
   'kagenti_security_posture',
+  // Crossplane cards - demo until Crossplane is installed
+  'crossplane_managed_resources',
 ])
 
 /**
@@ -709,6 +714,8 @@ const CARD_CHUNK_PRELOADERS: Record<string, () => Promise<unknown>> = {
   kagenti_security: () => import('./kagenti'),
   kagenti_security_posture: () => import('./kagenti'),
   kagenti_topology: () => import('./kagenti'),
+  // Crossplane cards
+  crossplane_managed_resources: () => import('./crossplane-status'),
   // Cloud Native Buildpacks
   buildpacks_status: () => import('./buildpacks-status'),
 }
@@ -758,6 +765,7 @@ export function prefetchDemoCardChunks(): void {
     () => import('./kagenti/KagentiAgentDiscovery'),
     () => import('./kagenti/KagentiSecurity'),
     () => import('./kagenti/KagentiTopology'),
+    () => import('./crossplane-status/CrossplaneManagedResources'),
   ]
   startupChunks.forEach(load => load().catch(() => {}))
 }
@@ -839,6 +847,7 @@ export const CARD_DEFAULT_WIDTHS: Record<string, number> = {
   active_alerts: 4,
   security_issues: 4,
   upgrade_status: 4,
+  crossplane_managed_resources: 4,
   buildpacks_status: 6,
 
   // MCS cards
