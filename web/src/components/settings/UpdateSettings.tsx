@@ -451,6 +451,7 @@ export function UpdateSettings() {
               style={{ width: `${updateProgress?.progress ?? INITIAL_PROGRESS_PCT}%` }}
             />
           </div>
+          <p className="text-xs text-blue-400/60 mt-2">{t('settings.updates.doNotNavigate')}</p>
         </div>
       )}
 
