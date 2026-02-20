@@ -490,7 +490,7 @@
       "webConsole": "Web Console",
       "webConsoleDesc": "Refresh your browser to load the latest version.",
       "refreshBrowser": "Refresh Browser",
-      "refreshToLoad": "Refresh to load the new version",
+      "refreshToLoad": "Refresh to load new version",
       "localAgentUpdate": "Local Agent",
       "localAgentDesc": "Update via Homebrew to get the latest agent features.",
       "clusterDeployment": "Cluster Deployment",
