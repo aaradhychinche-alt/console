@@ -677,10 +677,26 @@ func TestClassifyError(t *testing.T) {
 		want string
 	}{
 		{"context deadline exceeded", "timeout"},
+		{"i/o timeout", "timeout"},
+		{"timeout waiting for connection", "timeout"},
 		{"401 Unauthorized", "auth"},
+		{"403 Forbidden", "auth"},
+		{"forbidden: not allowed", "auth"},
+		{"invalid token", "auth"},
+		{"token expired", "auth"},
+		{"authentication required", "auth"},
 		{"connection refused", "network"},
+		{"no route to host", "network"},
+		{"network unreachable", "network"},
+		{"dial tcp 10.0.0.1:443", "network"},
+		{"no such host", "network"},
+		{"lookup cluster.example.com", "network"},
 		{"x509: certificate signed by unknown authority", "certificate"},
+		{"tls handshake error", "certificate"},
+		{"ssl: bad certificate", "certificate"},
+		{"certificate has expired", "certificate"},
 		{"something else", "unknown"},
+		{"", "unknown"},
 	}
 
 	for _, tt := range tests {
