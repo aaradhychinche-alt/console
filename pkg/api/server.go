@@ -646,6 +646,10 @@ func (s *Server) setupRoutes() {
 	api.Get("/nightly-e2e/runs", nightlyE2E.GetRuns)
 	api.Get("/nightly-e2e/run-logs", nightlyE2E.GetRunLogs)
 
+	// Artifact Hub proxy (server-side cache avoids CORS and rate-limit issues)
+	artifactHub := handlers.NewArtifactHubHandler()
+	api.Get("/proxy/artifact-hub/stats", artifactHub.GetStats)
+
 	// GPU reservation routes
 	gpuHandler := handlers.NewGPUHandler(s.store)
 	api.Post("/gpu/reservations", gpuHandler.CreateReservation)
