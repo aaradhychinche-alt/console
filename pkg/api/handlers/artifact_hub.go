@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +14,8 @@ import (
 )
 
 const (
-	artifactHubBase         = "https://artifacthub.io/api/v1"
-	artifactHubCacheTTL     = 5 * time.Minute
-	artifactHubFetchTimeout = 20 * time.Second
+	artifactHubBase     = "https://artifacthub.io/api/v1"
+	artifactHubCacheTTL = 5 * time.Minute
 )
 
 // ArtifactHubStats holds the aggregated stats from Artifact Hub.
@@ -109,31 +109,28 @@ func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
 		err  error
 	}
 
+	// Context controls the HTTP requests: both goroutines abort as soon as
+	// the 5-second deadline fires, so they never leak into the background.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	reposCh := make(chan fetchResult, 1)
 	pkgsCh := make(chan fetchResult, 1)
 
 	go func() {
-		data, err := h.getSearchResponse(artifactHubBase + "/repositories/search?limit=1")
+		data, err := h.getSearchResponse(ctx, artifactHubBase+"/repositories/search?limit=1")
 		reposCh <- fetchResult{resp: data, err: err}
 	}()
 	go func() {
-		data, err := h.getSearchResponse(artifactHubBase + "/packages/search?limit=1")
+		data, err := h.getSearchResponse(ctx, artifactHubBase+"/packages/search?limit=1")
 		pkgsCh <- fetchResult{resp: data, err: err}
 	}()
 
-	timeout := time.After(artifactHubFetchTimeout)
-
-	var reposResult, pkgsResult fetchResult
-
-	// Collect both results; return early on timeout.
-	for range 2 {
-		select {
-		case reposResult = <-reposCh:
-		case pkgsResult = <-pkgsCh:
-		case <-timeout:
-			return nil, fmt.Errorf("timeout waiting for Artifact Hub API responses")
-		}
-	}
+	// Both channels are buffered (size 1). The goroutines will send and exit
+	// promptly whether they succeed, error, or are cancelled by the context —
+	// so these plain receives are guaranteed to complete within ~5 s.
+	reposResult := <-reposCh
+	pkgsResult := <-pkgsCh
 
 	health := "healthy"
 	if reposResult.err != nil || pkgsResult.err != nil {
@@ -158,8 +155,8 @@ func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
 	}, nil
 }
 
-func (h *ArtifactHubHandler) getSearchResponse(url string) (*artifactHubSearchResponse, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (h *ArtifactHubHandler) getSearchResponse(ctx context.Context, url string) (*artifactHubSearchResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
