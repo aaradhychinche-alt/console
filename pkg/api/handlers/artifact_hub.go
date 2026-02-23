@@ -4,6 +4,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -12,8 +13,9 @@ import (
 )
 
 const (
-	artifactHubBase     = "https://artifacthub.io/api/v1"
-	artifactHubCacheTTL = 5 * time.Minute
+	artifactHubBase         = "https://artifacthub.io/api/v1"
+	artifactHubCacheTTL     = 5 * time.Minute
+	artifactHubFetchTimeout = 20 * time.Second
 )
 
 // ArtifactHubStats holds the aggregated stats from Artifact Hub.
@@ -38,9 +40,11 @@ type artifactHubSearchResponse struct {
 type ArtifactHubHandler struct {
 	httpClient *http.Client
 
-	mu       sync.RWMutex
-	cache    *ArtifactHubStats
-	cacheExp time.Time
+	mu        sync.Mutex // single mutex guards cache + inflight; avoids stampede
+	cache     *ArtifactHubStats
+	cacheExp  time.Time
+	inflight  bool          // true while a fetch is in progress
+	inflightC chan struct{} // closed when the inflight fetch completes
 }
 
 // NewArtifactHubHandler creates a new handler with a shared HTTP client.
@@ -51,29 +55,52 @@ func NewArtifactHubHandler() *ArtifactHubHandler {
 }
 
 // GetStats returns aggregated Artifact Hub stats (repository and package counts).
-// Results are cached for 5 minutes.
+// Results are cached for 5 minutes. Concurrent callers on a cold/expired cache
+// coalesce: only one fetch runs at a time; the rest wait for it to finish.
 func (h *ArtifactHubHandler) GetStats(c *fiber.Ctx) error {
-	h.mu.RLock()
-	if h.cache != nil && time.Now().Before(h.cacheExp) {
-		result := *h.cache
-		h.mu.RUnlock()
-		return c.JSON(result)
+	for {
+		h.mu.Lock()
+
+		// Cache hit — serve immediately.
+		if h.cache != nil && time.Now().Before(h.cacheExp) {
+			result := *h.cache
+			h.mu.Unlock()
+			return c.JSON(result)
+		}
+
+		// Another goroutine is already fetching — wait for it, then re-check.
+		if h.inflight {
+			ch := h.inflightC
+			h.mu.Unlock()
+			<-ch
+			continue // re-enter loop to read the freshly populated cache
+		}
+
+		// We are the designated fetcher.
+		h.inflight = true
+		h.inflightC = make(chan struct{})
+		h.mu.Unlock()
+
+		stats, err := h.fetchStats()
+
+		h.mu.Lock()
+		h.inflight = false
+		ch := h.inflightC
+		if err == nil {
+			h.cache = stats
+			h.cacheExp = time.Now().Add(artifactHubCacheTTL)
+		}
+		h.mu.Unlock()
+
+		close(ch) // wake up any waiters
+
+		if err != nil {
+			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+				"error": fmt.Sprintf("failed to fetch Artifact Hub data: %v", err),
+			})
+		}
+		return c.JSON(*stats)
 	}
-	h.mu.RUnlock()
-
-	stats, err := h.fetchStats()
-	if err != nil {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"error": fmt.Sprintf("failed to fetch Artifact Hub data: %v", err),
-		})
-	}
-
-	h.mu.Lock()
-	h.cache = stats
-	h.cacheExp = time.Now().Add(artifactHubCacheTTL)
-	h.mu.Unlock()
-
-	return c.JSON(stats)
 }
 
 func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
@@ -94,8 +121,19 @@ func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
 		pkgsCh <- fetchResult{resp: data, err: err}
 	}()
 
-	reposResult := <-reposCh
-	pkgsResult := <-pkgsCh
+	timeout := time.After(artifactHubFetchTimeout)
+
+	var reposResult, pkgsResult fetchResult
+
+	// Collect both results; return early on timeout.
+	for range 2 {
+		select {
+		case reposResult = <-reposCh:
+		case pkgsResult = <-pkgsCh:
+		case <-timeout:
+			return nil, fmt.Errorf("timeout waiting for Artifact Hub API responses")
+		}
+	}
 
 	health := "healthy"
 	if reposResult.err != nil || pkgsResult.err != nil {
@@ -134,6 +172,8 @@ func (h *ArtifactHubHandler) getSearchResponse(url string) (*artifactHubSearchRe
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// Drain body so the underlying TCP connection can be reused.
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
 	}
 
