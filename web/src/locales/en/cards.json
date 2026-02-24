@@ -1991,6 +1991,7 @@
     "openArtifactHub": "Open Artifact Hub",
     "couldNotReach": "Could not reach Artifact Hub",
     "failedToReach": "Failed to reach Artifact Hub",
+    "noData": "No data available from Artifact Hub",
     "description": "Artifact Hub package discovery and repository sync status.",
     "syncedJustNow": "just now",
     "syncedMinutesAgo": "{{count}}m ago",

@@ -6,26 +6,20 @@ export interface ArtifactHubStatus {
   repositoryCount: number
   packageCount: number
   health: 'healthy' | 'degraded'
-  lastSyncTime: string
+  /** ISO 8601 timestamp of when the backend last checked Artifact Hub. */
+  lastCheckedAt: string
 }
 
 /**
- * Artifact Hub API response shapes (for reference):
+ * Artifact Hub API response notes:
  *
- * GET /api/v1/repositories/search
- *   → { items: Repository[], pagination: { limit, offset, total } }
+ * GET /api/v1/repositories/search  → bare JSON array of Repository objects
+ * GET /api/v1/packages/search      → { "packages": [...] }
  *
- * GET /api/v1/packages/search
- *   → { packages: Package[], pagination: { limit, offset, total } }
- *
- * Both endpoints always wrap results — we must read `pagination.total`
- * (or the respective `items`/`packages` array length) rather than treating
- * the whole response as an array.
- *
- * Requests are routed through the console backend (/api/proxy/artifact-hub/stats)
- * to avoid CORS restrictions in the browser. The backend handler caches results
- * for 5 minutes and proxies to the public Artifact Hub API server-side.
- * This matches the pattern used by other external-API cards (e.g. NightlyE2E).
+ * Neither endpoint includes a pagination wrapper in the body.
+ * Total counts are returned in the `Pagination-Total-Count` HTTP response header.
+ * The backend reads that header and returns the aggregated counts so the
+ * browser never has to hit the Artifact Hub API directly (avoids CORS).
  */
 
 const CACHE_KEY = 'artifact-hub-status'
@@ -34,7 +28,7 @@ const INITIAL_DATA: ArtifactHubStatus = {
   repositoryCount: 0,
   packageCount: 0,
   health: 'healthy',
-  lastSyncTime: new Date().toISOString(),
+  lastCheckedAt: new Date().toISOString(),
 }
 
 async function fetchArtifactHubStatus(): Promise<ArtifactHubStatus> {
@@ -52,7 +46,7 @@ function toDemoStatus(demo: ArtifactHubDemoData): ArtifactHubStatus {
     repositoryCount: demo.repositoryCount,
     packageCount: demo.packageCount,
     health: demo.health,
-    lastSyncTime: demo.lastSyncTime,
+    lastCheckedAt: demo.lastSyncTime,
   }
 }
 

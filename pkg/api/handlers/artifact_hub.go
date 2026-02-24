@@ -3,10 +3,10 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -23,16 +23,7 @@ type ArtifactHubStats struct {
 	RepositoryCount int    `json:"repositoryCount"`
 	PackageCount    int    `json:"packageCount"`
 	Health          string `json:"health"` // "healthy" | "degraded"
-	LastSyncTime    string `json:"lastSyncTime"`
-}
-
-// artifactHubSearchResponse is the typed shape of the Artifact Hub
-// /repositories/search and /packages/search responses.
-// Only the pagination.total field is consumed; all other fields are ignored.
-type artifactHubSearchResponse struct {
-	Pagination struct {
-		Total int `json:"total"`
-	} `json:"pagination"`
+	LastCheckedAt   string `json:"lastCheckedAt"`
 }
 
 // ArtifactHubHandler proxies requests to the Artifact Hub public API and
@@ -105,8 +96,8 @@ func (h *ArtifactHubHandler) GetStats(c *fiber.Ctx) error {
 
 func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
 	type fetchResult struct {
-		resp *artifactHubSearchResponse
-		err  error
+		total int
+		err   error
 	}
 
 	// Context controls the HTTP requests: both goroutines abort as soon as
@@ -118,12 +109,12 @@ func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
 	pkgsCh := make(chan fetchResult, 1)
 
 	go func() {
-		data, err := h.getSearchResponse(ctx, artifactHubBase+"/repositories/search?limit=1")
-		reposCh <- fetchResult{resp: data, err: err}
+		total, err := h.getSearchTotal(ctx, artifactHubBase+"/repositories/search?limit=1")
+		reposCh <- fetchResult{total: total, err: err}
 	}()
 	go func() {
-		data, err := h.getSearchResponse(ctx, artifactHubBase+"/packages/search?limit=1")
-		pkgsCh <- fetchResult{resp: data, err: err}
+		total, err := h.getSearchTotal(ctx, artifactHubBase+"/packages/search?limit=1")
+		pkgsCh <- fetchResult{total: total, err: err}
 	}()
 
 	// Both channels are buffered (size 1). The goroutines will send and exit
@@ -132,51 +123,57 @@ func (h *ArtifactHubHandler) fetchStats() (*ArtifactHubStats, error) {
 	reposResult := <-reposCh
 	pkgsResult := <-pkgsCh
 
+	// If both sub-requests fail, surface a real error so the cache is not
+	// populated with zeros and the frontend sees a 502 error state.
+	if reposResult.err != nil && pkgsResult.err != nil {
+		return nil, fmt.Errorf("repositories: %v; packages: %v", reposResult.err, pkgsResult.err)
+	}
+
 	health := "healthy"
 	if reposResult.err != nil || pkgsResult.err != nil {
 		health = "degraded"
 	}
 
-	repositoryCount := 0
-	if reposResult.err == nil && reposResult.resp != nil {
-		repositoryCount = reposResult.resp.Pagination.Total
-	}
-
-	packageCount := 0
-	if pkgsResult.err == nil && pkgsResult.resp != nil {
-		packageCount = pkgsResult.resp.Pagination.Total
-	}
-
 	return &ArtifactHubStats{
-		RepositoryCount: repositoryCount,
-		PackageCount:    packageCount,
+		RepositoryCount: reposResult.total,
+		PackageCount:    pkgsResult.total,
 		Health:          health,
-		LastSyncTime:    time.Now().UTC().Format(time.RFC3339),
+		LastCheckedAt:   time.Now().UTC().Format(time.RFC3339),
 	}, nil
 }
 
-func (h *ArtifactHubHandler) getSearchResponse(ctx context.Context, url string) (*artifactHubSearchResponse, error) {
+// getSearchTotal reads the Pagination-Total-Count HTTP response header returned
+// by the Artifact Hub API. The header is present on both /repositories/search
+// and /packages/search. Decoding the JSON body is intentionally avoided:
+// the repositories endpoint returns a bare JSON array, and the packages
+// endpoint returns { "packages": [...] } — neither has a "pagination" wrapper
+// that could be decoded generically into a shared struct.
+func (h *ArtifactHubHandler) getSearchTotal(ctx context.Context, url string) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	defer resp.Body.Close()
+	// Always drain the body so the underlying TCP connection can be reused.
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		// Drain body so the underlying TCP connection can be reused.
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+		return 0, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
 	}
 
-	var result artifactHubSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	raw := resp.Header.Get("Pagination-Total-Count")
+	if raw == "" {
+		return 0, fmt.Errorf("missing Pagination-Total-Count header from %s", url)
 	}
-	return &result, nil
+	total, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid Pagination-Total-Count %q from %s: %w", raw, url, err)
+	}
+	return total, nil
 }

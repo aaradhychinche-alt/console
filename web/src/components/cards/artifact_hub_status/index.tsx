@@ -1,6 +1,7 @@
-import { CheckCircle, AlertTriangle, Package, RefreshCw, ExternalLink } from 'lucide-react'
+import { CheckCircle, AlertTriangle, Package, RefreshCw, ExternalLink, PackageSearch } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../../ui/Skeleton'
+import { formatStat } from '../../../lib/formatStats'
 import { useArtifactHubStatus } from './useArtifactHubStatus'
 
 function useFormatRelativeTime() {
@@ -16,12 +17,6 @@ function useFormatRelativeTime() {
     if (diff < day) return t('artifactHub.syncedHoursAgo', { count: Math.floor(diff / hour) })
     return t('artifactHub.syncedDaysAgo', { count: Math.floor(diff / day) })
   }
-}
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
 }
 
 interface MetricTileProps {
@@ -57,12 +52,21 @@ export function ArtifactHubStatus() {
     )
   }
 
-  if (error || showEmptyState) {
+  if (error) {
     return (
       <div className="h-full flex flex-col items-center justify-center min-h-card text-muted-foreground gap-2">
         <AlertTriangle className="w-6 h-6 text-red-400" />
         <p className="text-sm text-red-400">{t('artifactHub.failedToReach')}</p>
         <p className="text-xs">{t('artifactHub.couldNotReach')}</p>
+      </div>
+    )
+  }
+
+  if (showEmptyState) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center min-h-card text-muted-foreground gap-2">
+        <PackageSearch className="w-6 h-6 text-muted-foreground" />
+        <p className="text-sm">{t('artifactHub.noData')}</p>
       </div>
     )
   }
@@ -90,7 +94,7 @@ export function ArtifactHubStatus() {
 
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <RefreshCw className="w-3 h-3" />
-          <span>{formatRelativeTime(data.lastSyncTime)}</span>
+          <span>{formatRelativeTime(data.lastCheckedAt)}</span>
         </div>
       </div>
 
@@ -98,12 +102,12 @@ export function ArtifactHubStatus() {
       <div className="flex gap-3">
         <MetricTile
           label={t('artifactHub.repositories')}
-          value={formatNumber(data.repositoryCount)}
+          value={formatStat(data.repositoryCount)}
           colorClass="text-blue-400"
         />
         <MetricTile
           label={t('artifactHub.packages')}
-          value={formatNumber(data.packageCount)}
+          value={formatStat(data.packageCount)}
           colorClass="text-purple-400"
         />
       </div>
