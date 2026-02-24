@@ -252,7 +252,8 @@
     "kube_craft": "Kube Craft",
     "kube_chess": "Kube Chess",
     "provider_health": "Provider Health",
-    "flatcar_status": "Flatcar Container Linux"
+    "flatcar_status": "Flatcar Container Linux",
+    "metal3_status": "Metal3"
   },
   "descriptions": {
     "cluster_health": "Overall health status of all connected Kubernetes clusters.",
@@ -413,7 +414,8 @@
     "kube_craft": "Build and manage your cluster world.",
     "kube_chess": "Chess game with Kubernetes-themed pieces.",
     "console_offline_detection": "Monitor offline nodes, GPU issues, and AI-predicted failures.",
-    "flatcar_status": "Flatcar node OS versions, update status, and version distribution."
+    "flatcar_status": "Flatcar node OS versions, update status, and version distribution.",
+    "metal3_status": "Metal3 bare metal host provisioning, BMC status, and provisioning state breakdown."
   },
   "categories": {
     "core": "Core",
@@ -2562,6 +2564,26 @@
     "noFlatcarNodes": "No Flatcar nodes found",
     "noFlatcarNodesHint": "No nodes running Flatcar Container Linux detected.",
     "fetchError": "Failed to fetch Flatcar node status",
+    "syncedJustNow": "just now",
+    "syncedMinutesAgo": "{{count}}m ago",
+    "syncedHoursAgo": "{{count}}h ago",
+    "syncedDaysAgo": "{{count}}d ago"
+  },
+  "metal3": {
+    "healthy": "Healthy",
+    "degraded": "Degraded",
+    "totalHosts": "Bare Metal Hosts",
+    "bmcReachable": "BMC Reachable",
+    "bmcUnreachable": "BMC Unreachable",
+    "provisioningStates": "Provisioning States",
+    "stateProvisioned": "Provisioned",
+    "stateProvisioning": "Provisioning",
+    "stateAvailable": "Available",
+    "stateDeprovisioned": "Deprovisioned",
+    "stateError": "Error",
+    "noHosts": "No Metal3 hosts found",
+    "noHostsHint": "No BareMetalHost resources detected in connected clusters.",
+    "fetchError": "Failed to fetch Metal3 host status",
     "syncedJustNow": "just now",
     "syncedMinutesAgo": "{{count}}m ago",
     "syncedHoursAgo": "{{count}}h ago",

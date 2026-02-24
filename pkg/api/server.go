@@ -641,6 +641,10 @@ func (s *Server) setupRoutes() {
 	})
 	api.Get("/rewards/github", rewardsHandler.GetGitHubRewards)
 
+	// Metal3 bare metal host status
+	metal3 := handlers.NewMetal3Handlers(s.k8sClient)
+	api.Get("/proxy/metal3/hosts", metal3.GetHostsWithDemoCheck)
+
 	// Nightly E2E status (GitHub Actions proxy with server-side token + cache)
 	nightlyE2E := handlers.NewNightlyE2EHandler(s.config.GitHubToken)
 	api.Get("/nightly-e2e/runs", nightlyE2E.GetRuns)
