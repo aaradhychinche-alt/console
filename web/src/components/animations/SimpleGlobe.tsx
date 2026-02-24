@@ -84,8 +84,8 @@ export function SimpleGlobe({ className = '' }: SimpleGlobeProps) {
 
       {/* Title */}
       <div className="absolute bottom-8 text-center">
-        <h2 className="text-2xl font-bold text-white mb-2">Multi-Cluster Management</h2>
-        <p className="text-gray-400">Visualize and control your Kubernetes infrastructure</p>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Multi-Cluster Management</h2>
+        <p className="text-muted-foreground">Visualize and control your Kubernetes infrastructure</p>
       </div>
     </div>
   )

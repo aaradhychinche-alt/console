@@ -11,7 +11,7 @@ const CATEGORY_CONFIG: Record<TokenCategory, { label: string; icon: React.Elemen
   diagnose: { label: 'Diagnose', icon: Stethoscope, color: 'bg-blue-500' },
   insights: { label: 'Insights', icon: Lightbulb, color: 'bg-yellow-500' },
   predictions: { label: 'Predictions', icon: TrendingUp, color: 'bg-green-500' },
-  other: { label: 'Other', icon: MoreHorizontal, color: 'bg-gray-500' },
+  other: { label: 'Other', icon: MoreHorizontal, color: 'bg-muted-foreground' },
 }
 
 export function TokenUsageWidget() {
