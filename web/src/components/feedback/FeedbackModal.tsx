@@ -22,6 +22,7 @@ const GITHUB_ISSUES_URL = 'https://github.com/kubestellar/kubestellar/issues/new
 
 export function FeedbackModal({ isOpen, onClose, initialType = 'feature' }: FeedbackModalProps) {
   const { showToast } = useToast()
+  const { t } = useTranslation(['common'])
   const [type, setType] = useState<FeedbackType>(initialType)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -60,6 +61,9 @@ export function FeedbackModal({ isOpen, onClose, initialType = 'feature' }: Feed
   }
 
   const handleClose = () => {
+    if ((title.trim() !== '' || description.trim() !== '') && !window.confirm(t('common:common.discardUnsavedChanges', 'Discard unsaved changes?'))) {
+      return
+    }
     setSuccess(false)
     setTitle('')
     setDescription('')

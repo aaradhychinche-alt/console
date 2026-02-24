@@ -1331,6 +1331,14 @@ function ReservationFormModal({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const handleClose = () => {
+    const hasChanges = title.trim() !== '' || description.trim() !== ''
+    if (hasChanges && !window.confirm(t('common:common.discardUnsavedChanges', 'Discard unsaved changes?'))) {
+      return
+    }
+    onClose()
+  }
+
   const { namespaces: rawNamespaces } = useNamespaces(cluster || undefined)
 
   // Filter out system namespaces from the dropdown
@@ -1454,11 +1462,11 @@ function ReservationFormModal({
   }
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="lg">
+    <BaseModal isOpen={isOpen} onClose={handleClose} size="lg" closeOnBackdrop={false} closeOnEscape={true}>
       <BaseModal.Header
         title={editingReservation ? t('gpuReservations.form.editTitle') : t('gpuReservations.form.createTitle')}
         icon={Calendar}
-        onClose={onClose}
+        onClose={handleClose}
         showBack={false}
       />
 
@@ -1696,7 +1704,7 @@ function ReservationFormModal({
       <BaseModal.Footer>
         <div className="flex-1" />
         <div className="flex gap-3">
-          <button onClick={onClose}
+          <button onClick={handleClose}
             className="px-4 py-2 rounded-lg bg-secondary text-muted-foreground hover:text-foreground transition-colors">
             {t('gpuReservations.form.buttons.cancel')}
           </button>

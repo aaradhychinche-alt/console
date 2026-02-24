@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Bell, X, Check, Clock, Bug, Sparkles, GitPullRequest, Eye } from 'lucide-react'
 import { useNotifications, type Notification, type NotificationType } from '../../hooks/useFeatureRequests'
 import { useTranslation } from 'react-i18next'
@@ -49,6 +49,20 @@ export function NotificationBadge() {
     isLoading,
   } = useNotifications()
   const [isOpen, setIsOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setIsOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen])
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {

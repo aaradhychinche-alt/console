@@ -81,6 +81,14 @@ export function AlertRuleEditor({ isOpen = true, rule, onSave, onCancel }: Alert
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const handleClose = () => {
+    const hasChanges = name.trim() !== '' || description.trim() !== ''
+    if (hasChanges && !window.confirm(t('common:common.discardUnsavedChanges', 'Discard unsaved changes?'))) {
+      return
+    }
+    onCancel()
+  }
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
 
@@ -167,11 +175,11 @@ export function AlertRuleEditor({ isOpen = true, rule, onSave, onCancel }: Alert
   const availableClusters = clusters.filter(c => c.reachable !== false)
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onCancel} size="lg">
+    <BaseModal isOpen={isOpen} onClose={handleClose} size="lg" closeOnBackdrop={false} closeOnEscape={true}>
       <BaseModal.Header
         title={rule ? t('alerts.editRule') : t('alerts.createRule')}
         icon={Bell}
-        onClose={onCancel}
+        onClose={handleClose}
         showBack={false}
       />
 
@@ -579,7 +587,7 @@ export function AlertRuleEditor({ isOpen = true, rule, onSave, onCancel }: Alert
         <div className="flex-1" />
         <div className="flex items-center gap-2">
           <button
-            onClick={onCancel}
+            onClick={handleClose}
             className="px-4 py-2 text-sm rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
           >
             {t('actions.cancel')}

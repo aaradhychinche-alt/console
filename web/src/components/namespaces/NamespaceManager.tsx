@@ -962,12 +962,19 @@ function CreateNamespaceModal({ clusters, onClose, onCreated }: CreateNamespaceM
     g => !initialAccess.some(a => a.type === 'Group' && a.name === g)
   )
 
+  const handleClose = () => {
+    if ((name.trim() !== '' || teamLabel.trim() !== '') && !window.confirm(t('common:common.discardUnsavedChanges', 'Discard unsaved changes?'))) {
+      return
+    }
+    onClose()
+  }
+
   return (
-    <BaseModal isOpen={true} onClose={onClose} size="lg">
+    <BaseModal isOpen={true} onClose={handleClose} size="lg" closeOnBackdrop={false} closeOnEscape={true}>
       <BaseModal.Header
         title="Create Namespace"
         icon={Folder}
-        onClose={onClose}
+        onClose={handleClose}
         showBack={false}
       />
 
@@ -1135,7 +1142,7 @@ function CreateNamespaceModal({ clusters, onClose, onCreated }: CreateNamespaceM
         <div className="flex-1" />
         <div className="flex gap-3">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-2 rounded-lg text-muted-foreground hover:text-white transition-colors"
           >
             Cancel
@@ -1236,13 +1243,20 @@ function GrantAccessModal({ namespace, existingAccess, onClose, onGranted }: Gra
     setShowDropdown(false)
   }
 
+  const handleClose = () => {
+    if (subjectName.trim() !== '' && !window.confirm(t('common:common.discardUnsavedChanges', 'Discard unsaved changes?'))) {
+      return
+    }
+    onClose()
+  }
+
   return (
-    <BaseModal isOpen={true} onClose={onClose} size="md">
+    <BaseModal isOpen={true} onClose={handleClose} size="md" closeOnBackdrop={false} closeOnEscape={true}>
       <BaseModal.Header
         title="Grant Access"
         description={`Namespace: ${namespace.name}`}
         icon={Shield}
-        onClose={onClose}
+        onClose={handleClose}
         showBack={false}
       />
 
@@ -1352,7 +1366,7 @@ function GrantAccessModal({ namespace, existingAccess, onClose, onGranted }: Gra
         <div className="flex-1" />
         <div className="flex gap-3">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-2 rounded-lg text-muted-foreground hover:text-white transition-colors"
           >
             Cancel

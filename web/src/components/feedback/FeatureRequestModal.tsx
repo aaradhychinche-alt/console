@@ -243,6 +243,9 @@ export function FeatureRequestModal({ isOpen, onClose, initialTab, initialContex
 
   const handleClose = () => {
     if (!isSubmitting) {
+      if (description.trim() !== '' && !window.confirm(t('common:common.discardUnsavedChanges', 'Discard unsaved changes?'))) {
+        return
+      }
       setDescription('')
       setRequestType('bug')
       setError(null)
@@ -253,7 +256,7 @@ export function FeatureRequestModal({ isOpen, onClose, initialTab, initialContex
   }
 
   return (
-    <BaseModal isOpen={isOpen} onClose={handleClose} size="lg" closeOnBackdrop={true} className="!h-[80vh]">
+    <BaseModal isOpen={isOpen} onClose={handleClose} size="lg" closeOnBackdrop={false} closeOnEscape={true} className="!h-[80vh]">
       {/* Login Prompt Dialog */}
       {showLoginPrompt && (
         <>
