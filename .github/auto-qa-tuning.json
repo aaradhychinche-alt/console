@@ -82,24 +82,12 @@
     "last_report_date": "2026-02-22"
   },
   "cncf_insights": {
-    "last_scan_date": "2026-02-18",
+    "last_scan_date": "2026-02-25",
     "suggested_checks": [
       {
-        "pattern": "accessibility",
-        "count": 11,
-        "added": "2026-02-18",
-        "priority": "medium"
-      },
-      {
         "pattern": "navigation_ux",
-        "count": 6,
-        "added": "2026-02-18",
-        "priority": "medium"
-      },
-      {
-        "pattern": "form_ux",
-        "count": 7,
-        "added": "2026-02-18",
+        "count": 5,
+        "added": "2026-02-25",
         "priority": "medium"
       }
     ]
