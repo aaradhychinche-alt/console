@@ -21,10 +21,12 @@ interface PreviewContext {
   isNew: boolean
 }
 
+const EXAMPLE_SERVER_URL = 'https://<api-server>:6443' // SECURITY: Safe — template placeholder, not a real endpoint
+
 const COMMANDS = [
   {
     comment: '# 1. Add cluster credentials',
-    command: 'kubectl config set-cluster <cluster-name> --server=https://<api-server>:6443',
+    command: `kubectl config set-cluster <cluster-name> --server=${EXAMPLE_SERVER_URL}`,
   },
   {
     comment: '# 2. Add authentication',
