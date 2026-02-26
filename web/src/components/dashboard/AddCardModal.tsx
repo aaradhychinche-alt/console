@@ -207,6 +207,7 @@ const CARD_CATALOG = {
   'Misc': [
     { type: 'buildpacks_status', title: 'Buildpacks Status', description: 'Cloud Native Buildpacks detection, builders, and image build status', visualization: 'status' },
     { type: 'flatcar_status', title: 'Flatcar Container Linux', description: 'Flatcar node OS versions, update status, and version distribution', visualization: 'status' },
+    { type: 'thanos_status', title: 'Thanos', description: 'Thanos global view metrics, store gateway status, and target health', visualization: 'status' },
     { type: 'weather', title: 'Weather', description: 'Weather conditions with multi-day forecasts and animated backgrounds', visualization: 'status' },
     { type: 'github_activity', title: 'GitHub Activity', description: 'Monitor GitHub repository activity - PRs, issues, releases, and contributors', visualization: 'table' },
     { type: 'kubectl', title: 'Kubectl', description: 'Interactive kubectl terminal with AI assistance, YAML editor, and command history', visualization: 'table' },
@@ -983,8 +984,8 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
       const search = browseSearch.toLowerCase()
       const filtered = cards.filter(
         card => card.title.toLowerCase().includes(search) ||
-                card.description.toLowerCase().includes(search) ||
-                card.type.toLowerCase().includes(search)
+          card.description.toLowerCase().includes(search) ||
+          card.type.toLowerCase().includes(search)
       )
       if (filtered.length > 0) {
         acc[category] = filtered
@@ -1056,21 +1057,21 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
 
   return (
     <>
-    <BaseModal isOpen={isOpen} onClose={onClose} size="xl" closeOnBackdrop={false}>
-      <BaseModal.Header
-        title={t('dashboard.addCard.title')}
-        icon={Plus}
-        onClose={onClose}
-        showBack={false}
-      />
+      <BaseModal isOpen={isOpen} onClose={onClose} size="xl" closeOnBackdrop={false}>
+        <BaseModal.Header
+          title={t('dashboard.addCard.title')}
+          icon={Plus}
+          onClose={onClose}
+          showBack={false}
+        />
 
-      <BaseModal.Tabs
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab as 'ai' | 'browse')}
-      />
+        <BaseModal.Tabs
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={(tab) => setActiveTab(tab as 'ai' | 'browse')}
+        />
 
-      <BaseModal.Content className="max-h-[60vh]">
+        <BaseModal.Content className="max-h-[60vh]">
           {/* Browse Tab */}
           {activeTab === 'browse' && (
             <div className="flex gap-4">
@@ -1113,80 +1114,79 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
                     const allCategorySelected = availableCards.length > 0 && availableCards.every(c => selectedBrowseCards.has(c.type))
 
                     return (
-                    <div key={category} className="border border-border rounded-lg overflow-hidden">
-                      <div className="flex items-center bg-secondary/50 hover:bg-secondary transition-colors">
-                        <button
-                          onClick={() => toggleCategory(category)}
-                          className="flex-1 px-3 py-2 text-left text-sm font-medium text-foreground flex items-center justify-between"
-                        >
-                          <span>{CATEGORY_LOCALE_KEYS[category] ? tCard(`cards:categories.${CATEGORY_LOCALE_KEYS[category]}`, category) : category}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {cards.length} {t('dashboard.addCard.cards')} {expandedCategories.has(category) ? '▼' : '▶'}
-                          </span>
-                        </button>
-                        {availableCards.length > 0 && (
+                      <div key={category} className="border border-border rounded-lg overflow-hidden">
+                        <div className="flex items-center bg-secondary/50 hover:bg-secondary transition-colors">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const newSelected = new Set(selectedBrowseCards)
-                              if (allCategorySelected) {
-                                // Deselect all from this category
-                                availableCards.forEach(c => newSelected.delete(c.type))
-                              } else {
-                                // Select all from this category
-                                availableCards.forEach(c => newSelected.add(c.type))
-                              }
-                              setSelectedBrowseCards(newSelected)
-                            }}
-                            className={`px-2 py-1 mr-2 text-xs rounded transition-colors ${
-                              allCategorySelected
-                                ? 'bg-purple-500/30 text-purple-300 hover:bg-purple-500/40'
-                                : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
-                            }`}
+                            onClick={() => toggleCategory(category)}
+                            className="flex-1 px-3 py-2 text-left text-sm font-medium text-foreground flex items-center justify-between"
                           >
-                            {allCategorySelected ? t('dashboard.addCard.deselectAll') : t('dashboard.addCard.addAll')}
+                            <span>{CATEGORY_LOCALE_KEYS[category] ? tCard(`cards:categories.${CATEGORY_LOCALE_KEYS[category]}`, category) : category}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {cards.length} {t('dashboard.addCard.cards')} {expandedCategories.has(category) ? '▼' : '▶'}
+                            </span>
                           </button>
+                          {availableCards.length > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const newSelected = new Set(selectedBrowseCards)
+                                if (allCategorySelected) {
+                                  // Deselect all from this category
+                                  availableCards.forEach(c => newSelected.delete(c.type))
+                                } else {
+                                  // Select all from this category
+                                  availableCards.forEach(c => newSelected.add(c.type))
+                                }
+                                setSelectedBrowseCards(newSelected)
+                              }}
+                              className={`px-2 py-1 mr-2 text-xs rounded transition-colors ${allCategorySelected
+                                  ? 'bg-purple-500/30 text-purple-300 hover:bg-purple-500/40'
+                                  : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
+                                }`}
+                            >
+                              {allCategorySelected ? t('dashboard.addCard.deselectAll') : t('dashboard.addCard.addAll')}
+                            </button>
+                          )}
+                        </div>
+                        {expandedCategories.has(category) && (
+                          <div className="p-2 grid grid-cols-2 gap-2">
+                            {cards.map((card) => {
+                              const isAlreadyAdded = existingCardTypes.includes(card.type)
+                              const isSelected = selectedBrowseCards.has(card.type)
+                              return (
+                                <button
+                                  key={card.type}
+                                  onClick={() => !isAlreadyAdded && toggleBrowseCard(card.type)}
+                                  onMouseEnter={() => setHoveredCard(card)}
+                                  onMouseLeave={() => setHoveredCard(null)}
+                                  disabled={isAlreadyAdded}
+                                  className={`p-2 rounded-lg text-left transition-all ${isAlreadyAdded
+                                      ? 'bg-secondary/30 opacity-50 cursor-not-allowed'
+                                      : isSelected
+                                        ? 'bg-purple-500/20 border-2 border-purple-500'
+                                        : 'bg-secondary/30 border-2 border-transparent hover:border-purple-500/30'
+                                    }`}
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm">{visualizationIcons[card.visualization]}</span>
+                                    <span className="text-xs font-medium text-foreground truncate">
+                                      {tCard(`cards:titles.${card.type}`, card.title)}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">
+                                    {wrapAbbreviations(tCard(`cards:descriptions.${card.type}`, card.description))}
+                                  </p>
+                                  {isAlreadyAdded && (
+                                    <span className="text-xs text-muted-foreground">{t('dashboard.addCard.added')}</span>
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
                         )}
                       </div>
-                      {expandedCategories.has(category) && (
-                        <div className="p-2 grid grid-cols-2 gap-2">
-                          {cards.map((card) => {
-                            const isAlreadyAdded = existingCardTypes.includes(card.type)
-                            const isSelected = selectedBrowseCards.has(card.type)
-                            return (
-                              <button
-                                key={card.type}
-                                onClick={() => !isAlreadyAdded && toggleBrowseCard(card.type)}
-                                onMouseEnter={() => setHoveredCard(card)}
-                                onMouseLeave={() => setHoveredCard(null)}
-                                disabled={isAlreadyAdded}
-                                className={`p-2 rounded-lg text-left transition-all ${
-                                  isAlreadyAdded
-                                    ? 'bg-secondary/30 opacity-50 cursor-not-allowed'
-                                    : isSelected
-                                      ? 'bg-purple-500/20 border-2 border-purple-500'
-                                      : 'bg-secondary/30 border-2 border-transparent hover:border-purple-500/30'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-sm">{visualizationIcons[card.visualization]}</span>
-                                  <span className="text-xs font-medium text-foreground truncate">
-                                    {tCard(`cards:titles.${card.type}`, card.title)}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-muted-foreground line-clamp-2">
-                                  {wrapAbbreviations(tCard(`cards:descriptions.${card.type}`, card.description))}
-                                </p>
-                                {isAlreadyAdded && (
-                                  <span className="text-xs text-muted-foreground">{t('dashboard.addCard.added')}</span>
-                                )}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )})}
+                    )
+                  })}
 
                 </div>
 
@@ -1261,135 +1261,134 @@ export function AddCardModal({ isOpen, onClose, onAddCards, existingCardTypes = 
           {/* AI Tab */}
           {activeTab === 'ai' && (
             <>
-          {/* Query input */}
-          <div className="mb-4">
-            <label className="block text-sm text-muted-foreground mb-2">
-              {t('dashboard.addCard.describeWhatYouWant')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                placeholder={t('dashboard.addCard.aiPlaceholder')}
-                className="flex-1 px-4 py-2 bg-secondary rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              />
+              {/* Query input */}
+              <div className="mb-4">
+                <label className="block text-sm text-muted-foreground mb-2">
+                  {t('dashboard.addCard.describeWhatYouWant')}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                    placeholder={t('dashboard.addCard.aiPlaceholder')}
+                    className="flex-1 px-4 py-2 bg-secondary rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!query.trim() || isGenerating}
+                    className="px-4 py-2 bg-gradient-ks text-foreground rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {t('dashboard.addCard.thinking')}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        {t('dashboard.addCard.generate')}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Example queries */}
+              {!suggestions.length && !isGenerating && (
+                <div className="mb-4">
+                  <p className="text-xs text-muted-foreground mb-2">{t('dashboard.addCard.tryAsking')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      t('dashboard.addCard.exampleGpuUtil'),
+                      t('dashboard.addCard.examplePodIssues'),
+                      t('dashboard.addCard.exampleHelmReleases'),
+                      t('dashboard.addCard.exampleNamespaceQuotas'),
+                      t('dashboard.addCard.exampleOperatorStatus'),
+                      t('dashboard.addCard.exampleKustomizeGitOps'),
+                    ].map((example) => (
+                      <button
+                        key={example}
+                        onClick={() => setQuery(example)}
+                        className="px-3 py-1 text-xs bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full transition-colors"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggestions */}
+              {suggestions.length > 0 && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {t('dashboard.addCard.suggestedCards', { count: selectedCards.size })}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto">
+                    {suggestions.map((card, index) => {
+                      const isAlreadyAdded = existingCardTypes.includes(card.type)
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => !isAlreadyAdded && toggleCard(index)}
+                          disabled={isAlreadyAdded}
+                          className={`p-3 rounded-lg text-left transition-all ${isAlreadyAdded
+                              ? 'bg-secondary/30 border-2 border-transparent opacity-50 cursor-not-allowed'
+                              : selectedCards.has(index)
+                                ? 'bg-purple-500/20 border-2 border-purple-500'
+                                : 'bg-secondary/50 border-2 border-transparent hover:border-purple-500/30'
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span>{visualizationIcons[card.visualization]}</span>
+                            <span className="text-sm font-medium text-foreground">
+                              {tCard(`cards:titles.${card.type}`, card.title)}
+                            </span>
+                            {isAlreadyAdded && (
+                              <span className="text-xs text-muted-foreground">{t('dashboard.addCard.alreadyAdded')}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {wrapAbbreviations(tCard(`cards:descriptions.${card.type}`, card.description))}
+                          </p>
+                          <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded bg-secondary text-muted-foreground capitalize">
+                            {card.visualization}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </BaseModal.Content>
+
+
+        {/* Footer - AI tab */}
+        {activeTab === 'ai' && suggestions.length > 0 && (
+          <BaseModal.Footer showKeyboardHints={false} className="justify-end">
+            <div className="flex items-center gap-3">
               <button
-                onClick={handleGenerate}
-                disabled={!query.trim() || isGenerating}
+                onClick={onClose}
+                className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {t('actions.cancel')}
+              </button>
+              <button
+                onClick={handleAddCards}
+                disabled={selectedCards.size === 0}
                 className="px-4 py-2 bg-gradient-ks text-foreground rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {t('dashboard.addCard.thinking')}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    {t('dashboard.addCard.generate')}
-                  </>
-                )}
+                <Plus className="w-4 h-4" />
+                {t('dashboard.addCard.addCount', { count: selectedCards.size })}
               </button>
             </div>
-          </div>
-
-          {/* Example queries */}
-          {!suggestions.length && !isGenerating && (
-            <div className="mb-4">
-              <p className="text-xs text-muted-foreground mb-2">{t('dashboard.addCard.tryAsking')}</p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  t('dashboard.addCard.exampleGpuUtil'),
-                  t('dashboard.addCard.examplePodIssues'),
-                  t('dashboard.addCard.exampleHelmReleases'),
-                  t('dashboard.addCard.exampleNamespaceQuotas'),
-                  t('dashboard.addCard.exampleOperatorStatus'),
-                  t('dashboard.addCard.exampleKustomizeGitOps'),
-                ].map((example) => (
-                  <button
-                    key={example}
-                    onClick={() => setQuery(example)}
-                    className="px-3 py-1 text-xs bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full transition-colors"
-                  >
-                    {example}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Suggestions */}
-          {suggestions.length > 0 && (
-            <div>
-              <p className="text-sm text-muted-foreground mb-3">
-                {t('dashboard.addCard.suggestedCards', { count: selectedCards.size })}
-              </p>
-              <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto">
-                {suggestions.map((card, index) => {
-                  const isAlreadyAdded = existingCardTypes.includes(card.type)
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => !isAlreadyAdded && toggleCard(index)}
-                      disabled={isAlreadyAdded}
-                      className={`p-3 rounded-lg text-left transition-all ${
-                        isAlreadyAdded
-                          ? 'bg-secondary/30 border-2 border-transparent opacity-50 cursor-not-allowed'
-                          : selectedCards.has(index)
-                            ? 'bg-purple-500/20 border-2 border-purple-500'
-                            : 'bg-secondary/50 border-2 border-transparent hover:border-purple-500/30'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span>{visualizationIcons[card.visualization]}</span>
-                        <span className="text-sm font-medium text-foreground">
-                          {tCard(`cards:titles.${card.type}`, card.title)}
-                        </span>
-                        {isAlreadyAdded && (
-                          <span className="text-xs text-muted-foreground">{t('dashboard.addCard.alreadyAdded')}</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {wrapAbbreviations(tCard(`cards:descriptions.${card.type}`, card.description))}
-                      </p>
-                      <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded bg-secondary text-muted-foreground capitalize">
-                        {card.visualization}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          </>
-          )}
-      </BaseModal.Content>
-
-
-      {/* Footer - AI tab */}
-      {activeTab === 'ai' && suggestions.length > 0 && (
-        <BaseModal.Footer showKeyboardHints={false} className="justify-end">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {t('actions.cancel')}
-            </button>
-            <button
-              onClick={handleAddCards}
-              disabled={selectedCards.size === 0}
-              className="px-4 py-2 bg-gradient-ks text-foreground rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              {t('dashboard.addCard.addCount', { count: selectedCards.size })}
-            </button>
-          </div>
-        </BaseModal.Footer>
-      )}
-    </BaseModal>
+          </BaseModal.Footer>
+        )}
+      </BaseModal>
 
       {/* Card Factory Modal */}
       <CardFactoryModal
