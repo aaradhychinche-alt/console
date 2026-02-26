@@ -4,7 +4,6 @@ import {
   Zap,
   Calendar,
   Plus,
-  X,
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
@@ -16,7 +15,8 @@ import {
   Pencil,
   Loader2,
   Server,
-  Eye,
+  ChevronDown,
+  ChevronUp,
   Filter,
   User,
   LayoutDashboard,
@@ -187,7 +187,7 @@ export function GPUReservations() {
   const [activeTab, setActiveTab] = useState<ViewTab>('overview')
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showReservationForm, setShowReservationForm] = useState(false)
-  const [selectedReservation, setSelectedReservation] = useState<GPUReservation | null>(null)
+  const [expandedReservationId, setExpandedReservationId] = useState<string | null>(null)
   const [editingReservation, setEditingReservation] = useState<GPUReservation | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -905,7 +905,7 @@ export function GPUReservations() {
                         return (
                           <button
                             key={`${bar.reservation.id}-${weekIdx}-${barIdx}`}
-                            onClick={() => setSelectedReservation(bar.reservation)}
+                            onClick={() => setExpandedReservationId(expandedReservationId === bar.reservation.id ? null : bar.reservation.id)}
                             className={cn(
                               'absolute flex items-center gap-1.5 px-2 text-xs font-medium truncate cursor-pointer transition-opacity hover:opacity-90',
                               'h-[20px]',
@@ -963,166 +963,143 @@ export function GPUReservations() {
             </div>
           )}
           <div className="grid gap-4">
-            {filteredReservations.map(r => (
-              <div key={r.id} className={cn('glass p-4 rounded-lg', demoMode && 'border-2 border-yellow-500/50')}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                      <Zap className="w-5 h-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-foreground">{r.title}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {r.namespace} · {r.user_name}
+            {filteredReservations.map(r => {
+              const isExpanded = expandedReservationId === r.id
+              return (
+                <div key={r.id} className={cn('glass p-4 rounded-lg', demoMode && 'border-2 border-yellow-500/50')}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-purple-500/20">
+                        <Zap className="w-5 h-5 text-purple-400" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-foreground">{r.title}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {r.namespace} · {r.user_name}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={cn('px-2 py-0.5 text-xs rounded-full border', STATUS_COLORS[r.status] || STATUS_COLORS.pending)}>
-                      {r.status}
-                    </span>
-                    <ClusterBadge cluster={r.cluster} size="sm" />
-                    {([
-                      { key: 'view', icon: Eye, onClick: () => setSelectedReservation(r), disabled: false, colorClass: 'hover:text-foreground', label: t('gpuReservations.list.viewReservation', { title: r.title }) },
-                      { key: 'edit', icon: Pencil, onClick: () => { setEditingReservation(r); setShowReservationForm(true) }, disabled: deleteConfirmId !== null || showReservationForm, colorClass: 'hover:text-purple-400 disabled:hover:bg-transparent', label: t('gpuReservations.list.editReservation', { title: r.title }) },
-                      { key: 'delete', icon: Trash2, onClick: () => setDeleteConfirmId(r.id), disabled: deleteConfirmId !== null || showReservationForm, colorClass: 'hover:text-red-400 disabled:hover:bg-transparent', label: t('gpuReservations.list.deleteReservation', { title: r.title }) },
-                    ] as const).map(({ key, icon: ActionIcon, onClick, disabled, colorClass, label }) => (
-                      <button key={key} onClick={onClick} disabled={disabled}
-                        className={`p-1.5 rounded hover:bg-secondary text-muted-foreground ${colorClass} disabled:opacity-50 disabled:cursor-not-allowed`}
-                        aria-label={label}>
-                        <ActionIcon className="w-4 h-4" />
+                    <div className="flex items-center gap-2">
+                      <span className={cn('px-2 py-0.5 text-xs rounded-full border', STATUS_COLORS[r.status] || STATUS_COLORS.pending)}>
+                        {r.status}
+                      </span>
+                      <ClusterBadge cluster={r.cluster} size="sm" />
+                      <button onClick={() => setExpandedReservationId(isExpanded ? null : r.id)}
+                        className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                        aria-label={t('gpuReservations.list.viewReservation', { title: r.title })}>
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Reservation details */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="flex items-center gap-2 p-2 rounded bg-secondary/30">
-                    <Zap className="w-3.5 h-3.5 text-purple-400" />
-                    <div>
-                      <div className="text-xs text-muted-foreground">{t('common:common.gpus')}</div>
-                      <div className="text-sm font-medium text-foreground">{r.gpu_count}</div>
+                      <button onClick={() => { setEditingReservation(r); setShowReservationForm(true) }}
+                        disabled={deleteConfirmId !== null || showReservationForm}
+                        className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-purple-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        aria-label={t('gpuReservations.list.editReservation', { title: r.title })}>
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setDeleteConfirmId(r.id)}
+                        disabled={deleteConfirmId !== null || showReservationForm}
+                        className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        aria-label={t('gpuReservations.list.deleteReservation', { title: r.title })}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  {r.gpu_type && (
+
+                  {/* Reservation summary */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="flex items-center gap-2 p-2 rounded bg-secondary/30">
+                      <Zap className="w-3.5 h-3.5 text-purple-400" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">{t('common:common.gpus')}</div>
+                        <div className="text-sm font-medium text-foreground">{r.gpu_count}</div>
+                      </div>
+                    </div>
+                    {r.gpu_type && (
+                      <div className="p-2 rounded bg-secondary/30">
+                        <div className="text-xs text-muted-foreground">{t('common:common.type')}</div>
+                        <div className="text-sm font-medium text-foreground truncate">{r.gpu_type}</div>
+                      </div>
+                    )}
                     <div className="p-2 rounded bg-secondary/30">
-                      <div className="text-xs text-muted-foreground">{t('common:common.type')}</div>
-                      <div className="text-sm font-medium text-foreground truncate">{r.gpu_type}</div>
+                      <div className="text-xs text-muted-foreground">{t('common:common.start')}</div>
+                      <div className="text-sm font-medium text-foreground">{r.start_date}</div>
+                    </div>
+                    <div className="p-2 rounded bg-secondary/30">
+                      <div className="text-xs text-muted-foreground">{t('common:common.duration')}</div>
+                      <div className="text-sm font-medium text-foreground">{r.duration_hours}h</div>
+                    </div>
+                  </div>
+
+                  {/* Description and notes */}
+                  {(r.description || r.notes) && (
+                    <div className="mt-3 pt-3 border-t border-border/50 text-sm text-muted-foreground">
+                      {r.description && <div>{r.description}</div>}
+                      {r.notes && <div className="mt-1 italic">{r.notes}</div>}
                     </div>
                   )}
-                  <div className="p-2 rounded bg-secondary/30">
-                    <div className="text-xs text-muted-foreground">{t('common:common.start')}</div>
-                    <div className="text-sm font-medium text-foreground">{r.start_date}</div>
-                  </div>
-                  <div className="p-2 rounded bg-secondary/30">
-                    <div className="text-xs text-muted-foreground">{t('common:common.duration')}</div>
-                    <div className="text-sm font-medium text-foreground">{r.duration_hours}h</div>
-                  </div>
+
+                  {/* Quota enforcement badge */}
+                  {r.quota_enforced && r.quota_name && (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-green-400">
+                      <CheckCircle2 className="w-3 h-3" />
+                      {t('gpuReservations.list.k8sQuotaEnforced', { quotaName: r.quota_name })}
+                    </div>
+                  )}
+
+                  {/* Expanded details */}
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.user')}</div>
+                          <div className="text-foreground">{r.user_name}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">{t('common:common.status')}</div>
+                          <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full border', STATUS_COLORS[r.status] || STATUS_COLORS.pending)}>
+                            {r.status === 'active' && <span className="w-2 h-2 rounded-full bg-green-400" />}
+                            {r.status}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">{t('common:common.namespace')}</div>
+                          <div className="text-foreground">{r.namespace}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">{t('common:common.cluster')}</div>
+                          <div className="text-foreground">{r.cluster}</div>
+                        </div>
+                        {r.quota_enforced && r.quota_name && (
+                          <div>
+                            <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.k8sQuota')}</div>
+                            <div className="text-foreground">{r.quota_name}</div>
+                          </div>
+                        )}
+                        <div>
+                          <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.startDate')}</div>
+                          <div className="text-foreground">{r.start_date}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">{t('common:common.duration')}</div>
+                          <div className="text-foreground">{r.duration_hours} hours</div>
+                        </div>
+                        {r.description && (
+                          <div className="col-span-2">
+                            <div className="text-sm text-muted-foreground">{t('common:common.description')}</div>
+                            <div className="text-foreground">{r.description}</div>
+                          </div>
+                        )}
+                        {r.notes && (
+                          <div className="col-span-2">
+                            <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.notes')}</div>
+                            <div className="text-foreground">{r.notes}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {/* Description and notes */}
-                {(r.description || r.notes) && (
-                  <div className="mt-3 pt-3 border-t border-border/50 text-sm text-muted-foreground">
-                    {r.description && <div>{r.description}</div>}
-                    {r.notes && <div className="mt-1 italic">{r.notes}</div>}
-                  </div>
-                )}
-
-                {/* Quota enforcement badge */}
-                {r.quota_enforced && r.quota_name && (
-                  <div className="mt-2 flex items-center gap-1.5 text-xs text-green-400">
-                    <CheckCircle2 className="w-3 h-3" />
-                    {t('gpuReservations.list.k8sQuotaEnforced', { quotaName: r.quota_name })}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Selected Reservation Details — renders for both calendar and quotas tabs */}
-      {selectedReservation && (
-        <div className={cn('glass p-4 rounded-lg', demoMode && 'border-2 border-yellow-500/50')}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-medium text-foreground">{t('gpuReservations.reservationDetails.title')}</h3>
-            <button onClick={() => setSelectedReservation(null)} className="p-1 rounded hover:bg-secondary transition-colors" aria-label={t('gpuReservations.reservationDetails.close')}>
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.title')}</div>
-              <div className="text-foreground font-medium">{selectedReservation.title}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">{t('common:common.status')}</div>
-              <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full border', STATUS_COLORS[selectedReservation.status] || STATUS_COLORS.pending)}>
-                {(selectedReservation.status === 'active') && <span className="w-2 h-2 rounded-full bg-green-400" />}
-                {selectedReservation.status}
-              </span>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.user')}</div>
-              <div className="text-foreground">{selectedReservation.user_name}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">{t('common:common.namespace')}</div>
-              <div className="text-foreground">{selectedReservation.namespace}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">{t('common:common.gpus')}</div>
-              <div className="text-foreground">{selectedReservation.gpu_count}</div>
-            </div>
-            {selectedReservation.gpu_type && (
-              <div>
-                <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.gpuType')}</div>
-                <div className="text-foreground">{selectedReservation.gpu_type}</div>
-              </div>
-            )}
-            <div>
-              <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.startDate')}</div>
-              <div className="text-foreground">{selectedReservation.start_date}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">{t('common:common.duration')}</div>
-              <div className="text-foreground">{selectedReservation.duration_hours} hours</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">{t('common:common.cluster')}</div>
-              <div className="text-foreground">{selectedReservation.cluster}</div>
-            </div>
-            {selectedReservation.quota_enforced && selectedReservation.quota_name && (
-              <div>
-                <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.k8sQuota')}</div>
-                <div className="text-foreground">{selectedReservation.quota_name}</div>
-              </div>
-            )}
-            {selectedReservation.description && (
-              <div className="col-span-2">
-                <div className="text-sm text-muted-foreground">{t('common:common.description')}</div>
-                <div className="text-foreground">{selectedReservation.description}</div>
-              </div>
-            )}
-            {selectedReservation.notes && (
-              <div className="col-span-2">
-                <div className="text-sm text-muted-foreground">{t('gpuReservations.reservationDetails.fields.notes')}</div>
-                <div className="text-foreground">{selectedReservation.notes}</div>
-              </div>
-            )}
-            {/* Actions */}
-            <div className="col-span-2 flex gap-3 pt-2 border-t border-border">
-              {([
-                { key: 'edit', icon: Pencil, label: t('gpuReservations.reservationDetails.actions.edit'), className: 'text-purple-400 hover:bg-purple-500/10 disabled:text-purple-400/50', onClick: () => { setEditingReservation(selectedReservation); setShowReservationForm(true); setSelectedReservation(null) } },
-                { key: 'delete', icon: Trash2, label: t('gpuReservations.reservationDetails.actions.delete'), className: 'text-red-400 hover:bg-red-500/10 disabled:text-red-400/50', onClick: () => { setDeleteConfirmId(selectedReservation.id); setSelectedReservation(null) } },
-              ] as const).map(({ key, icon: ActionIcon, label, className, onClick }) => (
-                <button key={key} onClick={onClick} disabled={deleteConfirmId !== null || showReservationForm}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm ${className} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent`}>
-                  <ActionIcon className="w-3.5 h-3.5" /> {label}
-                </button>
-              ))}
-            </div>
+              )
+            })}
           </div>
         </div>
       )}
