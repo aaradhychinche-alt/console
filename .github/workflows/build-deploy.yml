@@ -108,7 +108,8 @@ jobs:
 
       - name: Create namespace if not exists
         run: |
-          kubectl create namespace kc --dry-run=client -o yaml | kubectl apply -f -
+          kubectl get namespace kc >/dev/null 2>&1 || kubectl create namespace kc
+        continue-on-error: true
 
       - name: Create or update secrets
         run: |
