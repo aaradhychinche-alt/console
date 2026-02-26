@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
-import { isDemoMode } from '../lib/demoMode'
+import { useDemoMode } from './useDemoMode'
 
 const REFRESH_INTERVAL_MS = 30000
 
@@ -119,6 +119,7 @@ export function useGPUReservations(onlyMine = false) {
   const [reservations, setReservations] = useState<GPUReservation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { isDemoMode: demoMode } = useDemoMode()
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchReservations = useCallback(async (silent = false) => {
@@ -127,7 +128,7 @@ export function useGPUReservations(onlyMine = false) {
       const query = onlyMine ? '?mine=true' : ''
       const { data } = await api.get<GPUReservation[]>(`/api/gpu/reservations${query}`)
       // In demo mode, use demo data when the DB is empty (localhost with no reservations)
-      if (isDemoMode() && data.length === 0) {
+      if (demoMode && data.length === 0) {
         setReservations(DEMO_RESERVATIONS)
       } else {
         setReservations(data)
@@ -135,7 +136,7 @@ export function useGPUReservations(onlyMine = false) {
       setError(null)
     } catch (err) {
       // API unreachable — fall back to demo data when in demo mode
-      if (isDemoMode()) {
+      if (demoMode) {
         setReservations(DEMO_RESERVATIONS)
         setError(null)
       } else if (!silent) {
@@ -144,11 +145,10 @@ export function useGPUReservations(onlyMine = false) {
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [onlyMine])
+  }, [onlyMine, demoMode])
 
-  // Always try the real API first. On cluster deployments this keeps data live
-  // even when demo mode is toggled on. On localhost the API will fail and we
-  // fall back to demo data above.
+  // Re-fetches when demo mode toggles, ensuring correct data source.
+  // On cluster deployments the API succeeds and data stays live.
   useEffect(() => {
     fetchReservations(false)
     intervalRef.current = setInterval(() => fetchReservations(true), REFRESH_INTERVAL_MS)
