@@ -121,6 +121,7 @@ jobs:
             --from-literal=github-token=${{ secrets.KSC_GITHUB_TOKEN }} \
             --from-literal=google-drive-api-key=${{ secrets.KSC_GOOGLE_DRIVE_API_KEY }} \
             --dry-run=client -o yaml | kubectl apply -f -
+        continue-on-error: true
 
       - name: Deploy with Helm
         run: |
