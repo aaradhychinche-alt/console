@@ -7,6 +7,7 @@ import { useMobile } from '../../hooks/useMobile'
 import { ResetMode } from '../../hooks/useDashboardReset'
 import { ResetDialog } from './ResetDialog'
 import { SidebarCustomizer } from '../layout/SidebarCustomizer'
+import { DashboardHealthIndicator } from './DashboardHealthIndicator'
 
 interface FloatingDashboardActionsProps {
   onAddCard: () => void
@@ -127,6 +128,7 @@ export function FloatingDashboardActions({
           <div
             role="menu"
             className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150"
+            aria-label={t('dashboard.actions.dashboardActions')}
             onKeyDown={(e) => {
               if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
               e.preventDefault()
@@ -198,6 +200,10 @@ export function FloatingDashboardActions({
               <Plus className="w-3.5 h-3.5" />
               {t('dashboard.actions.addCard')}
             </button>
+            {/* Health status indicator at bottom of menu */}
+            <div className="pt-1 border-t border-border/50" role="presentation">
+              <DashboardHealthIndicator size="sm" />
+            </div>
           </div>
         )}
 
