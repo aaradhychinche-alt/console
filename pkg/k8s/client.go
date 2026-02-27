@@ -640,9 +640,14 @@ func NewMultiClusterClient(kubeconfig string) (*MultiClusterClient, error) {
 }
 
 // detectInClusterName tries to determine a friendly name for the local cluster.
-// On OpenShift it reads the Infrastructure/cluster resource for the API server URL.
-// Falls back to "in-cluster" if detection fails.
+// Priority: CLUSTER_NAME env var > OpenShift Infrastructure resource > "in-cluster".
 func detectInClusterName(cfg *rest.Config) string {
+	// 1. Explicit env var (set via Helm --set clusterName=vllm-d)
+	if name := os.Getenv("CLUSTER_NAME"); name != "" {
+		return name
+	}
+
+	// 2. OpenShift Infrastructure/cluster resource
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -651,7 +656,6 @@ func detectInClusterName(cfg *rest.Config) string {
 		return "in-cluster"
 	}
 
-	// Try OpenShift Infrastructure resource
 	infraGVR := schema.GroupVersionResource{
 		Group:    "config.openshift.io",
 		Version:  "v1",

@@ -134,6 +134,10 @@ spec:
             - name: ENABLED_DASHBOARDS
               value: {{ .Values.enabledDashboards | quote }}
             {{- end }}
+            {{- if .Values.clusterName }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.clusterName | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

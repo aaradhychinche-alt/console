@@ -144,6 +144,9 @@ kubestellar:
 # Example: "gpu-reservations,llm-d-benchmarks"
 enabledDashboards: ""
 
+# Override the auto-detected in-cluster name (e.g. "vllm-d", "pok-prod")
+clusterName: ""
+
 nodeSelector: {}
 
 tolerations: []
