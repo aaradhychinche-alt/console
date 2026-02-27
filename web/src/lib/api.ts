@@ -10,6 +10,7 @@ import { emitSessionExpired } from './analytics'
 const API_BASE = ''
 const DEFAULT_TIMEOUT = MCP_HOOK_TIMEOUT_MS
 const BACKEND_CHECK_INTERVAL = 10000 // 10 seconds between backend checks when unavailable
+const TOKEN_REFRESH_HEADER = 'X-Token-Refresh' // server signals when token should be refreshed
 
 // Error class for unauthenticated requests
 export class UnauthenticatedError extends Error {
@@ -84,9 +85,14 @@ function showSessionExpiredBanner(): void {
     <span><strong>Session expired</strong> — Redirecting to sign in...</span>
   `
 
-  const style = document.createElement('style')
-  style.textContent = `@keyframes slideUp { from { transform: translateX(-50%) translateY(100%); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }`
-  document.head.appendChild(style)
+  // Reuse a single <style> element to avoid unbounded DOM growth
+  const STYLE_ID = 'session-banner-animation'
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement('style')
+    style.id = STYLE_ID
+    style.textContent = `@keyframes slideUp { from { transform: translateX(-50%) translateY(100%); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }`
+    document.head.appendChild(style)
+  }
   document.body.appendChild(toast)
 }
 
@@ -240,6 +246,51 @@ export function isBackendUnavailable(): boolean {
 }
 
 class ApiClient {
+  private refreshInProgress: Promise<void> | null = null
+
+  /**
+   * Silently refresh the JWT token in the background.
+   * Called when the server returns X-Token-Refresh header indicating the token
+   * has passed 50% of its lifetime and should be renewed.
+   */
+  private silentRefresh(): void {
+    if (this.refreshInProgress) return
+    this.refreshInProgress = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+        })
+        if (response.ok) {
+          const data = await response.json()
+          if (data.token) {
+            localStorage.setItem(STORAGE_KEY_TOKEN, data.token)
+            // Notify AuthProvider (and other tabs) that the token changed
+            window.dispatchEvent(new StorageEvent('storage', {
+              key: STORAGE_KEY_TOKEN,
+              newValue: data.token,
+              storageArea: localStorage,
+            }))
+          }
+        }
+      } catch {
+        // Silent refresh failure is non-fatal — the current token is still valid
+      } finally {
+        this.refreshInProgress = null
+      }
+    })()
+  }
+
+  /**
+   * Check the response for the X-Token-Refresh header and trigger a
+   * background refresh if present.
+   */
+  private checkTokenRefresh(response: Response): void {
+    if (response.headers.get(TOKEN_REFRESH_HEADER) === 'true') {
+      this.silentRefresh()
+    }
+  }
+
   private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -299,6 +350,7 @@ class ApiClient {
         throw new Error(errorText || `API error: ${response.status}`)
       }
       markBackendSuccess()
+      this.checkTokenRefresh(response)
       const data = await response.json()
       return { data }
     } catch (err) {
@@ -343,6 +395,7 @@ class ApiClient {
         throw new Error(errorText || `API error: ${response.status}`)
       }
       markBackendSuccess()
+      this.checkTokenRefresh(response)
       const data = await response.json()
       return { data }
     } catch (err) {
@@ -387,6 +440,7 @@ class ApiClient {
         throw new Error(errorText || `API error: ${response.status}`)
       }
       markBackendSuccess()
+      this.checkTokenRefresh(response)
       const data = await response.json()
       return { data }
     } catch (err) {
@@ -430,6 +484,7 @@ class ApiClient {
         throw new Error(errorText || `API error: ${response.status}`)
       }
       markBackendSuccess()
+      this.checkTokenRefresh(response)
     } catch (err) {
       clearTimeout(timeoutId)
       if (err instanceof Error && err.name === 'AbortError') {

@@ -33,6 +33,9 @@ func GetRegistry() *Registry {
 
 // Register adds a provider to the registry
 func (r *Registry) Register(provider AIProvider) error {
+	if r == nil {
+		return fmt.Errorf("registry is nil")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -53,6 +56,9 @@ func (r *Registry) Register(provider AIProvider) error {
 
 // Get retrieves a provider by name
 func (r *Registry) Get(name string) (AIProvider, error) {
+	if r == nil {
+		return nil, fmt.Errorf("registry is nil")
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -65,6 +71,9 @@ func (r *Registry) Get(name string) (AIProvider, error) {
 
 // GetDefault returns the default provider
 func (r *Registry) GetDefault() (AIProvider, error) {
+	if r == nil {
+		return nil, fmt.Errorf("registry is nil")
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -81,6 +90,9 @@ func (r *Registry) GetDefault() (AIProvider, error) {
 
 // GetDefaultName returns the name of the default provider
 func (r *Registry) GetDefaultName() string {
+	if r == nil {
+		return ""
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.defaultAgent
@@ -88,12 +100,18 @@ func (r *Registry) GetDefaultName() string {
 
 // SetDefault sets the default provider
 func (r *Registry) SetDefault(name string) error {
+	if r == nil {
+		return fmt.Errorf("registry is nil")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	provider, exists := r.providers[name]
 	if !exists {
 		return fmt.Errorf("provider %s not found", name)
+	}
+	if provider == nil {
+		return fmt.Errorf("provider %s is nil", name)
 	}
 	if !provider.IsAvailable() {
 		return fmt.Errorf("provider %s is not available", name)
@@ -105,6 +123,9 @@ func (r *Registry) SetDefault(name string) error {
 
 // GetSelectedAgent returns the selected agent for a session
 func (r *Registry) GetSelectedAgent(sessionID string) string {
+	if r == nil {
+		return ""
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -116,6 +137,9 @@ func (r *Registry) GetSelectedAgent(sessionID string) string {
 
 // SetSelectedAgent sets the selected agent for a session
 func (r *Registry) SetSelectedAgent(sessionID, agentName string) error {
+	if r == nil {
+		return fmt.Errorf("registry is nil")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -133,6 +157,9 @@ func (r *Registry) SetSelectedAgent(sessionID, agentName string) error {
 
 // List returns all registered providers
 func (r *Registry) List() []ProviderInfo {
+	if r == nil {
+		return nil
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -152,6 +179,9 @@ func (r *Registry) List() []ProviderInfo {
 
 // ListAvailable returns only providers that are configured and ready
 func (r *Registry) ListAvailable() []ProviderInfo {
+	if r == nil {
+		return nil
+	}
 	all := r.List()
 	available := make([]ProviderInfo, 0)
 	for _, info := range all {

@@ -3,10 +3,17 @@ package middleware
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+)
+
+const (
+	// tokenRefreshThresholdFraction is the fraction of JWT lifetime after which
+	// the server signals the client to silently refresh its token.
+	tokenRefreshThresholdFraction = 0.5
 )
 
 // UserClaims represents JWT claims for a user
@@ -64,6 +71,17 @@ func JWTAuth(secret string) fiber.Handler {
 		// Store user info in context
 		c.Locals("userID", claims.UserID)
 		c.Locals("githubLogin", claims.GitHubLogin)
+
+		// Signal the client to silently refresh its token when more than half
+		// the JWT lifetime has elapsed. Derive the lifetime from the token's own
+		// claims (ExpiresAt - IssuedAt) so there's no duplicated constant.
+		if claims.IssuedAt != nil && claims.ExpiresAt != nil {
+			lifetime := claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time)
+			tokenAge := time.Since(claims.IssuedAt.Time)
+			if tokenAge > time.Duration(float64(lifetime)*tokenRefreshThresholdFraction) {
+				c.Set("X-Token-Refresh", "true")
+			}
+		}
 
 		return c.Next()
 	}

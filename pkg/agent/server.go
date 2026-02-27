@@ -2349,6 +2349,11 @@ User request: %s`, req.Prompt)
 		conn.WriteJSON(s.errorResponse(msg.ID, "mixed_mode_error", fmt.Sprintf("Thinking agent error: %v", err)))
 		return
 	}
+	if thinkingResp == nil {
+		log.Printf("[MixedMode] Thinking agent returned nil response")
+		conn.WriteJSON(s.errorResponse(msg.ID, "mixed_mode_error", "Thinking agent returned empty response"))
+		return
+	}
 
 	// Stream the thinking response
 	conn.WriteJSON(protocol.Message{
@@ -2429,7 +2434,7 @@ User request: %s`, req.Prompt)
 			ID:   msg.ID,
 			Type: "stream_chunk",
 			Payload: map[string]interface{}{
-				"content": fmt.Sprintf("**🔧 %s Output:**\n```\n%s\n```\n\n", execProvider.DisplayName(), execResp.Content),
+				"content": fmt.Sprintf("**🔧 %s Output:**\n```\n%s\n```\n\n", execProvider.DisplayName(), execContent),
 				"agent":   executionAgent,
 				"phase":   "executing",
 			},
@@ -2463,7 +2468,7 @@ Command output:
 	analysisResp, err := thinkingProvider.Chat(ctx, &analysisReq)
 	if err != nil {
 		log.Printf("[MixedMode] Analysis error: %v", err)
-	} else {
+	} else if analysisResp != nil {
 		conn.WriteJSON(protocol.Message{
 			ID:   msg.ID,
 			Type: "stream_chunk",
