@@ -55,6 +55,7 @@ type MultiClusterClient struct {
 	stopWatch       chan struct{}
 	onReload        func()               // Callback when config is reloaded
 	inClusterConfig *rest.Config         // In-cluster config when running inside k8s
+	inClusterName   string               // Detected friendly name for in-cluster (e.g. "fmaas-vllm-d")
 	slowClusters    map[string]time.Time // clusters that recently timed out (reduced timeout)
 }
 
@@ -630,10 +631,65 @@ func NewMultiClusterClient(kubeconfig string) (*MultiClusterClient, error) {
 		if inClusterConfig, err := rest.InClusterConfig(); err == nil {
 			log.Println("Using in-cluster config (no kubeconfig file found)")
 			client.inClusterConfig = inClusterConfig
+			client.inClusterName = detectInClusterName(inClusterConfig)
+			log.Printf("Detected in-cluster name: %s", client.inClusterName)
 		}
 	}
 
 	return client, nil
+}
+
+// detectInClusterName tries to determine a friendly name for the local cluster.
+// On OpenShift it reads the Infrastructure/cluster resource for the API server URL.
+// Falls back to "in-cluster" if detection fails.
+func detectInClusterName(cfg *rest.Config) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return "in-cluster"
+	}
+
+	// Try OpenShift Infrastructure resource
+	infraGVR := schema.GroupVersionResource{
+		Group:    "config.openshift.io",
+		Version:  "v1",
+		Resource: "infrastructures",
+	}
+	infra, err := dynClient.Resource(infraGVR).Get(ctx, "cluster", metav1.GetOptions{})
+	if err == nil {
+		if status, ok := infra.Object["status"].(map[string]interface{}); ok {
+			if apiURL, ok := status["apiServerURL"].(string); ok && apiURL != "" {
+				if name := clusterNameFromAPIURL(apiURL); name != "" {
+					return name
+				}
+			}
+		}
+	}
+
+	return "in-cluster"
+}
+
+// clusterNameFromAPIURL extracts a friendly cluster name from an API server URL.
+// e.g. "https://api.fmaas-vllm-d.fmaas.res.ibm.com:6443" → "fmaas-vllm-d"
+func clusterNameFromAPIURL(apiURL string) string {
+	// Remove scheme
+	host := apiURL
+	if idx := strings.Index(host, "://"); idx >= 0 {
+		host = host[idx+3:]
+	}
+	// Remove port
+	if idx := strings.Index(host, ":"); idx >= 0 {
+		host = host[:idx]
+	}
+	// Strip "api." prefix (OpenShift convention)
+	host = strings.TrimPrefix(host, "api.")
+	// Take the first domain segment as the cluster name
+	if idx := strings.Index(host, "."); idx > 0 {
+		return host[:idx]
+	}
+	return host
 }
 
 // LoadConfig loads the kubeconfig
@@ -825,10 +881,14 @@ func (m *MultiClusterClient) ListClusters(ctx context.Context) ([]ClusterInfo, e
 
 	var clusters []ClusterInfo
 
-	// If we have in-cluster config, add the local cluster
+	// If we have in-cluster config, add the local cluster with detected name
 	if inClusterConfig != nil {
+		name := m.inClusterName
+		if name == "" {
+			name = "in-cluster"
+		}
 		clusters = append(clusters, ClusterInfo{
-			Name:      "in-cluster",
+			Name:      name,
 			Context:   "in-cluster",
 			Server:    inClusterConfig.Host,
 			Source:    "in-cluster",
@@ -1082,8 +1142,9 @@ func (m *MultiClusterClient) GetClient(contextName string) (kubernetes.Interface
 	var config *rest.Config
 	var err error
 
-	// Handle in-cluster context specially
-	if contextName == "in-cluster" && inClusterConfig != nil {
+	// Handle in-cluster context specially — accept both "in-cluster" and the detected name
+	isInCluster := inClusterConfig != nil && (contextName == "in-cluster" || contextName == m.inClusterName)
+	if isInCluster {
 		config = rest.CopyConfig(inClusterConfig)
 	} else {
 		config, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
@@ -1145,7 +1206,8 @@ func (m *MultiClusterClient) GetDynamicClient(contextName string) (dynamic.Inter
 	config, ok := m.configs[contextName]
 	if !ok {
 		var err error
-		if contextName == "in-cluster" && m.inClusterConfig != nil {
+		isInCluster := m.inClusterConfig != nil && (contextName == "in-cluster" || contextName == m.inClusterName)
+		if isInCluster {
 			config = rest.CopyConfig(m.inClusterConfig)
 		} else {
 			config, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
