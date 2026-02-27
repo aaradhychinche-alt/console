@@ -1789,7 +1789,7 @@ func (m *MultiClusterClient) GetGPUNodes(ctx context.Context, contextName string
 	// Track allocations by node and accelerator type
 	gpuAllocationByNode := make(map[string]int) // GPU allocations
 	tpuAllocationByNode := make(map[string]int) // TPU allocations
-	aiuAllocationByNode := make(map[string]int) // AIU (Gaudi) allocations
+	aiuAllocationByNode := make(map[string]int) // AIU (IBM AIU) allocations
 	xpuAllocationByNode := make(map[string]int) // XPU allocations
 	if allPods != nil {
 		for _, pod := range allPods.Items {
@@ -1798,7 +1798,8 @@ func (m *MultiClusterClient) GetGPUNodes(ctx context.Context, contextName string
 				continue
 			}
 			for _, container := range pod.Spec.Containers {
-				// Check GPU requests (NVIDIA, AMD, Intel)
+				// Check GPU requests (NVIDIA, AMD, Intel GPU, Intel Gaudi/Habana)
+				// Intel Gaudi is classified as AcceleratorGPU, so track in gpuAllocationByNode
 				if gpuReq, ok := container.Resources.Requests["nvidia.com/gpu"]; ok {
 					gpuAllocationByNode[nodeName] += int(gpuReq.Value())
 				}
@@ -1808,19 +1809,18 @@ func (m *MultiClusterClient) GetGPUNodes(ctx context.Context, contextName string
 				if gpuReq, ok := container.Resources.Requests["gpu.intel.com/i915"]; ok {
 					gpuAllocationByNode[nodeName] += int(gpuReq.Value())
 				}
+				if gpuReq, ok := container.Resources.Requests["habana.ai/gaudi"]; ok {
+					gpuAllocationByNode[nodeName] += int(gpuReq.Value())
+				}
+				if gpuReq, ok := container.Resources.Requests["habana.ai/gaudi2"]; ok {
+					gpuAllocationByNode[nodeName] += int(gpuReq.Value())
+				}
+				if gpuReq, ok := container.Resources.Requests["intel.com/gaudi"]; ok {
+					gpuAllocationByNode[nodeName] += int(gpuReq.Value())
+				}
 				// Check TPU requests (Google Cloud)
 				if tpuReq, ok := container.Resources.Requests["google.com/tpu"]; ok {
 					tpuAllocationByNode[nodeName] += int(tpuReq.Value())
-				}
-				// Check AIU requests (Intel Gaudi / Habana)
-				if aiuReq, ok := container.Resources.Requests["habana.ai/gaudi"]; ok {
-					aiuAllocationByNode[nodeName] += int(aiuReq.Value())
-				}
-				if aiuReq, ok := container.Resources.Requests["habana.ai/gaudi2"]; ok {
-					aiuAllocationByNode[nodeName] += int(aiuReq.Value())
-				}
-				if aiuReq, ok := container.Resources.Requests["intel.com/gaudi"]; ok {
-					aiuAllocationByNode[nodeName] += int(aiuReq.Value())
 				}
 				// Check XPU requests (Intel)
 				if xpuReq, ok := container.Resources.Requests["intel.com/xpu"]; ok {
