@@ -106,6 +106,7 @@ jobs:
 
       - name: Configure kubeconfig from SA token
         run: |
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
           CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           kubectl config set-cluster in-cluster \
@@ -115,8 +116,9 @@ jobs:
           kubectl config set-credentials sa-user --token="$SA_TOKEN"
           kubectl config set-context deploy --cluster=in-cluster --user=sa-user
           kubectl config use-context deploy
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
           echo "Verifying cluster access..."
-          kubectl auth can-i list secrets -n kc
+          kubectl get secrets -n kc --no-headers | head -3
 
       - name: Create namespace if not exists
         run: |
@@ -177,6 +179,7 @@ jobs:
 
       - name: Configure kubeconfig from SA token
         run: |
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
           CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           kubectl config set-cluster in-cluster \
@@ -186,8 +189,9 @@ jobs:
           kubectl config set-credentials sa-user --token="$SA_TOKEN"
           kubectl config set-context deploy --cluster=in-cluster --user=sa-user
           kubectl config use-context deploy
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
           echo "Verifying cluster access..."
-          kubectl auth can-i list secrets -n kubestellar-console
+          kubectl get secrets -n kubestellar-console --no-headers | head -3
 
       - name: Create namespace if not exists
         run: |
