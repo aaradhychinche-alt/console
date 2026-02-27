@@ -104,7 +104,19 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
 
-      # Runner already has cluster access via service account - no kubeconfig needed
+      - name: Configure kubeconfig from SA token
+        run: |
+          SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+          CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          kubectl config set-cluster in-cluster \
+            --server=https://kubernetes.default.svc \
+            --certificate-authority="$CA_CERT" \
+            --embed-certs=true
+          kubectl config set-credentials sa-user --token="$SA_TOKEN"
+          kubectl config set-context deploy --cluster=in-cluster --user=sa-user
+          kubectl config use-context deploy
+          echo "Verifying cluster access..."
+          kubectl auth can-i list secrets -n kc
 
       - name: Create namespace if not exists
         run: |
@@ -163,7 +175,19 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
 
-      # Runner already has cluster access via service account - no kubeconfig needed
+      - name: Configure kubeconfig from SA token
+        run: |
+          SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+          CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          kubectl config set-cluster in-cluster \
+            --server=https://kubernetes.default.svc \
+            --certificate-authority="$CA_CERT" \
+            --embed-certs=true
+          kubectl config set-credentials sa-user --token="$SA_TOKEN"
+          kubectl config set-context deploy --cluster=in-cluster --user=sa-user
+          kubectl config use-context deploy
+          echo "Verifying cluster access..."
+          kubectl auth can-i list secrets -n kubestellar-console
 
       - name: Create namespace if not exists
         run: |
