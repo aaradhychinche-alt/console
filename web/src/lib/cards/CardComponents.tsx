@@ -302,11 +302,10 @@ export function CardClusterFilter({
       <button
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${
-          selectedClusters.length > 0
-            ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
-            : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
-        }`}
+        className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors ${selectedClusters.length > 0
+          ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+          : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+          }`}
         title="Filter by cluster"
       >
         <Filter className="w-3 h-3" />
@@ -322,11 +321,10 @@ export function CardClusterFilter({
           <div className="p-1">
             <button
               onClick={onClear}
-              className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${
-                selectedClusters.length === 0
-                  ? 'bg-purple-500/20 text-purple-400'
-                  : 'hover:bg-secondary text-foreground'
-              }`}
+              className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors ${selectedClusters.length === 0
+                ? 'bg-purple-500/20 text-purple-400'
+                : 'hover:bg-secondary text-foreground'
+                }`}
             >
               All clusters
             </button>
@@ -334,12 +332,12 @@ export function CardClusterFilter({
               // Determine cluster state for status indicator
               const clusterState: ClusterState = cluster.healthy !== undefined || cluster.reachable !== undefined
                 ? getClusterState(
-                    cluster.healthy ?? true,
-                    cluster.reachable,
-                    cluster.nodeCount,
-                    undefined,
-                    cluster.errorType
-                  )
+                  cluster.healthy ?? true,
+                  cluster.reachable,
+                  cluster.nodeCount,
+                  undefined,
+                  cluster.errorType
+                )
                 : 'healthy'
 
               const isUnreachable = cluster.reachable === false
@@ -347,22 +345,21 @@ export function CardClusterFilter({
               // Get status label for tooltip
               const stateLabel = clusterState === 'healthy' ? '' :
                 clusterState === 'degraded' ? 'degraded' :
-                clusterState === 'unreachable-auth' ? 'needs auth' :
-                clusterState === 'unreachable-timeout' ? 'offline' :
-                clusterState.startsWith('unreachable') ? 'offline' : ''
+                  clusterState === 'unreachable-auth' ? 'needs auth' :
+                    clusterState === 'unreachable-timeout' ? 'offline' :
+                      clusterState.startsWith('unreachable') ? 'offline' : ''
 
               return (
                 <button
                   key={cluster.name}
                   onClick={() => !isUnreachable && onToggle(cluster.name)}
                   disabled={isUnreachable}
-                  className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors flex items-center gap-2 ${
-                    isUnreachable
-                      ? 'opacity-40 cursor-not-allowed'
-                      : selectedClusters.includes(cluster.name)
-                        ? 'bg-purple-500/20 text-purple-400'
-                        : 'hover:bg-secondary text-foreground'
-                  }`}
+                  className={`w-full px-2 py-1.5 text-xs text-left rounded transition-colors flex items-center gap-2 ${isUnreachable
+                    ? 'opacity-40 cursor-not-allowed'
+                    : selectedClusters.includes(cluster.name)
+                      ? 'bg-purple-500/20 text-purple-400'
+                      : 'hover:bg-secondary text-foreground'
+                    }`}
                   title={stateLabel ? `${cluster.name} (${stateLabel})` : cluster.name}
                 >
                   <ClusterStatusDot state={clusterState} size="sm" />
@@ -479,9 +476,8 @@ export function CardListItem({
   return (
     <div
       data-tour={dataTour}
-      className={`p-3 rounded-lg ${bg} border ${border} ${
-        onClick ? 'cursor-pointer hover:opacity-80' : ''
-      } transition-all group`}
+      className={`p-3 rounded-lg ${bg} border ${border} ${onClick ? 'cursor-pointer hover:opacity-80' : ''
+        } transition-all group`}
       onClick={onClick}
       title={title}
     >
@@ -610,19 +606,17 @@ export function CardFilterChips({ chips, activeChip, onChipClick }: CardFilterCh
           <button
             key={chip.id}
             onClick={() => onChipClick(chip.id)}
-            className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors ${
-              isActive
-                ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
-                : 'bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
-            }`}
+            className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors ${isActive
+              ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+              : 'bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
           >
             {Icon && <Icon className={`w-3 h-3 ${isActive && chip.color ? chip.color : ''}`} />}
             <span className="capitalize">{chip.label}</span>
             {chip.count !== undefined && (
               <span
-                className={`px-1 rounded text-[10px] ${
-                  isActive ? 'bg-purple-500/30' : 'bg-secondary'
-                }`}
+                className={`px-1 rounded text-[10px] ${isActive ? 'bg-purple-500/30' : 'bg-secondary'
+                  }`}
               >
                 {chip.count}
               </span>
@@ -909,6 +903,21 @@ For each issue, please:
           onGoToSettings={goToSettings}
         />
       )}
+    </div>
+  )
+}
+
+export function MetricTile({ label, value, colorClass, icon }: {
+  label: string
+  value: number | string
+  colorClass: string
+  icon: ReactNode
+}) {
+  return (
+    <div className="flex-1 p-3 rounded-lg bg-secondary/30 text-center">
+      <div className="flex items-center justify-center gap-1.5 mb-1">{icon}</div>
+      <span className={`text-2xl font-bold ${colorClass}`}>{value}</span>
+      <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
     </div>
   )
 }

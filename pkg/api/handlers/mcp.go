@@ -1637,6 +1637,30 @@ var AllowedDeployTools = map[string]bool{
 	// "reconcile":      false,
 }
 
+// GetWasmCloudHosts returns wasmCloud hosts from clusters
+func (h *MCPHandlers) GetWasmCloudHosts(c *fiber.Ctx) error {
+	// Demo mode: return demo data immediately
+	if isDemoMode(c) {
+		return demoResponse(c, "hosts", getWasmCloudHosts())
+	}
+
+	// For non-demo mode, we'll return an empty list for now
+	// until full wasmCloud CRD integration is implemented.
+	return c.JSON(fiber.Map{"hosts": []interface{}{}, "source": "k8s"})
+}
+
+// GetWasmCloudActors returns wasmCloud actors from clusters
+func (h *MCPHandlers) GetWasmCloudActors(c *fiber.Ctx) error {
+	// Demo mode: return demo data immediately
+	if isDemoMode(c) {
+		return demoResponse(c, "actors", getWasmCloudActors())
+	}
+
+	// For non-demo mode, we'll return an empty list for now
+	// until full wasmCloud CRD integration is implemented.
+	return c.JSON(fiber.Map{"actors": []interface{}{}, "source": "k8s"})
+}
+
 // validateToolName checks if a tool name is in the allowed list
 func validateToolName(name string, allowedTools map[string]bool) error {
 	if name == "" {

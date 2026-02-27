@@ -213,6 +213,9 @@ const CARD_CATALOG = {
     { type: 'kubectl', title: 'Kubectl', description: 'Interactive kubectl terminal with AI assistance, YAML editor, and command history', visualization: 'table' },
     { type: 'stock_market_ticker', title: 'Stock Market Ticker', description: 'Track multiple stocks with real-time sparkline charts and iPhone-style design', visualization: 'timeseries' },
   ],
+  'Runtime': [
+    { type: 'wasmcloud_status', title: 'WasmCloud Status', description: 'wasmCloud host status, actor inventory.', visualization: 'status' },
+  ]
 } as const
 
 // Maps CARD_CATALOG category names to i18n keys in cards:categories.*
@@ -239,6 +242,7 @@ const CATEGORY_LOCALE_KEYS: Record<string, string> = {
   'Arcade': 'arcade',
   'Utilities': 'utilities',
   'Misc': 'misc',
+  'Runtime': 'runtime',
 }
 
 interface CardSuggestion {

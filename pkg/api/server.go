@@ -546,6 +546,8 @@ func (s *Server) setupRoutes() {
 	api.Get("/mcp/pods/logs", mcpHandlers.GetPodLogs)
 	api.Post("/mcp/tools/ops/call", mcpHandlers.CallOpsTool)
 	api.Post("/mcp/tools/deploy/call", mcpHandlers.CallDeployTool)
+	api.Get("/mcp/wasmcloud/hosts", mcpHandlers.GetWasmCloudHosts)
+	api.Get("/mcp/wasmcloud/actors", mcpHandlers.GetWasmCloudActors)
 
 	// SSE streaming variants — stream per-cluster results as they arrive
 	api.Get("/mcp/pods/stream", mcpHandlers.GetPodsStream)

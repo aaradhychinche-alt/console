@@ -2567,5 +2567,33 @@
     "syncedMinutesAgo": "{{count}}m ago",
     "syncedHoursAgo": "{{count}}h ago",
     "syncedDaysAgo": "{{count}}d ago"
+  },
+  "wasmcloud": {
+    "healthy": "Healthy",
+    "degraded": "Degraded",
+    "hosts": "Hosts",
+    "actors": "Actors",
+    "running": "Running",
+    "stopped": "Stopped",
+    "failed": "Failed",
+    "status": "Status",
+    "version": "Version",
+    "uptime": "Uptime",
+    "cluster": "Cluster",
+    "actors_count": "{{count}} actors",
+    "actors_count_one": "{{count}} actor",
+    "actors_count_other": "{{count}} actors",
+    "providers_count": "{{count}} providers",
+    "providers_count_one": "{{count}} provider",
+    "providers_count_other": "{{count}} providers",
+    "labels": "Labels",
+    "id": "ID",
+    "name": "Name",
+    "unreachable": "Unreachable",
+    "noHosts": "No wasmCloud hosts found",
+    "noActors": "No actors found",
+    "fetchError": "Failed to fetch wasmCloud status",
+    "ensureRunning": "Ensure wasmCloud is running on a connected cluster.",
+    "docs": "wasmCloud Docs"
   }
 }

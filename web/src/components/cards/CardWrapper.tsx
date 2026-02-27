@@ -25,6 +25,7 @@ import { WidgetExportModal } from '../widgets/WidgetExportModal'
 import { FeatureRequestModal } from '../feedback/FeatureRequestModal'
 import { DynamicCardErrorBoundary } from './DynamicCardErrorBoundary'
 
+
 // Minimum duration to show spin animation (ensures at least one full rotation)
 const MIN_SPIN_DURATION = 500
 
@@ -340,6 +341,9 @@ export const CARD_TITLES: Record<string, string> = {
   ml_jobs: 'ML Jobs',
   ml_notebooks: 'ML Notebooks',
 
+  // Runtime cards
+  wasmcloud_status: 'WasmCloud Status',
+
   // Benchmark cards
   nightly_e2e_status: 'Nightly E2E Status',
   benchmark_hero: 'Latest Benchmark',
@@ -505,6 +509,9 @@ export const CARD_DESCRIPTIONS: Record<string, string> = {
   ml_jobs: 'Machine learning training and batch job status.',
   ml_notebooks: 'Jupyter notebook server status and resource usage.',
   provider_health: 'Health and status of AI and cloud infrastructure providers.',
+
+  // Runtime cards
+  wasmcloud_status: 'wasmCloud host status, actor inventory, and health monitoring.',
 
   // Games
   sudoku_game: 'Classic Sudoku puzzle game with multiple difficulty levels.',
@@ -701,6 +708,9 @@ const CARD_ICONS: Record<string, { icon: ComponentType<{ className?: string }>, 
   prow_ci_monitor: { icon: Activity, color: 'text-blue-400' },
   github_ci_monitor: { icon: GitBranch, color: 'text-purple-400' },
   cluster_health_monitor: { icon: Server, color: 'text-green-400' },
+
+  // Runtime cards
+  wasmcloud_status: { icon: Box, color: 'text-purple-400' },
 
   // Provider health
   provider_health: { icon: Activity, color: 'text-emerald-400' },
@@ -1227,114 +1237,114 @@ export function CardWrapper({
 
   return (
     <CardExpandedContext.Provider value={{ isExpanded }}>
-    <CardDataReportContext.Provider value={reportCtx}>
-      <>
-        {/* Main card */}
-        <div
-          ref={lazyRef}
-          key={flashKey}
-          data-tour="card"
-          data-card-type={cardType}
-          data-card-id={cardId}
-          data-loading={shouldShowSkeleton ? 'true' : 'false'}
-          data-effective-loading={effectiveIsLoading ? 'true' : 'false'}
-          aria-label={title}
-          aria-busy={effectiveIsLoading}
-          className={cn(
-            'glass rounded-xl overflow-hidden card-hover',
-            'flex flex-col transition-all duration-200',
-            isCollapsed ? 'h-auto' : 'h-full',
-            showDemoIndicator && '!border-2 !border-yellow-500/50',
-            // Only pulse during initial skeleton display, not background refreshes (prevents flicker)
-            shouldShowSkeleton && !forceSkeletonForOffline && 'animate-card-refresh-pulse',
-            getFlashClass()
-          )}
-          onMouseEnter={() => setShowSummary(true)}
-          onMouseLeave={() => setShowSummary(false)}
-        >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
-          <div className="flex items-center gap-2">
-            {dragHandle}
-            {ResolvedIcon && <ResolvedIcon className={cn('w-4 h-4', resolvedIconColor)} />}
-            <h3 className="text-sm font-medium text-foreground">{title}</h3>
-            <InfoTooltip text={description || t('messages.descriptionComingSoon', { title })} />
-            {/* Demo data indicator - shows if card uses demo data (respects child opt-out) */}
-            {showDemoIndicator && (
-              <span
-                data-testid="demo-badge"
-                role="status"
-                aria-live="polite"
-                className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400"
-                title={effectiveIsDemoData ? t('cardWrapper.demoBadgeTitle') : t('cardWrapper.demoModeTitle')}
-              >
-                {t('cardWrapper.demo')}
-              </span>
+      <CardDataReportContext.Provider value={reportCtx}>
+        <>
+          {/* Main card */}
+          <div
+            ref={lazyRef}
+            key={flashKey}
+            data-tour="card"
+            data-card-type={cardType}
+            data-card-id={cardId}
+            data-loading={shouldShowSkeleton ? 'true' : 'false'}
+            data-effective-loading={effectiveIsLoading ? 'true' : 'false'}
+            aria-label={title}
+            aria-busy={effectiveIsLoading}
+            className={cn(
+              'glass rounded-xl overflow-hidden card-hover',
+              'flex flex-col transition-all duration-200',
+              isCollapsed ? 'h-auto' : 'h-full',
+              showDemoIndicator && '!border-2 !border-yellow-500/50',
+              // Only pulse during initial skeleton display, not background refreshes (prevents flicker)
+              shouldShowSkeleton && !forceSkeletonForOffline && 'animate-card-refresh-pulse',
+              getFlashClass()
             )}
-            {/* Live data indicator - for time-series/trend cards with real data */}
-            {isLive && !showDemoIndicator && (
-              <span
-                role="status"
-                aria-live="polite"
-                className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400"
-                title={t('cardWrapper.liveBadgeTitle')}
-              >
-                {t('cardWrapper.live')}
-              </span>
-            )}
-            {/* Failure indicator */}
-            {effectiveIsFailed && (
-              <span
-                role="alert"
-                aria-live="assertive"
-                className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 flex items-center gap-1"
-                title={t('cardWrapper.refreshFailedCount', { count: effectiveConsecutiveFailures })}
-              >
-                {t('cardWrapper.refreshFailed')}
-              </span>
-            )}
-            {/* Refresh indicator - only shows when no refresh button is present (button handles its own spin) */}
-            {!onRefresh && (isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline) && !effectiveIsFailed && (
-              <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" aria-hidden="true" />
-            )}
-            {/* Last updated indicator */}
-            {!isVisuallySpinning && !effectiveIsLoading && !effectiveIsFailed && lastUpdated && (
-              <span className="text-[10px] text-muted-foreground" title={lastUpdated.toLocaleString()}>
-                {formatTimeAgo(lastUpdated)}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {/* Collapse/expand button */}
-            <button
-              onClick={() => setCollapsed(!isCollapsed)}
-              className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={isCollapsed ? t('cardWrapper.expandCard') : t('cardWrapper.collapseCard')}
-              aria-expanded={!isCollapsed}
-              title={isCollapsed ? t('cardWrapper.expandCard') : t('cardWrapper.collapseCard')}
-            >
-              {isCollapsed ? <ChevronRight className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
-            </button>
-            {/* Manual refresh button */}
-            {onRefresh && (
-              <button
-                onClick={onRefresh}
-                disabled={isRefreshing || isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline}
-                className={cn(
-                  'p-1.5 rounded-lg transition-colors',
-                  isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline
-                    ? 'text-blue-400 cursor-not-allowed'
-                    : effectiveIsFailed
-                    ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300'
-                    : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
+            onMouseEnter={() => setShowSummary(true)}
+            onMouseLeave={() => setShowSummary(false)}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                {dragHandle}
+                {ResolvedIcon && <ResolvedIcon className={cn('w-4 h-4', resolvedIconColor)} />}
+                <h3 className="text-sm font-medium text-foreground">{title}</h3>
+                <InfoTooltip text={description || t('messages.descriptionComingSoon', { title })} />
+                {/* Demo data indicator - shows if card uses demo data (respects child opt-out) */}
+                {showDemoIndicator && (
+                  <span
+                    data-testid="demo-badge"
+                    role="status"
+                    aria-live="polite"
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400"
+                    title={effectiveIsDemoData ? t('cardWrapper.demoBadgeTitle') : t('cardWrapper.demoModeTitle')}
+                  >
+                    {t('cardWrapper.demo')}
+                  </span>
                 )}
-                aria-label={forceSkeletonForOffline ? t('cardWrapper.waitingForAgent') : effectiveIsFailed ? t('cardWrapper.refreshFailedRetry', { count: effectiveConsecutiveFailures }) : t('cardWrapper.refreshData')}
-                title={forceSkeletonForOffline ? t('cardWrapper.waitingForAgent') : effectiveIsFailed ? t('cardWrapper.refreshFailedRetry', { count: effectiveConsecutiveFailures }) : t('cardWrapper.refreshData')}
-              >
-                <RefreshCw className={cn('w-4 h-4', (isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline) && 'animate-spin')} aria-hidden="true" />
-              </button>
-            )}
-            {/* Chat button - feature not yet implemented
+                {/* Live data indicator - for time-series/trend cards with real data */}
+                {isLive && !showDemoIndicator && (
+                  <span
+                    role="status"
+                    aria-live="polite"
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400"
+                    title={t('cardWrapper.liveBadgeTitle')}
+                  >
+                    {t('cardWrapper.live')}
+                  </span>
+                )}
+                {/* Failure indicator */}
+                {effectiveIsFailed && (
+                  <span
+                    role="alert"
+                    aria-live="assertive"
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 flex items-center gap-1"
+                    title={t('cardWrapper.refreshFailedCount', { count: effectiveConsecutiveFailures })}
+                  >
+                    {t('cardWrapper.refreshFailed')}
+                  </span>
+                )}
+                {/* Refresh indicator - only shows when no refresh button is present (button handles its own spin) */}
+                {!onRefresh && (isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline) && !effectiveIsFailed && (
+                  <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" aria-hidden="true" />
+                )}
+                {/* Last updated indicator */}
+                {!isVisuallySpinning && !effectiveIsLoading && !effectiveIsFailed && lastUpdated && (
+                  <span className="text-[10px] text-muted-foreground" title={lastUpdated.toLocaleString()}>
+                    {formatTimeAgo(lastUpdated)}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {/* Collapse/expand button */}
+                <button
+                  onClick={() => setCollapsed(!isCollapsed)}
+                  className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={isCollapsed ? t('cardWrapper.expandCard') : t('cardWrapper.collapseCard')}
+                  aria-expanded={!isCollapsed}
+                  title={isCollapsed ? t('cardWrapper.expandCard') : t('cardWrapper.collapseCard')}
+                >
+                  {isCollapsed ? <ChevronRight className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
+                </button>
+                {/* Manual refresh button */}
+                {onRefresh && (
+                  <button
+                    onClick={onRefresh}
+                    disabled={isRefreshing || isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline}
+                    className={cn(
+                      'p-1.5 rounded-lg transition-colors',
+                      isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline
+                        ? 'text-blue-400 cursor-not-allowed'
+                        : effectiveIsFailed
+                          ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300'
+                          : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
+                    )}
+                    aria-label={forceSkeletonForOffline ? t('cardWrapper.waitingForAgent') : effectiveIsFailed ? t('cardWrapper.refreshFailedRetry', { count: effectiveConsecutiveFailures }) : t('cardWrapper.refreshData')}
+                    title={forceSkeletonForOffline ? t('cardWrapper.waitingForAgent') : effectiveIsFailed ? t('cardWrapper.refreshFailedRetry', { count: effectiveConsecutiveFailures }) : t('cardWrapper.refreshData')}
+                  >
+                    <RefreshCw className={cn('w-4 h-4', (isVisuallySpinning || effectiveIsLoading || forceSkeletonForOffline) && 'animate-spin')} aria-hidden="true" />
+                  </button>
+                )}
+                {/* Chat button - feature not yet implemented
             <button
               data-tour="card-chat"
               className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
@@ -1343,292 +1353,293 @@ export function CardWrapper({
               <MessageCircle className="w-4 h-4" />
             </button>
             */}
-            <button
-              onClick={() => { emitCardExpanded(cardType); setIsExpanded(true) }}
-              className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={t('cardWrapper.expandFullScreen')}
-              title={t('cardWrapper.expandFullScreen')}
-            >
-              <Maximize2 className="w-4 h-4" aria-hidden="true" />
-            </button>
-            <button
-              onClick={() => setShowBugReport(true)}
-              className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={t('cardWrapper.reportIssue')}
-              title={t('cardWrapper.reportIssue')}
-            >
-              <Bug className="w-4 h-4" aria-hidden="true" />
-            </button>
-            <div className="relative" data-tour="card-menu">
-              <button
-                ref={menuButtonRef}
-                onClick={() => {
-                  if (!showMenu && menuButtonRef.current) {
-                    const rect = menuButtonRef.current.getBoundingClientRect()
-                    setMenuPosition({
-                      top: rect.bottom + 4,
-                      right: window.innerWidth - rect.right,
-                    })
-                  }
-                  setShowMenu(!showMenu)
-                }}
-                className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label={t('cardWrapper.cardMenuTooltip')}
-                aria-expanded={showMenu}
-                aria-haspopup="menu"
-                title={t('cardWrapper.cardMenuTooltip')}
-              >
-                <MoreVertical className="w-4 h-4" aria-hidden="true" />
-              </button>
-              {showMenu && menuPosition && createPortal(
-                <div
-                  className="fixed w-48 glass rounded-lg py-1 z-50 shadow-xl !bg-[rgba(10,15,25,0.98)]"
-                  role="menu"
-                  aria-label={t('cardWrapper.cardMenuTooltip')}
-                  style={{ top: menuPosition.top, right: menuPosition.right }}
+                <button
+                  onClick={() => { emitCardExpanded(cardType); setIsExpanded(true) }}
+                  className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={t('cardWrapper.expandFullScreen')}
+                  title={t('cardWrapper.expandFullScreen')}
                 >
+                  <Maximize2 className="w-4 h-4" aria-hidden="true" />
+                </button>
+                <button
+                  onClick={() => setShowBugReport(true)}
+                  className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={t('cardWrapper.reportIssue')}
+                  title={t('cardWrapper.reportIssue')}
+                >
+                  <Bug className="w-4 h-4" aria-hidden="true" />
+                </button>
+                <div className="relative" data-tour="card-menu">
                   <button
+                    ref={menuButtonRef}
                     onClick={() => {
-                      setShowMenu(false)
-                      onConfigure?.()
+                      if (!showMenu && menuButtonRef.current) {
+                        const rect = menuButtonRef.current.getBoundingClientRect()
+                        setMenuPosition({
+                          top: rect.bottom + 4,
+                          right: window.innerWidth - rect.right,
+                        })
+                      }
+                      setShowMenu(!showMenu)
                     }}
-                    className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
-                    role="menuitem"
-                    title={t('cardWrapper.configureTooltip')}
+                    className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={t('cardWrapper.cardMenuTooltip')}
+                    aria-expanded={showMenu}
+                    aria-haspopup="menu"
+                    title={t('cardWrapper.cardMenuTooltip')}
                   >
-                    <Settings className="w-4 h-4" aria-hidden="true" />
-                    {t('common:actions.configure')}
+                    <MoreVertical className="w-4 h-4" aria-hidden="true" />
                   </button>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false)
-                      const url = `${window.location.origin}${window.location.pathname}?card=${cardType}`
-                      navigator.clipboard.writeText(url)
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
-                    role="menuitem"
-                    title={t('cardWrapper.copyLinkTooltip')}
-                  >
-                    <Link2 className="w-4 h-4" aria-hidden="true" />
-                    {t('cardWrapper.copyLink')}
-                  </button>
-                  {/* Resize submenu */}
-                  {onWidthChange && (
-                    <div className="relative" ref={menuContainerRef}>
+                  {showMenu && menuPosition && createPortal(
+                    <div
+                      className="fixed w-48 glass rounded-lg py-1 z-50 shadow-xl !bg-[rgba(10,15,25,0.98)]"
+                      role="menu"
+                      aria-label={t('cardWrapper.cardMenuTooltip')}
+                      style={{ top: menuPosition.top, right: menuPosition.right }}
+                    >
                       <button
-                        onClick={() => setShowResizeMenu(!showResizeMenu)}
-                        className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center justify-between"
+                        onClick={() => {
+                          setShowMenu(false)
+                          onConfigure?.()
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
                         role="menuitem"
-                        aria-haspopup="menu"
-                        aria-expanded={showResizeMenu}
-                        title={t('cardWrapper.resizeTooltip')}
+                        title={t('cardWrapper.configureTooltip')}
                       >
-                        <span className="flex items-center gap-2">
-                          <MoveHorizontal className="w-4 h-4" aria-hidden="true" />
-                          {t('cardWrapper.resize')}
-                        </span>
-                        <ChevronRight className={cn('w-4 h-4 transition-transform', showResizeMenu && 'rotate-90')} aria-hidden="true" />
+                        <Settings className="w-4 h-4" aria-hidden="true" />
+                        {t('common:actions.configure')}
                       </button>
-                      {showResizeMenu && (
-                        <div 
-                          className={cn(
-                            'absolute top-0 w-36 glass rounded-lg py-1 z-20',
-                            resizeMenuOnLeft ? 'right-full mr-1' : 'left-full ml-1'
-                          )}
-                          role="menu"
-                        >
-                          {WIDTH_OPTIONS.map((option) => (
-                            <button
-                              key={option.value}
-                              onClick={() => {
-                                onWidthChange(option.value)
-                                setShowResizeMenu(false)
-                                setShowMenu(false)
-                              }}
+                      <button
+                        onClick={() => {
+                          setShowMenu(false)
+                          const url = `${window.location.origin}${window.location.pathname}?card=${cardType}`
+                          navigator.clipboard.writeText(url)
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
+                        role="menuitem"
+                        title={t('cardWrapper.copyLinkTooltip')}
+                      >
+                        <Link2 className="w-4 h-4" aria-hidden="true" />
+                        {t('cardWrapper.copyLink')}
+                      </button>
+                      {/* Resize submenu */}
+                      {onWidthChange && (
+                        <div className="relative" ref={menuContainerRef}>
+                          <button
+                            onClick={() => setShowResizeMenu(!showResizeMenu)}
+                            className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center justify-between"
+                            role="menuitem"
+                            aria-haspopup="menu"
+                            aria-expanded={showResizeMenu}
+                            title={t('cardWrapper.resizeTooltip')}
+                          >
+                            <span className="flex items-center gap-2">
+                              <MoveHorizontal className="w-4 h-4" aria-hidden="true" />
+                              {t('cardWrapper.resize')}
+                            </span>
+                            <ChevronRight className={cn('w-4 h-4 transition-transform', showResizeMenu && 'rotate-90')} aria-hidden="true" />
+                          </button>
+                          {showResizeMenu && (
+                            <div
                               className={cn(
-                                'w-full px-3 py-2 text-left text-sm flex items-center justify-between',
-                                cardWidth === option.value
-                                  ? 'text-purple-400 bg-purple-500/10'
-                                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                                'absolute top-0 w-36 glass rounded-lg py-1 z-20',
+                                resizeMenuOnLeft ? 'right-full mr-1' : 'left-full ml-1'
                               )}
-                              role="menuitem"
+                              role="menu"
                             >
-                              <span>{t(option.labelKey)}</span>
-                              <span className="text-xs opacity-60">{t(option.descKey)}</span>
-                            </button>
-                          ))}
+                              {WIDTH_OPTIONS.map((option) => (
+                                <button
+                                  key={option.value}
+                                  onClick={() => {
+                                    onWidthChange(option.value)
+                                    setShowResizeMenu(false)
+                                    setShowMenu(false)
+                                  }}
+                                  className={cn(
+                                    'w-full px-3 py-2 text-left text-sm flex items-center justify-between',
+                                    cardWidth === option.value
+                                      ? 'text-purple-400 bg-purple-500/10'
+                                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                                  )}
+                                  role="menuitem"
+                                >
+                                  <span>{t(option.labelKey)}</span>
+                                  <span className="text-xs opacity-60">{t(option.descKey)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                      {isCardExportable(cardType) && (
+                        <button
+                          onClick={() => {
+                            setShowMenu(false)
+                            setShowWidgetExport(true)
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
+                          role="menuitem"
+                          title={t('cardWrapper.exportWidgetTooltip')}
+                        >
+                          <Download className="w-4 h-4" aria-hidden="true" />
+                          {t('cardWrapper.exportWidget')}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setShowMenu(false)
+                          onReplace?.()
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
+                        role="menuitem"
+                        title={t('cardWrapper.replaceTooltip')}
+                      >
+                        <Replace className="w-4 h-4" aria-hidden="true" />
+                        {t('common:buttons.replaceCard')}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowMenu(false)
+                          onRemove?.()
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
+                        role="menuitem"
+                        title={t('cardWrapper.removeTooltip')}
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                        {t('common:actions.remove')}
+                      </button>
+                    </div>,
+                    document.body
                   )}
-                  {isCardExportable(cardType) && (
-                    <button
-                      onClick={() => {
-                        setShowMenu(false)
-                        setShowWidgetExport(true)
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
-                      role="menuitem"
-                      title={t('cardWrapper.exportWidgetTooltip')}
-                    >
-                      <Download className="w-4 h-4" aria-hidden="true" />
-                      {t('cardWrapper.exportWidget')}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setShowMenu(false)
-                      onReplace?.()
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 flex items-center gap-2"
-                    role="menuitem"
-                    title={t('cardWrapper.replaceTooltip')}
-                  >
-                    <Replace className="w-4 h-4" aria-hidden="true" />
-                    {t('common:buttons.replaceCard')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false)
-                      onRemove?.()
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
-                    role="menuitem"
-                    title={t('cardWrapper.removeTooltip')}
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                    {t('common:actions.remove')}
-                  </button>
-                </div>,
-                document.body
-              )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Content - hidden when collapsed, lazy loaded when visible or expanded */}
-        {!isCollapsed && (
-          <div className="flex-1 p-4 overflow-auto scroll-enhanced min-h-0 flex flex-col">
-            {(isVisible || isExpanded) ? (
-              <>
-                {/* Show skeleton overlay when loading with no cached data */}
-                {shouldShowSkeleton && (
-                  <div data-card-skeleton="true">
-                    <CardSkeleton type={effectiveSkeletonType} rows={skeletonRows || 3} showHeader />
-                  </div>
-                )}
-                {/* ALWAYS render children so they can report their data state via useCardLoadingState.
+            {/* Content - hidden when collapsed, lazy loaded when visible or expanded */}
+            {!isCollapsed && (
+              <div className="flex-1 p-4 overflow-auto scroll-enhanced min-h-0 flex flex-col">
+                {(isVisible || isExpanded) ? (
+                  <>
+                    {/* Show skeleton overlay when loading with no cached data */}
+                    {shouldShowSkeleton && (
+                      <div data-card-skeleton="true">
+                        <CardSkeleton type={effectiveSkeletonType} rows={skeletonRows || 3} showHeader />
+                      </div>
+                    )}
+                    {/* ALWAYS render children so they can report their data state via useCardLoadingState.
                     Hide visually when skeleton is showing, but keep mounted so useLayoutEffect runs.
                     This prevents the deadlock where CardWrapper waits for hasData but children never mount.
-                    Suspense catches lazy() chunk loading so it doesn't bubble up to Layout and blank the whole page.
-                    DynamicCardErrorBoundary catches render errors so a single card crash doesn't blank the page. */}
-                <div className={shouldShowSkeleton ? 'hidden' : 'contents'}>
-                  <Suspense fallback={<CardSkeleton type={effectiveSkeletonType} rows={skeletonRows || 3} showHeader={false} />}>
-                    <DynamicCardErrorBoundary cardId={cardId || cardType}>
-                      {children}
-                    </DynamicCardErrorBoundary>
-                  </Suspense>
+                    Suspense catches lazy() chunk loading so it doesn't bubble up to Layout and blank the whole page. */}
+                    <div className={shouldShowSkeleton ? 'hidden' : 'contents'}>
+                      <DynamicCardErrorBoundary cardId={cardId || cardType}>
+                        <Suspense fallback={<CardSkeleton type={effectiveSkeletonType} rows={skeletonRows || 3} showHeader={false} />}>
+                          {children}
+                        </Suspense>
+                      </DynamicCardErrorBoundary>
+                    </div>
+                  </>
+                ) : (
+                  // Show skeleton during lazy mount (before IntersectionObserver fires)
+                  // This provides visual continuity instead of a tiny pulse loader
+                  <CardSkeleton type={effectiveSkeletonType} rows={skeletonRows || 3} showHeader={false} />
+                )}
+              </div>
+            )}
+
+            {/* Pending swap notification - hidden when collapsed */}
+            {!isCollapsed && pendingSwap && (
+              <div className="px-4 py-3 bg-purple-500/10 border-t border-purple-500/20">
+                <div className="flex items-center gap-2 text-sm">
+                  <span title={t('cardWrapper.swapPending')}><Clock className="w-4 h-4 text-purple-400 animate-pulse" /></span>
+                  <span className="text-purple-300">
+                    {t('common:labels.swappingTo', { cardName: newTitle })}
+                  </span>
                 </div>
-              </>
-            ) : (
-              // Show skeleton during lazy mount (before IntersectionObserver fires)
-              // This provides visual continuity instead of a tiny pulse loader
-              <CardSkeleton type={effectiveSkeletonType} rows={skeletonRows || 3} showHeader={false} />
+                <p className="text-xs text-muted-foreground mt-1">{pendingSwap.reason}</p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleSnooze(3600000)}
+                    className="text-xs px-2 py-1 rounded bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground"
+                    title={t('cardWrapper.snoozeTooltip')}
+                  >
+                    {t('common:buttons.snoozeHour')}
+                  </button>
+                  <button
+                    onClick={handleSwapNow}
+                    className="text-xs px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300"
+                    title={t('cardWrapper.swapNowTooltip')}
+                  >
+                    {t('common:buttons.swapNow')}
+                  </button>
+                  <button
+                    onClick={() => onSwapCancel?.()}
+                    className="text-xs px-2 py-1 rounded hover:bg-secondary/50 text-muted-foreground"
+                    title={t('cardWrapper.keepThisTooltip')}
+                  >
+                    {t('common:buttons.keepThis')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Hover summary */}
+            {showSummary && lastSummary && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 mx-4 p-3 glass rounded-lg text-sm animate-fade-in-up">
+                <p className="text-xs text-muted-foreground mb-1">{t('common:labels.sinceFocus')}</p>
+                <p className="text-foreground">{lastSummary}</p>
+              </div>
             )}
           </div>
-        )}
 
-        {/* Pending swap notification - hidden when collapsed */}
-        {!isCollapsed && pendingSwap && (
-          <div className="px-4 py-3 bg-purple-500/10 border-t border-purple-500/20">
-            <div className="flex items-center gap-2 text-sm">
-              <span title={t('cardWrapper.swapPending')}><Clock className="w-4 h-4 text-purple-400 animate-pulse" /></span>
-              <span className="text-purple-300">
-                {t('common:labels.swappingTo', { cardName: newTitle })}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{pendingSwap.reason}</p>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => handleSnooze(3600000)}
-                className="text-xs px-2 py-1 rounded bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground"
-                title={t('cardWrapper.snoozeTooltip')}
-              >
-                {t('common:buttons.snoozeHour')}
-              </button>
-              <button
-                onClick={handleSwapNow}
-                className="text-xs px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300"
-                title={t('cardWrapper.swapNowTooltip')}
-              >
-                {t('common:buttons.swapNow')}
-              </button>
-              <button
-                onClick={() => onSwapCancel?.()}
-                className="text-xs px-2 py-1 rounded hover:bg-secondary/50 text-muted-foreground"
-                title={t('cardWrapper.keepThisTooltip')}
-              >
-                {t('common:buttons.keepThis')}
-              </button>
-            </div>
-          </div>
-        )}
+          {/* Expanded modal */}
+          <BaseModal
+            isOpen={isExpanded}
+            onClose={() => setIsExpanded(false)}
+            size={FULLSCREEN_EXPANDED_CARDS.has(cardType) ? 'full' : LARGE_EXPANDED_CARDS.has(cardType) ? 'xl' : 'lg'}
+          >
+            <BaseModal.Header
+              title={title}
+              icon={Maximize2}
+              onClose={() => setIsExpanded(false)}
+              showBack={false}
+            />
+            <BaseModal.Content className={cn(
+              'overflow-auto scroll-enhanced flex flex-col',
+              FULLSCREEN_EXPANDED_CARDS.has(cardType)
+                ? 'h-[calc(98vh-80px)]'
+                : LARGE_EXPANDED_CARDS.has(cardType)
+                  ? 'h-[calc(95vh-80px)]'
+                  : 'max-h-[calc(80vh-80px)]'
+            )}>
+              {/* Wrapper ensures children fill available space in expanded mode */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <DynamicCardErrorBoundary cardId={cardId || cardType}>
+                  {children}
+                </DynamicCardErrorBoundary>
+              </div>
+            </BaseModal.Content>
+          </BaseModal>
 
-        {/* Hover summary */}
-        {showSummary && lastSummary && (
-          <div className="absolute bottom-full left-0 right-0 mb-2 mx-4 p-3 glass rounded-lg text-sm animate-fade-in-up">
-            <p className="text-xs text-muted-foreground mb-1">{t('common:labels.sinceFocus')}</p>
-            <p className="text-foreground">{lastSummary}</p>
-          </div>
-        )}
-      </div>
+          {/* Widget Export Modal */}
+          <WidgetExportModal
+            isOpen={showWidgetExport}
+            onClose={() => setShowWidgetExport(false)}
+            cardType={cardType}
+          />
 
-      {/* Expanded modal */}
-      <BaseModal
-        isOpen={isExpanded}
-        onClose={() => setIsExpanded(false)}
-        size={FULLSCREEN_EXPANDED_CARDS.has(cardType) ? 'full' : LARGE_EXPANDED_CARDS.has(cardType) ? 'xl' : 'lg'}
-      >
-        <BaseModal.Header
-          title={title}
-          icon={Maximize2}
-          onClose={() => setIsExpanded(false)}
-          showBack={false}
-        />
-        <BaseModal.Content className={cn(
-          'overflow-auto scroll-enhanced flex flex-col',
-          FULLSCREEN_EXPANDED_CARDS.has(cardType)
-            ? 'h-[calc(98vh-80px)]'
-            : LARGE_EXPANDED_CARDS.has(cardType)
-              ? 'h-[calc(95vh-80px)]'
-              : 'max-h-[calc(80vh-80px)]'
-        )}>
-          {/* Wrapper ensures children fill available space in expanded mode */}
-          <div className="flex-1 min-h-0 flex flex-col">
-            {children}
-          </div>
-        </BaseModal.Content>
-      </BaseModal>
-
-      {/* Widget Export Modal */}
-      <WidgetExportModal
-        isOpen={showWidgetExport}
-        onClose={() => setShowWidgetExport(false)}
-        cardType={cardType}
-      />
-
-      {/* Per-card bug/feature report modal */}
-      <FeatureRequestModal
-        isOpen={showBugReport}
-        onClose={() => setShowBugReport(false)}
-        initialTab="submit"
-        initialContext={{
-          cardType,
-          cardTitle: title || CARD_TITLES[cardType] || cardType,
-        }}
-      />
-      </>
-    </CardDataReportContext.Provider>
+          {/* Per-card bug/feature report modal */}
+          <FeatureRequestModal
+            isOpen={showBugReport}
+            onClose={() => setShowBugReport(false)}
+            initialTab="submit"
+            initialContext={{
+              cardType,
+              cardTitle: title || CARD_TITLES[cardType] || cardType,
+            }}
+          />
+        </>
+      </CardDataReportContext.Provider>
     </CardExpandedContext.Provider>
   )
 }
