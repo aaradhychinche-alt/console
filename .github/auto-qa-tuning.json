@@ -1,21 +1,21 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-02-27T03:47:26Z",
+  "last_updated": "2026-02-28T03:35:47Z",
   "rolling_window_days": 30,
   "categories": {
     "other": {
-      "merged": 24,
-      "closed": 11,
-      "acceptance_rate": 0.69,
+      "merged": 30,
+      "closed": 14,
+      "acceptance_rate": 0.68,
       "status": "normal",
-      "last_evaluated": "2026-02-27T03:47:26Z"
+      "last_evaluated": "2026-02-28T03:35:47Z"
     },
     "security": {
-      "merged": 8,
-      "closed": 4,
-      "acceptance_rate": 0.67,
+      "merged": 9,
+      "closed": 5,
+      "acceptance_rate": 0.64,
       "status": "normal",
-      "last_evaluated": "2026-02-27T03:47:26Z"
+      "last_evaluated": "2026-02-28T03:35:47Z"
     },
     "resilience": {
       "merged": 9,
@@ -54,17 +54,17 @@
     },
     "ui-design": {
       "merged": 3,
-      "closed": 4,
-      "acceptance_rate": 0.43,
+      "closed": 5,
+      "acceptance_rate": 0.38,
       "status": "normal",
-      "last_evaluated": "2026-02-27T03:47:26Z"
+      "last_evaluated": "2026-02-28T03:35:47Z"
     },
     "testing": {
-      "merged": 1,
-      "closed": 1,
+      "merged": 2,
+      "closed": 2,
       "acceptance_rate": 0.5,
       "status": "normal",
-      "last_evaluated": "2026-02-23T03:51:22Z"
+      "last_evaluated": "2026-02-28T03:35:47Z"
     }
   },
   "weekly_insights": {
@@ -178,18 +178,27 @@
       "categories_boosted": [
         "consistency"
       ]
+    },
+    {
+      "date": "2026-02-28",
+      "total_merged": 74,
+      "total_closed": 39,
+      "categories_blocked": [],
+      "categories_boosted": [
+        "consistency"
+      ]
     }
   ],
   "rotation_weights": {
-    "other": 1.03,
-    "security": 1.01,
+    "other": 1.02,
+    "security": 0.96,
     "resilience": 1.03,
     "performance": 1.5,
     "consistency": 2.0,
     "dom-errors": 1.5,
     "a11y": 0.57,
-    "ui-design": 0.65,
-    "testing": 1.0
+    "ui-design": 0.57,
+    "testing": 0.75
   },
   "max_issues_override": 3,
   "pr_guidance": "Changes up to 200 lines (size M) are acceptable. Avoid PRs over 200 lines."
