@@ -23,6 +23,27 @@ import {
 } from '../../../lib/llmd/benchmarkMockData'
 import { useTranslation } from 'react-i18next'
 
+// Minimal parameter type for ECharts label/tooltip formatter callbacks
+interface EChartsFormatterParam {
+  data?: { point?: ParetoPoint }
+}
+
+// Minimal ECharts series config type covering both scatter/line and frontier series
+interface EChartsSeriesConfig {
+  name: string
+  type: string
+  smooth?: boolean
+  symbol?: string
+  symbolSize?: number
+  data: unknown[]
+  lineStyle?: Record<string, unknown>
+  itemStyle?: Record<string, unknown>
+  label?: Record<string, unknown>
+  emphasis?: Record<string, unknown>
+  z?: number
+  silent?: boolean
+}
+
 // ---------------------------------------------------------------------------
 // Chart presets — each defines X-axis, Y-axis, title, and optional info pills
 // ---------------------------------------------------------------------------
@@ -358,8 +379,7 @@ export function ParetoFrontier({ config }: ParetoFrontierProps) {
 
   // ---- ECharts option ----
   const option = useMemo(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allSeries: any[] = [...seriesMap.entries()]
+    const allSeries: EChartsSeriesConfig[] = [...seriesMap.entries()]
       .filter(([hw]) => !hiddenHw.has(hw))
       .map(([hw, pts]) => {
         const color = HARDWARE_COLORS[hw] ?? '#6b7280'
@@ -378,9 +398,8 @@ export function ParetoFrontier({ config }: ParetoFrontierProps) {
           },
           label: {
             show: !hideLabels,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            formatter: (p: any) => {
-              const pt = p.data?.point as ParetoPoint | undefined
+            formatter: (p: EChartsFormatterParam) => {
+              const pt = p.data?.point
               return pt && pt.gpuCount > 1 ? `${pt.gpuCount}` : ''
             },
             fontSize: 9,
@@ -423,9 +442,8 @@ export function ParetoFrontier({ config }: ParetoFrontierProps) {
         padding: [10, 14],
         textStyle: { color: '#e2e8f0', fontSize: 11 },
         extraCssText: 'box-shadow:0 4px 12px rgba(0,0,0,0.3);',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        formatter: (params: any) => {
-          const pt = params.data?.point as ParetoPoint | undefined
+        formatter: (params: EChartsFormatterParam) => {
+          const pt = params.data?.point
           if (!pt) return ''
           const hw = getHardwareShort(pt.hardware)
           const model = getModelShort(pt.model)
