@@ -54,6 +54,13 @@ interface Card {
   title?: string
 }
 
+/** Clamp small cards in the md–lg range (768–1023px) for readability */
+const NARROW_MIN = 768
+const NARROW_MAX = 1023
+
+/** Minimum card column span at narrow viewports */
+const MIN_NARROW_COLS = 6
+
 // Sortable card component
 interface SortableCardProps {
   card: Card
@@ -70,10 +77,28 @@ function SortableCard({ card, onConfigure, onRemove, onWidthChange, isDragging, 
   const { t } = useTranslation()
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: card.id })
 
+  // In the md–lg range (768–1023px), clamp small cards to min 6 cols
+  // so we get max 2 cards per row instead of cramped 3-up layout.
+  // Below 768px CSS already switches to a 1-column grid, so no clamping needed there.
+  const [isNarrowRange, setIsNarrowRange] = useState(() =>
+    typeof window !== 'undefined' &&
+    window.innerWidth >= NARROW_MIN &&
+    window.innerWidth <= NARROW_MAX
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${NARROW_MIN}px) and (max-width: ${NARROW_MAX}px)`)
+    const handler = (e: MediaQueryListEvent) => setIsNarrowRange(e.matches)
+    setIsNarrowRange(mq.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const effectiveW = isNarrowRange && (card.position?.w || 4) < MIN_NARROW_COLS ? MIN_NARROW_COLS : (card.position?.w || 4)
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    gridColumn: `span ${card.position?.w || 4}`,
+    gridColumn: `span ${effectiveW}`,
     opacity: isDragging ? 0.5 : 1,
   }
 
@@ -89,7 +114,7 @@ function SortableCard({ card, onConfigure, onRemove, onWidthChange, isDragging, 
           onConfigure={onConfigure}
           onRemove={onRemove}
           onWidthChange={onWidthChange}
-          cardWidth={card.position?.w || 4}
+          cardWidth={effectiveW}
           isRefreshing={isRefreshing}
           onRefresh={onRefresh}
           lastUpdated={lastUpdated}
@@ -119,7 +144,7 @@ function SortableCard({ card, onConfigure, onRemove, onWidthChange, isDragging, 
         onConfigure={onConfigure}
         onRemove={onRemove}
         onWidthChange={onWidthChange}
-        cardWidth={card.position?.w || 4}
+        cardWidth={effectiveW}
         isRefreshing={isRefreshing}
         onRefresh={onRefresh}
         lastUpdated={lastUpdated}
