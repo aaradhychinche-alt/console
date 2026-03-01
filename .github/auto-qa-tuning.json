@@ -72,14 +72,14 @@
     "size_acceptance": {},
     "type_acceptance": {},
     "common_rejection_reasons": [
-      "- PR #1232: Superseded by PRs #1233 (Phase 2 keyboard navigation) and #1237 (Phase 3 screen reader support).",
-      "- PR #1231: Superseded by PR #1239 which adds aria-labels to all icon-only buttons in GPUReservations.",
-      "- PR #1225: Pipeline validation successful. Closing — no code changes needed.",
-      "- PR #1191: Closing — the underlying issue #1190 has already been resolved. This PR has merge conflicts and is no longer needed.",
-      "- PR #1098: Closing — bundling React 19, Vite 7, ESLint 10, and multiple other major version bumps in a single PR is too risky. The Netlify build is also failing. These should be done as separate, incremental PRs so breakage can be isolated. Thank you for the effort!"
+      "- PR #1508: Closing — we do not want to upgrade React or other major framework dependencies at this time. Too risky for the stability of the codebase.",
+      "- PR #1440: Closing — merge conflicts with main. The auto-QA workflow will re-detect and re-file if still relevant.",
+      "- PR #1428: Closing — no code changes in this PR (all reverted due to TS 5.6.3 compiler bug). The documented findings are useful context for a future attempt after upgrading TypeScript. Thanks for the thorough investigation!",
+      "- PR #1415: Closing — merge conflicts with main. The auto-QA workflow will re-detect and re-file if still relevant.",
+      "- PR #1406: Closing — merge conflicts with main. The auto-QA workflow will re-detect and re-file if still relevant."
     ],
     "best_change_type": "bug_fix",
-    "last_report_date": "2026-02-22"
+    "last_report_date": "2026-03-01"
   },
   "cncf_insights": {
     "last_scan_date": "2026-02-25",
