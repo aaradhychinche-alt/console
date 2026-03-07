@@ -308,7 +308,7 @@ export function Sidebar() {
               const dashId = HREF_TO_DASHBOARD_ID[item.href]
               const count = dashId ? DASHBOARD_CONFIGS[dashId]?.cards?.length : null
               return count != null ? (
-                <span className="text-[10px] text-muted-foreground/40 tabular-nums flex-shrink-0 min-w-[1.5rem] text-right">
+                <span className="text-[10px] text-muted-foreground/40 tabular-nums flex-shrink-0 min-w-[1.5rem] text-right pr-6">
                   {count}
                 </span>
               ) : null
