@@ -553,6 +553,7 @@ func (s *Server) setupRoutes() {
 	api.Get("/mcp/gpu-nodes/health/cronjob/results", mcpHandlers.GetGPUHealthCronJobResults)
 	api.Get("/mcp/nvidia-operators", mcpHandlers.GetNVIDIAOperatorStatus)
 	api.Get("/mcp/nodes", mcpHandlers.GetNodes)
+	api.Get("/mcp/flatcar/nodes", mcpHandlers.GetFlatcarNodes)
 	api.Get("/mcp/events", mcpHandlers.GetEvents)
 	api.Get("/mcp/events/warnings", mcpHandlers.GetWarningEvents)
 	api.Get("/mcp/security-issues", mcpHandlers.CheckSecurityIssues)

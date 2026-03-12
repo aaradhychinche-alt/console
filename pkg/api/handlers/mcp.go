@@ -1779,3 +1779,57 @@ func (h *MCPHandlers) CallDeployTool(c *fiber.Ctx) error {
 
 	return c.JSON(result)
 }
+
+// GetFlatcarNodes returns nodes running Flatcar Container Linux across all clusters.
+// Detection is performed server-side: only nodes whose OSImage contains "flatcar"
+// (case-insensitive) are included in the response.
+func (h *MCPHandlers) GetFlatcarNodes(c *fiber.Ctx) error {
+	// Demo mode: return representative demo data immediately
+	if isDemoMode(c) {
+		return demoResponse(c, "nodes", getDemoFlatcarNodes())
+	}
+
+	cluster := c.Query("cluster")
+
+	if h.k8sClient != nil {
+		// No cluster specified → query all healthy clusters in parallel
+		if cluster == "" {
+			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+			}
+
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			var allNodes []k8s.FlatcarNodeInfo
+
+			for _, cl := range clusters {
+				wg.Add(1)
+				go func(clusterName string) {
+					defer wg.Done()
+					ctx, cancel := context.WithTimeout(c.Context(), mcpDefaultTimeout)
+					defer cancel()
+
+					nodes, err := h.k8sClient.GetFlatcarNodes(ctx, clusterName)
+					if err == nil && len(nodes) > 0 {
+						mu.Lock()
+						allNodes = append(allNodes, nodes...)
+						mu.Unlock()
+					}
+				}(cl.Name)
+			}
+
+			waitWithDeadline(&wg, maxResponseDeadline)
+			return c.JSON(fiber.Map{"nodes": allNodes, "source": "k8s"})
+		}
+
+		// Single cluster query
+		nodes, err := h.k8sClient.GetFlatcarNodes(c.Context(), cluster)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"nodes": nodes, "source": "k8s"})
+	}
+
+	return c.Status(503).JSON(fiber.Map{"error": "No cluster access available"})
+}

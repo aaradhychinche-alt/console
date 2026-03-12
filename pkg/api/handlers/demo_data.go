@@ -303,6 +303,22 @@ func getDemoGPUNodes() []k8s.GPUNode {
 	}
 }
 
+// getDemoFlatcarNodes returns demo Flatcar Container Linux nodes across multiple clusters.
+func getDemoFlatcarNodes() []k8s.FlatcarNodeInfo {
+	return []k8s.FlatcarNodeInfo{
+		{NodeName: "flatcar-worker-1", Cluster: "k3s-edge", OSImage: "Flatcar Container Linux by Kinvolk 3815.2.5 (Oklo)", KernelVersion: "6.1.85-flatcar"},
+		{NodeName: "flatcar-worker-2", Cluster: "k3s-edge", OSImage: "Flatcar Container Linux by Kinvolk 3815.2.5 (Oklo)", KernelVersion: "6.1.85-flatcar"},
+		{NodeName: "flatcar-worker-3", Cluster: "k3s-edge", OSImage: "Flatcar Container Linux by Kinvolk 3815.2.5 (Oklo)", KernelVersion: "6.1.85-flatcar"},
+		{NodeName: "flatcar-node-a", Cluster: "do-nyc1-prod", OSImage: "Flatcar Container Linux by Kinvolk 3815.2.5 (Oklo)", KernelVersion: "6.1.85-flatcar"},
+		{NodeName: "flatcar-node-b", Cluster: "do-nyc1-prod", OSImage: "Flatcar Container Linux by Kinvolk 3760.1.0 (Oklo)", KernelVersion: "6.1.77-flatcar"},
+		{NodeName: "flatcar-node-c", Cluster: "do-nyc1-prod", OSImage: "Flatcar Container Linux by Kinvolk 3760.1.0 (Oklo)", KernelVersion: "6.1.77-flatcar"},
+		{NodeName: "edge-node-1", Cluster: "rancher-mgmt", OSImage: "Flatcar Container Linux by Kinvolk 3760.1.0 (Oklo)", KernelVersion: "6.1.77-flatcar"},
+		{NodeName: "edge-node-2", Cluster: "rancher-mgmt", OSImage: "Flatcar Container Linux by Kinvolk 3760.1.0 (Oklo)", KernelVersion: "6.1.77-flatcar"},
+		{NodeName: "legacy-worker-1", Cluster: "aks-dev-westeu", OSImage: "Flatcar Container Linux by Kinvolk 3602.2.3 (Oklo)", KernelVersion: "6.1.55-flatcar"},
+		{NodeName: "legacy-worker-2", Cluster: "aks-dev-westeu", OSImage: "Flatcar Container Linux by Kinvolk 3602.2.3 (Oklo)", KernelVersion: "6.1.55-flatcar"},
+	}
+}
+
 // Demo NVIDIA Operator Status
 func getDemoNVIDIAOperatorStatus() []*k8s.NVIDIAOperatorStatus {
 	return []*k8s.NVIDIAOperatorStatus{

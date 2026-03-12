@@ -339,6 +339,15 @@ type GPUNodeHealthStatus struct {
 	CheckedAt string               `json:"checkedAt"` // RFC3339 timestamp
 }
 
+// FlatcarNodeInfo represents a Kubernetes node running Flatcar Container Linux.
+// Only nodes whose OSImage contains "flatcar" (case-insensitive) are returned.
+type FlatcarNodeInfo struct {
+	NodeName      string `json:"nodeName"`
+	Cluster       string `json:"cluster"`
+	OSImage       string `json:"osImage"`
+	KernelVersion string `json:"kernelVersion"`
+}
+
 // GPUHealthCronJobStatus represents the status of the GPU health check CronJob on a cluster
 type GPUHealthCronJobStatus struct {
 	Installed       bool                   `json:"installed"`
@@ -3181,6 +3190,35 @@ func (m *MultiClusterClient) GetNodes(ctx context.Context, contextName string) (
 	}
 
 	return nodeInfos, nil
+}
+
+// GetFlatcarNodes returns information about nodes running Flatcar Container Linux
+// in the given cluster. Detection is based on OSImage containing "flatcar"
+// (case-insensitive).
+func (m *MultiClusterClient) GetFlatcarNodes(ctx context.Context, contextName string) ([]FlatcarNodeInfo, error) {
+	client, err := m.GetClient(contextName)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var result []FlatcarNodeInfo
+	for _, node := range nodes.Items {
+		osImage := node.Status.NodeInfo.OSImage
+		if strings.Contains(strings.ToLower(osImage), "flatcar") {
+			result = append(result, FlatcarNodeInfo{
+				NodeName:      node.Name,
+				Cluster:       contextName,
+				OSImage:       osImage,
+				KernelVersion: node.Status.NodeInfo.KernelVersion,
+			})
+		}
+	}
+	return result, nil
 }
 
 // FindDeploymentIssues returns deployments with issues
