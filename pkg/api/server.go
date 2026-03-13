@@ -355,6 +355,7 @@ func (s *Server) setupRoutes() {
 			"oauth_configured": s.config.GitHubClientID != "",
 			"in_cluster":       inCluster,
 			"install_method":   detectInstallMethod(inCluster),
+			"self_upgrade":     os.Getenv("SELF_UPGRADE_ENABLED") == "true",
 		}
 		if s.config.EnabledDashboards != "" {
 			dashboards := strings.Split(s.config.EnabledDashboards, ",")
@@ -434,10 +435,12 @@ func (s *Server) setupRoutes() {
 	s.app.Get("/api/public/nightly-e2e/runs", nightlyE2EPublic.GetRuns)
 	s.app.Get("/api/public/nightly-e2e/run-logs", nightlyE2EPublic.GetRunLogs)
 
-	// GA4 analytics proxy (public — no auth required, has its own origin validation)
-	// MUST be registered before the /api group so JWTAuth middleware doesn't intercept it
+	// Analytics proxies (public — no auth required, have their own origin validation)
+	// MUST be registered before the /api group so JWTAuth middleware doesn't intercept them
 	s.app.All("/api/m", handlers.GA4CollectProxy)
 	s.app.Get("/api/gtag", handlers.GA4ScriptProxy)
+	s.app.Get("/api/ksc", handlers.UmamiScriptProxy)
+	s.app.Post("/api/send", handlers.UmamiCollectProxy)
 
 	// MCP handlers (used in protected routes below)
 	mcpHandlers := handlers.NewMCPHandlers(s.bridge, s.k8sClient)
@@ -612,6 +615,10 @@ func (s *Server) setupRoutes() {
 	api.Post("/gitops/helm-rollback", gitopsHandlers.RollbackHelmRelease)
 	api.Post("/gitops/helm-uninstall", gitopsHandlers.UninstallHelmRelease)
 	api.Post("/gitops/helm-upgrade", gitopsHandlers.UpgradeHelmRelease)
+	// Helm self-upgrade (in-cluster Deployment patch)
+	selfUpgradeHandler := handlers.NewSelfUpgradeHandler(s.k8sClient, s.hub)
+	api.Get("/self-upgrade/status", selfUpgradeHandler.GetStatus)
+	api.Post("/self-upgrade/trigger", selfUpgradeHandler.TriggerUpgrade)
 	// ArgoCD routes (Application CRD discovery and sync)
 	api.Get("/gitops/argocd/applications", gitopsHandlers.ListArgoApplications)
 	api.Get("/gitops/argocd/health", gitopsHandlers.GetArgoHealthSummary)
@@ -767,9 +774,10 @@ func (s *Server) setupRoutes() {
 	}))
 
 	// WebSocket for pod exec terminal
+	// Registered at /ws/exec (not /api/exec) to avoid the /api group's JWTAuth middleware
 	execHandlers := handlers.NewExecHandlers(s.k8sClient)
-	s.app.Use("/api/exec", middleware.WebSocketUpgrade())
-	s.app.Get("/api/exec", websocket.New(func(c *websocket.Conn) {
+	s.app.Use("/ws/exec", middleware.WebSocketUpgrade())
+	s.app.Get("/ws/exec", websocket.New(func(c *websocket.Conn) {
 		execHandlers.HandleExec(c)
 	}))
 
@@ -840,7 +848,7 @@ func preCompressedStatic(root string) fiber.Handler {
 				c.Set("Cache-Control", fmt.Sprintf("public, max-age=%d, immutable", oneYear))
 				c.Set("Content-Length", fmt.Sprintf("%d", brInfo.Size()))
 				c.Set("Vary", "Accept-Encoding")
-				return c.SendFile(brPath, true)
+				return c.SendFile(brPath)
 			}
 		}
 		if strings.Contains(accept, "gzip") {
@@ -851,7 +859,7 @@ func preCompressedStatic(root string) fiber.Handler {
 				c.Set("Cache-Control", fmt.Sprintf("public, max-age=%d, immutable", oneYear))
 				c.Set("Content-Length", fmt.Sprintf("%d", gzInfo.Size()))
 				c.Set("Vary", "Accept-Encoding")
-				return c.SendFile(gzPath, true)
+				return c.SendFile(gzPath)
 			}
 		}
 
@@ -860,7 +868,7 @@ func preCompressedStatic(root string) fiber.Handler {
 			c.Set("Content-Type", contentType)
 		}
 		c.Set("Cache-Control", fmt.Sprintf("public, max-age=%d, immutable", oneYear))
-		return c.SendFile(filePath, true)
+		return c.SendFile(filePath)
 	}
 }
 

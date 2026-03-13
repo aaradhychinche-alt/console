@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-03-11T03:46:33Z",
+  "last_updated": "2026-03-13T03:47:07Z",
   "rolling_window_days": 30,
   "categories": {
     "other": {
       "merged": 55,
-      "closed": 41,
-      "acceptance_rate": 0.57,
+      "closed": 59,
+      "acceptance_rate": 0.48,
       "status": "normal",
-      "last_evaluated": "2026-03-11T03:46:33Z"
+      "last_evaluated": "2026-03-13T03:47:07Z"
     },
     "security": {
       "merged": 12,
-      "closed": 9,
-      "acceptance_rate": 0.57,
+      "closed": 12,
+      "acceptance_rate": 0.5,
       "status": "normal",
-      "last_evaluated": "2026-03-08T03:46:25Z"
+      "last_evaluated": "2026-03-13T03:47:07Z"
     },
     "resilience": {
       "merged": 11,
-      "closed": 10,
-      "acceptance_rate": 0.52,
+      "closed": 11,
+      "acceptance_rate": 0.5,
       "status": "normal",
-      "last_evaluated": "2026-03-10T03:46:12Z"
+      "last_evaluated": "2026-03-13T03:47:07Z"
     },
     "performance": {
       "merged": 4,
@@ -33,10 +33,10 @@
     },
     "consistency": {
       "merged": 11,
-      "closed": 6,
-      "acceptance_rate": 0.65,
+      "closed": 7,
+      "acceptance_rate": 0.61,
       "status": "normal",
-      "last_evaluated": "2026-03-10T03:46:12Z"
+      "last_evaluated": "2026-03-13T03:47:07Z"
     },
     "dom-errors": {
       "merged": 4,
@@ -61,10 +61,10 @@
     },
     "testing": {
       "merged": 9,
-      "closed": 9,
-      "acceptance_rate": 0.5,
+      "closed": 10,
+      "acceptance_rate": 0.47,
       "status": "normal",
-      "last_evaluated": "2026-03-11T03:46:33Z"
+      "last_evaluated": "2026-03-13T03:47:07Z"
     }
   },
   "weekly_insights": {
@@ -269,18 +269,25 @@
       "total_closed": 95,
       "categories_blocked": [],
       "categories_boosted": []
+    },
+    {
+      "date": "2026-03-13",
+      "total_merged": 119,
+      "total_closed": 119,
+      "categories_blocked": [],
+      "categories_boosted": []
     }
   ],
   "rotation_weights": {
-    "other": 0.86,
-    "security": 0.86,
-    "resilience": 0.78,
+    "other": 0.72,
+    "security": 0.75,
+    "resilience": 0.75,
     "performance": 1.5,
-    "consistency": 0.98,
+    "consistency": 0.92,
     "dom-errors": 1.2,
     "a11y": 0.68,
     "ui-design": 0.45,
-    "testing": 0.75
+    "testing": 0.71
   },
   "max_issues_override": 3,
   "pr_guidance": "Keep PRs small and focused. Smaller PRs have higher acceptance rates."

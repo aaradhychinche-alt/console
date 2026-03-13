@@ -64,20 +64,50 @@ func runWatchdog(cfg WatchdogConfig) error {
 	// Create reverse proxy
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
 
-	// Custom transport with managed connection pool and timeouts
+	// Custom transport with managed connection pool and timeouts.
+	// DisableCompression prevents the Transport from adding Accept-Encoding: gzip
+	// to proxied requests. Without this, fasthttp's SendFile tries to create
+	// compressed file caches (.fiber.gz) which fails on read-only filesystems,
+	// causing 404s for static assets like manifest.json and favicon.ico.
 	proxy.Transport = &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout: watchdogHealthTimeout,
 		}).DialContext,
+		DisableCompression:    true,
 		ResponseHeaderTimeout: watchdogProxyHeaderTimeout,
 		MaxIdleConns:          watchdogMaxIdleConns,
 		MaxIdleConnsPerHost:   watchdogMaxIdleConnsPerHost,
 		IdleConnTimeout:       watchdogIdleConnTimeout,
 	}
 
-	// Custom error handler: serve fallback page instead of 502 when backend dies mid-request
+	// Custom error handler: serve fallback page on connection failures.
+	// Only mark backend unhealthy on hard connection errors (refused, reset, EOF).
+	// Client-side disconnects (context canceled) and timeouts do NOT mean the
+	// backend is down — the client navigated away or the request was slow.
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("[Watchdog] Proxy error: %v", err)
+		errMsg := err.Error()
+
+		// Client disconnected (e.g. browser navigated away, closed SSE stream).
+		// This is normal — do NOT mark backend unhealthy.
+		isClientGone := strings.Contains(errMsg, "context canceled") ||
+			strings.Contains(errMsg, "client disconnected") ||
+			strings.Contains(errMsg, "write: broken pipe")
+		if isClientGone {
+			log.Printf("[Watchdog] Client disconnected (backend still healthy): %v", err)
+			return
+		}
+
+		// Backend slow but still running — don't mark unhealthy.
+		isTimeout := strings.Contains(errMsg, "timeout awaiting response headers") ||
+			strings.Contains(errMsg, "context deadline exceeded")
+		if isTimeout {
+			log.Printf("[Watchdog] Proxy timeout (backend still healthy): %v", err)
+			http.Error(w, "Gateway Timeout", http.StatusGatewayTimeout)
+			return
+		}
+
+		// Hard connection failure — backend is genuinely down.
+		log.Printf("[Watchdog] Proxy error (backend down): %v", err)
 		atomic.StoreInt32(&backendHealthy, 0)
 		serveFallback(w, r)
 	}

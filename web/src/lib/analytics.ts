@@ -28,25 +28,22 @@ const GTAG_SCRIPT_PATH = '/api/gtag'
 // Events flow to both platforms via the send() function.
 // Umami auto-tracks pageviews; custom events use umami.track().
 
-const UMAMI_SCRIPT_URL = 'https://analytics.kubestellar.io/ksc'
-const UMAMI_WEBSITE_ID_PROD = '07111027-162f-4e37-a0bb-067b9d08b88a'
-const UMAMI_WEBSITE_ID_LOCAL = '1339e1d0-b491-4157-9942-037bc9dd4e80'
+/** First-party proxy path for the Umami tracking script — bypasses ad blockers */
+const UMAMI_SCRIPT_PATH = '/api/ksc'
+/** Single Umami website ID — all environments report here, filterable by hostname */
+const UMAMI_WEBSITE_ID = '07111027-162f-4e37-a0bb-067b9d08b88a'
 
-// Window.umami type is merged with gtag globals below
-
-/** Get the correct Umami website ID based on deployment */
-function getUmamiWebsiteId(): string {
-  const h = window.location.hostname
-  if (h === 'localhost' || h === '127.0.0.1') return UMAMI_WEBSITE_ID_LOCAL
-  return UMAMI_WEBSITE_ID_PROD
-}
-
-/** Load Umami tracking script (async, non-blocking) */
+/** Load Umami tracking script via first-party proxy (async, non-blocking).
+ *  data-host-url tells Umami to POST events to our own origin (which proxies
+ *  to analytics.kubestellar.io/api/send) instead of the script's source domain. */
 function loadUmamiScript() {
   const script = document.createElement('script')
-  script.src = UMAMI_SCRIPT_URL
+  script.src = UMAMI_SCRIPT_PATH
   script.defer = true
-  script.dataset.websiteId = getUmamiWebsiteId()
+  script.dataset.websiteId = UMAMI_WEBSITE_ID
+  // Umami appends /api/send internally — set host to our origin so events
+  // go through the first-party proxy at /api/send → analytics.kubestellar.io
+  script.dataset.hostUrl = window.location.origin
   document.head.appendChild(script)
 }
 
@@ -97,6 +94,66 @@ const CID_KEY = '_ksc_cid'
 const SID_KEY = '_ksc_sid'
 const SC_KEY = '_ksc_sc'
 const LAST_KEY = '_ksc_last'
+
+// ── Bot / Headless Detection ────────────────────────────────────────
+// Automated installs (CI pipelines, cloud VMs running curl|bash) start
+// the console but never interact with it. Without filtering, these
+// generate tens of thousands of fake "users" from data center IPs.
+// We gate analytics on real user interaction to exclude them.
+
+/** Returns true if the environment looks automated/headless */
+function isAutomatedEnvironment(): boolean {
+  try {
+    // WebDriver flag — set by Puppeteer, Selenium, Playwright, headless Chrome
+    if (navigator.webdriver) return true
+    // Headless Chrome UA substring
+    if (/HeadlessChrome/i.test(navigator.userAgent)) return true
+    // PhantomJS
+    if (/PhantomJS/i.test(navigator.userAgent)) return true
+    // No browser plugins (headless browsers have none)
+    // navigator.plugins is a PluginArray — check length, not truthiness
+    if (navigator.plugins && navigator.plugins.length === 0 && !/Firefox/i.test(navigator.userAgent)) return true
+    // No language preferences (bots often skip this)
+    if (!navigator.languages || navigator.languages.length === 0) return true
+  } catch {
+    // If any check throws, assume real browser
+  }
+  return false
+}
+
+/** Whether a real user interaction has been detected */
+let userHasInteracted = false
+/** Whether analytics scripts have been loaded (only after interaction) */
+let analyticsScriptsLoaded = false
+
+/**
+ * Called on first user interaction (click, scroll, keypress, touch).
+ * Loads analytics scripts and flushes the initial page_view / conversion events.
+ */
+function onFirstInteraction() {
+  if (userHasInteracted) return
+  userHasInteracted = true
+
+  // Remove interaction listeners — they're no longer needed
+  for (const evt of INTERACTION_GATE_EVENTS) {
+    document.removeEventListener(evt, onFirstInteraction)
+  }
+
+  if (!analyticsScriptsLoaded) {
+    analyticsScriptsLoaded = true
+    // NOW load gtag.js and Umami — only after a real human interacted
+    loadGtagScript()
+    loadUmamiScript()
+    startEngagementTracking()
+
+    // Fire the events that would have fired at page load
+    const deploymentType = getDeploymentType()
+    emitConversionStep(1, 'discovery', { deployment_type: deploymentType })
+    emitPageView(window.location.pathname)
+  }
+}
+
+const INTERACTION_GATE_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'] as const
 
 // ── Engagement Time Tracking ──────────────────────────────────────
 // GA4 requires the `_et` parameter (engagement time in milliseconds)
@@ -431,6 +488,10 @@ function send(
 ) {
   if (!initialized || isOptedOut()) return
 
+  // Don't send any events until a real user has interacted.
+  // This prevents automated/headless page loads from generating traffic.
+  if (!userHasInteracted) return
+
   // Umami: send every event immediately (no queuing needed — Umami has its
   // own session management and doesn't conflict with GA4 client IDs)
   sendToUmami(eventName, params)
@@ -548,6 +609,11 @@ function loadGtagScript() {
 export function initAnalytics() {
   measurementId = (import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined) || GA_MEASUREMENT_ID
   if (!measurementId || initialized) return
+
+  // Skip analytics entirely in automated/headless environments.
+  // This filters CI pipelines, cloud VMs, Puppeteer, etc.
+  if (isAutomatedEnvironment()) return
+
   initialized = true
   pageId = rand()
 
@@ -561,15 +627,6 @@ export function initAnalytics() {
     ...(tz && { timezone: tz }),
   }
 
-  // Load gtag.js for GA4 Realtime support (async, non-blocking)
-  loadGtagScript()
-
-  // Load Umami tracking script (parallel analytics validation)
-  loadUmamiScript()
-
-  // Start tracking user engagement for GA4 engagement time metrics
-  startEngagementTracking()
-
   // Flush engagement on page close (Safari doesn't always fire visibilitychange)
   window.addEventListener('beforeunload', emitUserEngagement)
 
@@ -579,8 +636,12 @@ export function initAnalytics() {
   // Capture UTM parameters from landing URL
   captureUtmParams()
 
-  // Fire discovery conversion step
-  emitConversionStep(1, 'discovery', { deployment_type: deploymentType })
+  // Gate analytics script loading on real user interaction.
+  // Automated installs load the page but never click/scroll/type — this
+  // single check eliminates ~25,000 bot "users" per day from data centers.
+  for (const evt of INTERACTION_GATE_EVENTS) {
+    document.addEventListener(evt, onFirstInteraction, { once: true, passive: true })
+  }
 }
 
 // ── Anonymous User ID ──────────────────────────────────────────────
@@ -1591,4 +1652,26 @@ export function emitActionClicked(actionType: string, sourceCard: string, dashbo
 /** Fired when the AI suggestion/remediation tab is viewed */
 export function emitAISuggestionViewed(insightCategory: string, hasAIEnrichment: boolean) {
   send('ksc_ai_suggestion_viewed', { insight_category: insightCategory, has_ai_enrichment: hasAIEnrichment })
+}
+
+// ── From Lens Landing Page ──────────────────────────────────────────
+
+/** Fired when a user views the /from-lens landing page */
+export function emitFromLensViewed() {
+  send('ksc_from_lens_viewed')
+}
+
+/** Fired when a user interacts with a CTA on the /from-lens page */
+export function emitFromLensActioned(action: string) {
+  send('ksc_from_lens_actioned', { action })
+}
+
+/** Fired when a user switches deployment tabs (localhost / cluster-portforward / cluster-ingress) */
+export function emitFromLensTabSwitch(tab: string) {
+  send('ksc_from_lens_tab_switch', { tab })
+}
+
+/** Fired when a user copies an install command from the /from-lens page */
+export function emitFromLensCommandCopy(tab: string, step: number, command: string) {
+  send('ksc_from_lens_command_copy', { tab, step, command })
 }

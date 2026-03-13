@@ -169,5 +169,11 @@ podDisruptionBudget:
 watchdog:
   enabled: true
 
+# Self-upgrade: allow the console to upgrade its own Deployment image tag
+# from the UI. Creates a namespaced Role granting patch access to Deployments
+# in the release namespace only.
+selfUpgrade:
+  enabled: true
+
 # Additional environment variables
 extraEnv: []
