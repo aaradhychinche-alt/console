@@ -43,6 +43,7 @@ export default defineConfig({
   // Reporter configuration
   reporter: process.env.CI
     ? [
+        ['blob', { outputDir: 'blob-report' }],
         ['html', { outputFolder: 'playwright-report' }],
         ['json', { outputFile: 'test-results/results.json' }],
         ['junit', { outputFile: 'test-results/junit.xml' }],

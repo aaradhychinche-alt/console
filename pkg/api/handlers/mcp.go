@@ -1796,12 +1796,13 @@ func (h *MCPHandlers) GetFlatcarNodes(c *fiber.Ctx) error {
 		if cluster == "" {
 			clusters, _, err := h.k8sClient.HealthyClusters(c.Context())
 			if err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+				log.Printf("internal error: %v", err)
+				return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 			}
 
 			var wg sync.WaitGroup
 			var mu sync.Mutex
-			var allNodes []k8s.FlatcarNodeInfo
+			allNodes := make([]k8s.FlatcarNodeInfo, 0)
 
 			for _, cl := range clusters {
 				wg.Add(1)
@@ -1826,7 +1827,8 @@ func (h *MCPHandlers) GetFlatcarNodes(c *fiber.Ctx) error {
 		// Single cluster query
 		nodes, err := h.k8sClient.GetFlatcarNodes(c.Context(), cluster)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+			log.Printf("internal error: %v", err)
+			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
 		}
 		return c.JSON(fiber.Map{"nodes": nodes, "source": "k8s"})
 	}

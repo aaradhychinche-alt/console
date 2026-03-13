@@ -1,6 +1,7 @@
-import { CheckCircle, AlertTriangle, RefreshCw, ArrowUpCircle, Server } from 'lucide-react'
+import { CheckCircle, AlertTriangle, RefreshCw, Server } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../../ui/Skeleton'
+import { MetricTile } from '../../../lib/cards/CardComponents'
 import { useFlatcarStatus } from './useFlatcarStatus'
 import { compareFlatcarVersions } from './versionUtils'
 
@@ -19,24 +20,6 @@ function useFormatRelativeTime() {
   }
 }
 
-interface MetricTileProps {
-  label: string
-  value: number | string
-  colorClass: string
-  icon: React.ReactNode
-}
-
-function MetricTile({ label, value, colorClass, icon }: MetricTileProps) {
-  return (
-    <div className="flex-1 p-3 rounded-lg bg-secondary/30 text-center">
-      <div className="flex items-center justify-center gap-1.5 mb-1">
-        {icon}
-      </div>
-      <span className={`text-2xl font-bold ${colorClass}`}>{value}</span>
-      <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-    </div>
-  )
-}
 
 export function FlatcarStatus() {
   const { t } = useTranslation('cards')
@@ -109,12 +92,6 @@ export function FlatcarStatus() {
           value={data.totalNodes}
           colorClass="text-blue-400"
           icon={<Server className="w-4 h-4 text-blue-400" />}
-        />
-        <MetricTile
-          label={t('flatcar.updating')}
-          value={data.updatingNodes}
-          colorClass={data.updatingNodes > 0 ? 'text-yellow-400' : 'text-green-400'}
-          icon={<ArrowUpCircle className="w-4 h-4 text-yellow-400" />}
         />
         <MetricTile
           label={t('flatcar.outdated')}

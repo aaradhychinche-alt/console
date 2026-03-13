@@ -2,11 +2,11 @@ import { useCache } from '../../../lib/cache'
 import { useCardLoadingState } from '../CardDataContext'
 import { FLATCAR_DEMO_DATA, type FlatcarDemoData } from './demoData'
 import { compareFlatcarVersions } from './versionUtils'
+import { FETCH_DEFAULT_TIMEOUT_MS } from '../../../lib/constants/network'
 
 export interface FlatcarStatus {
   totalNodes: number
   versions: Record<string, number>
-  updatingNodes: number
   outdatedNodes: number
   health: 'healthy' | 'degraded'
   lastCheckTime: string
@@ -15,7 +15,6 @@ export interface FlatcarStatus {
 const INITIAL_DATA: FlatcarStatus = {
   totalNodes: 0,
   versions: {},
-  updatingNodes: 0,
   outdatedNodes: 0,
   health: 'healthy',
   lastCheckTime: new Date().toISOString(),
@@ -44,6 +43,7 @@ interface FlatcarNodeInfo {
 async function fetchFlatcarStatus(): Promise<FlatcarStatus> {
   const resp = await fetch('/api/mcp/flatcar/nodes', {
     headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FETCH_DEFAULT_TIMEOUT_MS),
   })
 
   if (!resp.ok) {
@@ -69,7 +69,6 @@ async function fetchFlatcarStatus(): Promise<FlatcarStatus> {
     .sort(compareFlatcarVersions)
   const latestVersion = sortedVersions[0]
 
-  let updatingNodes = 0
   let outdatedNodes = 0
 
   for (const node of items) {
@@ -85,12 +84,11 @@ async function fetchFlatcarStatus(): Promise<FlatcarStatus> {
   }
 
   const health: 'healthy' | 'degraded' =
-    outdatedNodes === 0 && updatingNodes === 0 ? 'healthy' : 'degraded'
+    outdatedNodes === 0 ? 'healthy' : 'degraded'
 
   return {
     totalNodes: items.length,
     versions,
-    updatingNodes,
     outdatedNodes,
     health,
     lastCheckTime: new Date().toISOString(),
@@ -101,7 +99,6 @@ function toDemoStatus(demo: FlatcarDemoData): FlatcarStatus {
   return {
     totalNodes: demo.totalNodes,
     versions: demo.versions,
-    updatingNodes: demo.updatingNodes,
     outdatedNodes: demo.outdatedNodes,
     health: demo.health,
     lastCheckTime: demo.lastCheckTime,
