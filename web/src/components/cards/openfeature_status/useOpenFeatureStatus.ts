@@ -251,6 +251,7 @@ export function useOpenFeatureStatus(): UseOpenFeatureStatusResult {
 
   const { showSkeleton, showEmptyState } = useCardLoadingState({
     isLoading,
+    isRefreshing,
     isDemoData: effectiveIsDemoData,
     hasAnyData,
     isFailed,

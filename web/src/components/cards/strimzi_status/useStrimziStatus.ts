@@ -213,6 +213,7 @@ export function useStrimziStatus(): UseStrimziStatusResult {
 
   const { showSkeleton, showEmptyState } = useCardLoadingState({
     isLoading,
+    isRefreshing,
     hasAnyData,
     isFailed,
     consecutiveFailures,
