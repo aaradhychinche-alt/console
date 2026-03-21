@@ -1,9 +1,6 @@
 name: Playwright E2E Tests
 
 on:
-  schedule:
-    - cron: '30 6 * * *'  # 6:30 AM UTC daily — cross-browser nightly
-  workflow_dispatch: {}
   push:
     branches: [main, dev]
     paths:
@@ -15,10 +12,8 @@ on:
       - 'web/**'
       - '.github/workflows/playwright.yml'
 
-# Nightly/manual runs get a unique concurrency group (run_id) so they are never
-# cancelled by push/PR runs. Push/PR runs share github.ref so newer ones cancel older.
 concurrency:
-  group: playwright-${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.run_id || github.ref }}
+  group: playwright-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -240,61 +235,7 @@ jobs:
               body: comment
             });
 
-  # Cross-browser tests — runs nightly to catch browser-specific regressions
-  # Re-enables Firefox and WebKit that were disabled from PR CI
-  # Related issues: #2982 (invisible at certain widths), #2999 (browser widths), #3035 (overlap)
-  nightly-cross-browser:
-    name: Nightly Cross-Browser (${{ matrix.browser }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [firefox, webkit]
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: web/dist
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps ${{ matrix.browser }}
-
-      - name: Start preview server
-        run: |
-          npm run preview &
-          npx wait-on http://localhost:4173 --timeout 60000
-
-      - name: Run Playwright tests (${{ matrix.browser }})
-        run: npx playwright test --project=${{ matrix.browser }}
-        env:
-          PLAYWRIGHT_BASE_URL: http://localhost:4173
-
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nightly-${{ matrix.browser }}-report
-          path: web/playwright-report/
-          retention-days: 7
+  # Cross-browser tests moved to playwright-nightly.yml to avoid cancellation by push/PR runs
 
   # Mobile tests - DISABLED until tests are stable
   # TODO: Re-enable after test stabilization
