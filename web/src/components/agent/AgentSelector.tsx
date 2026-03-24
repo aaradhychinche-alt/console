@@ -1,6 +1,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, Check, Loader2, Sparkles, Play } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronDown, Check, Loader2, Sparkles, Play, BookOpen } from 'lucide-react'
 import { useMissions } from '../../hooks/useMissions'
 import { useDemoMode, getDemoMode } from '../../hooks/useDemoMode'
 import { useKagentBackend } from '../../hooks/useKagentBackend'
@@ -18,6 +19,7 @@ interface AgentSelectorProps {
 
 export function AgentSelector({ compact = false, className = '' }: AgentSelectorProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { agents, selectedAgent, agentsLoading, selectAgent, connectToAgent, startMission } = useMissions()
   const { isDemoMode: isDemoModeHook } = useDemoMode()
   const { kagentAvailable, kagentiAvailable, selectedKagentAgent, selectedKagentiAgent } = useKagentBackend()
@@ -44,7 +46,6 @@ export function AgentSelector({ compact = false, className = '' }: AgentSelector
         description: kagentAvailable ? 'In-cluster AI agent via kagent' : 'Install kagent for in-cluster AI agents',
         provider: 'kagent',
         available: kagentAvailable,
-        installUrl: kagentAvailable ? undefined : 'https://github.com/kagent-dev/kagent',
         installMissionId: kagentAvailable ? undefined : 'install-kagent',
       },
       {
@@ -53,7 +54,6 @@ export function AgentSelector({ compact = false, className = '' }: AgentSelector
         description: kagentiAvailable ? 'In-cluster AI agent via kagenti' : 'Install kagenti for in-cluster AI agents',
         provider: 'kagenti',
         available: kagentiAvailable,
-        installUrl: kagentiAvailable ? undefined : 'https://github.com/kagenti/kagenti',
         installMissionId: kagentiAvailable ? undefined : 'install-kagenti',
       },
     ]
@@ -300,12 +300,16 @@ export function AgentSelector({ compact = false, className = '' }: AgentSelector
                     <p className={cn('text-xs', agent.available ? 'text-muted-foreground' : 'text-muted-foreground/60')}>
                       {agent.description}
                     </p>
-                    {agent.installUrl && (
+                    {!agent.available && agent.installMissionId && (
                       <div className="flex items-center gap-2 mt-1">
-                        <a href={agent.installUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-primary hover:underline">
-                          Manual install
-                        </a>
-                        {hasCliAgent && agent.installMissionId && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); closeDropdown(); navigate(`/?mission=${agent.installMissionId}`) }}
+                          className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          Install guide
+                        </button>
+                        {hasCliAgent && (
                           <>
                             <span className="text-xs text-muted-foreground/40">|</span>
                             <button
@@ -313,7 +317,7 @@ export function AgentSelector({ compact = false, className = '' }: AgentSelector
                               className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
                             >
                               <Play className="w-3 h-3" />
-                              Install with AI Mission
+                              Install with AI
                             </button>
                           </>
                         )}
