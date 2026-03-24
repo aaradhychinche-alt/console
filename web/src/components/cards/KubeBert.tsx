@@ -13,6 +13,10 @@ const BONUS_PER_LEVEL = 500
 const ENEMY_SPAWN_INTERVAL_MS = 3000
 const ENEMY_MOVE_INTERVAL_MS = 800
 const PLAYER_MOVE_COOLDOWN_MS = 200
+/** Delay in milliseconds before starting the next level after completing the current one */
+const LEVEL_TRANSITION_DELAY_MS = 1000
+/** Minimum enemy spawn interval in milliseconds — prevents the game from becoming unplayable at high levels */
+const MIN_ENEMY_SPAWN_INTERVAL_MS = 1000
 
 
 // Tile colors by state
@@ -222,6 +226,9 @@ export function KubeBert() {
   const enemyMoveRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const moveLockedRef = useRef(false)
   const gameStateRef = useRef<GameState>('idle')
+  // Refs to break forward-declaration cycles (movePlayer calls these, but they're declared later)
+  const startEnemiesRef = useRef<() => void>(() => {})
+  const startGameLoopRef = useRef<() => void>(() => {})
 
   // Keep gameStateRef in sync
   useEffect(() => { gameStateRef.current = gameState }, [gameState])
@@ -438,10 +445,10 @@ export function KubeBert() {
       setTimeout(() => {
         if (gameStateRef.current === 'levelComplete') {
           setGameState('playing')
-          startEnemies()
-          startGameLoop()
+          startEnemiesRef.current()
+          startGameLoopRef.current()
         }
-      }, 1000)
+      }, LEVEL_TRANSITION_DELAY_MS)
     }
   }, [isValidPosition, allTilesVisited, initTiles, highScore, stopIntervals])
 
@@ -514,18 +521,20 @@ export function KubeBert() {
     }
     gameLoopRef.current = requestAnimationFrame(loop)
   }, [render])
+  // Keep ref in sync so movePlayer's setTimeout can call the latest version
+  startGameLoopRef.current = startGameLoop
 
   // Enemy intervals
   const startEnemies = useCallback(() => {
     // Spawn faster at higher levels
-    const spawnRate = Math.max(1000, ENEMY_SPAWN_INTERVAL_MS - (levelRef.current - 1) * 300)
+    const spawnRate = Math.max(MIN_ENEMY_SPAWN_INTERVAL_MS, ENEMY_SPAWN_INTERVAL_MS - (levelRef.current - 1) * 300)
     const moveRate = Math.max(400, ENEMY_MOVE_INTERVAL_MS - (levelRef.current - 1) * 50)
 
     enemySpawnRef.current = setInterval(spawnEnemy, spawnRate)
     enemyMoveRef.current = setInterval(moveEnemies, moveRate)
   }, [spawnEnemy, moveEnemies])
-
-  // Start game
+  // Keep ref in sync so movePlayer's setTimeout can call the latest version
+  startEnemiesRef.current = startEnemies
   const startGame = useCallback(() => {
     stopIntervals()
     buildTileLabels()
