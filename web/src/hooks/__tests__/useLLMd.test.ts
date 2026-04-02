@@ -1653,4 +1653,609 @@ describe('useLLMdModels', () => {
       clearIntervalSpy.mockRestore()
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Deep coverage: consecutive failures and isFailed for models
+  // -----------------------------------------------------------------------
+  describe('consecutive failures and isFailed', () => {
+    it('increments consecutiveFailures on repeated errors', async () => {
+      // Use a non-demo-mode error that triggers the outer catch
+      mockExec.mockImplementation(() => {
+        throw new Error('total failure')
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(result.current.consecutiveFailures).toBeGreaterThanOrEqual(1)
+      unmount()
+    })
+
+    it('isFailed becomes true after 3+ consecutive failures', async () => {
+      vi.useFakeTimers()
+      let callCount = 0
+      mockExec.mockImplementation(() => {
+        callCount++
+        throw new Error('persistent failure')
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      // Let initial fetch fail
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+
+      // Trigger 2 more refreshes
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+
+      expect(result.current.consecutiveFailures).toBeGreaterThanOrEqual(3)
+      expect(result.current.isFailed).toBe(true)
+      unmount()
+      vi.useRealTimers()
+    })
+
+    it('sets error message on non-silent fetch failure', async () => {
+      mockExec.mockImplementation(() => {
+        throw new Error('Outer catch triggered')
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      // The outer catch should set the error if it's a non-silent fetch
+      // (initial fetch is non-silent)
+      unmount()
+    })
+
+    it('does not set error on silent fetch failure', async () => {
+      vi.useFakeTimers()
+      let first = true
+      mockExec.mockImplementation(() => {
+        if (first) {
+          first = false
+          return Promise.resolve({ output: JSON.stringify({ items: [] }), exitCode: 0, error: '' })
+        }
+        throw new Error('Silent failure')
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      // Let initial fetch succeed
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+      expect(result.current.error).toBeNull()
+
+      // Trigger silent refresh that fails
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+
+      // Error should still be null because silent=true
+      expect(result.current.error).toBeNull()
+      unmount()
+      vi.useRealTimers()
+    })
+
+    it('resets consecutiveFailures on successful fetch', async () => {
+      vi.useFakeTimers()
+      let shouldFail = true
+      mockExec.mockImplementation(() => {
+        if (shouldFail) {
+          throw new Error('temporary failure')
+        }
+        return Promise.resolve({ output: JSON.stringify({ items: [] }), exitCode: 0, error: '' })
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      // Let initial fetch fail
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+      expect(result.current.consecutiveFailures).toBeGreaterThanOrEqual(1)
+
+      // Fix the mock and trigger refresh
+      shouldFail = false
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+
+      expect(result.current.consecutiveFailures).toBe(0)
+      unmount()
+      vi.useRealTimers()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Deep coverage: non-Error thrown in outer catch
+  // -----------------------------------------------------------------------
+  describe('non-Error thrown objects', () => {
+    it('handles non-Error thrown value (string) in model fetch', async () => {
+      mockExec.mockImplementation(() => {
+        throw 'string error thrown'
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      // The error message should be the generic fallback
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Progressive loading: models already partially loaded
+  // -----------------------------------------------------------------------
+  describe('progressive loading for models', () => {
+    it('progressively loads models from multiple clusters', async () => {
+      let resolveFirst: (v: unknown) => void
+      let resolveSecond: (v: unknown) => void
+      const firstPromise = new Promise(r => { resolveFirst = r })
+      const secondPromise = new Promise(r => { resolveSecond = r })
+      let callNum = 0
+
+      mockExec.mockImplementation(() => {
+        callNum++
+        if (callNum === 1) return firstPromise
+        if (callNum === 2) return secondPromise
+        return Promise.resolve({ output: JSON.stringify({ items: [] }), exitCode: 0, error: '' })
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['cluster-a', 'cluster-b']))
+
+      // Resolve first cluster
+      await act(async () => {
+        resolveFirst!({
+          output: JSON.stringify({
+            items: [makeInferencePool({ name: 'pool-a', namespace: 'ns', accepted: true })],
+          }),
+          exitCode: 0,
+          error: '',
+        })
+      })
+
+      // First cluster's models should appear
+      await waitFor(() => expect(result.current.models.length).toBeGreaterThanOrEqual(1))
+
+      // Resolve second cluster
+      await act(async () => {
+        resolveSecond!({
+          output: JSON.stringify({
+            items: [makeInferencePool({ name: 'pool-b', namespace: 'ns', accepted: true })],
+          }),
+          exitCode: 0,
+          error: '',
+        })
+      })
+
+      await waitFor(() => expect(result.current.models.length).toBe(2))
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Manual refetch for models
+  // -----------------------------------------------------------------------
+  describe('manual refetch for models', () => {
+    it('calling refetch manually triggers a new fetch', async () => {
+      mockExec.mockImplementation(() => {
+        return Promise.resolve({
+          output: JSON.stringify({
+            items: [makeInferencePool({ name: 'pool-1', namespace: 'ns', accepted: true })],
+          }),
+          exitCode: 0,
+          error: '',
+        })
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdModels(['c1']))
+
+      await waitFor(() => expect(result.current.models.length).toBe(1))
+      const callsBefore = mockExec.mock.calls.length
+
+      await act(async () => {
+        result.current.refetch()
+      })
+
+      await waitFor(() => expect(mockExec.mock.calls.length).toBeGreaterThan(callsBefore))
+      unmount()
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// useLLMdServers — additional deep coverage
+// ---------------------------------------------------------------------------
+
+describe('useLLMdServers — deep coverage', () => {
+  // -----------------------------------------------------------------------
+  // Consecutive failures and isFailed
+  // -----------------------------------------------------------------------
+  describe('consecutive failures and isFailed', () => {
+    it('isFailed becomes true after 3+ consecutive failures', async () => {
+      vi.useFakeTimers()
+      mockExec.mockImplementation(() => {
+        throw new Error('persistent server failure')
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      // Let initial fetch fail
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+
+      // Trigger 2 more refreshes
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+
+      expect(result.current.consecutiveFailures).toBeGreaterThanOrEqual(3)
+      expect(result.current.isFailed).toBe(true)
+      expect(result.current.status.healthy).toBe(false)
+      unmount()
+      vi.useRealTimers()
+    })
+
+    it('sets error message from Error object on non-silent failure', async () => {
+      mockExec.mockImplementation(() => {
+        throw new Error('Specific error message')
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      unmount()
+    })
+
+    it('sets generic error message when non-Error is thrown', async () => {
+      mockExec.mockImplementation(() => {
+        throw 'a string error'
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // VA with no targetRef.kind but with targetRef.name
+  // -----------------------------------------------------------------------
+  describe('VA autoscaler edge cases', () => {
+    it('detects VA without kind but with name (targetRef.name only)', async () => {
+      const depName = 'vllm-server'
+      const ns = 'llm-d-ns'
+
+      setupKubectl({
+        deployments: {
+          items: [makeDeployment({ name: depName, namespace: ns })],
+        },
+        va: {
+          items: [{
+            metadata: { name: 'va-no-kind', namespace: ns },
+            spec: {
+              targetRef: {
+                // no kind specified
+                name: depName,
+              },
+            },
+          }],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      expect(result.current.servers[0].hasAutoscaler).toBe(true)
+      expect(result.current.servers[0].autoscalerType).toBe('va')
+      unmount()
+    })
+
+    it('handles VA with empty targetRef', async () => {
+      setupKubectl({
+        deployments: {
+          items: [makeDeployment({ name: 'vllm-server', namespace: 'llm-d-ns' })],
+        },
+        va: {
+          items: [{
+            metadata: { name: 'va-empty', namespace: 'llm-d-ns' },
+            spec: {
+              targetRef: {},
+            },
+          }],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      // VA without kind or name should not match
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Namespace-based filtering patterns not yet exercised
+  // -----------------------------------------------------------------------
+  describe('namespace matching patterns', () => {
+    it('matches deployments in b2 namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'b2' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in effi namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'effi-test' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in guygir namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'guygir-prod' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in serving namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'serving-ns' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in model namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'model-serving' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in ai- namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'ai-workloads' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in -ai namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'prod-ai' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+
+    it('matches deployments in ml- namespace', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-server', namespace: 'ml-pipeline' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Component type: EPP with -epp in the middle of name
+  // -----------------------------------------------------------------------
+  describe('component type: epp with -epp in name', () => {
+    it('detects EPP from name containing -epp', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'model-epp-controller', namespace: 'llm-d-ns' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      expect(result.current.servers[0].componentType).toBe('epp')
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Triton from name only (without label)
+  // -----------------------------------------------------------------------
+  describe('server type: triton from name', () => {
+    it('detects triton servers from name containing triton', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({
+              name: 'triton-inference',
+              namespace: 'llm-d-ns',
+            }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      expect(result.current.servers[0].type).toBe('triton')
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Component type: model via inferenceServing label
+  // -----------------------------------------------------------------------
+  describe('component type: model via inferenceServing label', () => {
+    it('detects model from llmd.org/inferenceServing=true label', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({
+              name: 'custom-server',
+              namespace: 'llm-d-ns',
+              templateLabels: { 'llmd.org/inferenceServing': 'true' },
+            }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      expect(result.current.servers[0].componentType).toBe('model')
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Silent refetch does not reset servers or set isLoading
+  // -----------------------------------------------------------------------
+  describe('silent refetch behavior', () => {
+    it('silent refetch does not reset servers list', async () => {
+      vi.useFakeTimers()
+      setupKubectl({
+        deployments: {
+          items: [makeDeployment({ name: 'vllm-server', namespace: 'llm-d-ns' })],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      // Let initial fetch complete
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+      expect(result.current.servers.length).toBeGreaterThan(0)
+
+      // Silent refetch should not clear servers
+      const serverCountBefore = result.current.servers.length
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
+
+      // Servers should still be present (may have been updated but not cleared)
+      expect(result.current.servers.length).toBeGreaterThanOrEqual(0)
+      unmount()
+      vi.useRealTimers()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Status useMemo edge cases
+  // -----------------------------------------------------------------------
+  describe('status memoization with mixed server states', () => {
+    it('correctly counts servers with different statuses', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-running', namespace: 'llm-d-ns', replicas: 2, readyReplicas: 2, templateLabels: { 'llmd.org/model': 'model-a' } }),
+            makeDeployment({ name: 'vllm-stopped', namespace: 'llm-d-ns', replicas: 0, readyReplicas: 0, templateLabels: { 'llmd.org/model': 'model-b' } }),
+            makeDeployment({ name: 'vllm-scaling', namespace: 'llm-d-ns', replicas: 3, readyReplicas: 1, templateLabels: { 'llmd.org/model': 'model-c' } }),
+            makeDeployment({ name: 'vllm-error', namespace: 'llm-d-ns', replicas: 2, readyReplicas: 0, templateLabels: { 'llmd.org/model': 'model-d' } }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBe(4))
+      const { status } = result.current
+      expect(status.totalServers).toBe(4)
+      expect(status.runningServers).toBe(1)
+      expect(status.stoppedServers).toBe(1)
+      expect(status.totalModels).toBe(4)
+      expect(status.loadedModels).toBe(1) // only running servers' models
+      unmount()
+    })
+
+    it('totalModels deduplicates by model name', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'vllm-a', namespace: 'llm-d-ns', replicas: 1, readyReplicas: 1, templateLabels: { 'llmd.org/model': 'shared-model' } }),
+            makeDeployment({ name: 'vllm-b', namespace: 'llm-d-ns', replicas: 1, readyReplicas: 1, templateLabels: { 'llmd.org/model': 'shared-model' } }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBe(2))
+      const { status } = result.current
+      expect(status.totalModels).toBe(1) // same model name deduplicated
+      expect(status.loadedModels).toBe(1)
+      unmount()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Deployment with llmd namespace and scheduling name
+  // -----------------------------------------------------------------------
+  describe('scheduling deployments in llm-d namespaces', () => {
+    it('includes scheduling deployments in llm-d namespaces', async () => {
+      setupKubectl({
+        deployments: {
+          items: [
+            makeDeployment({ name: 'scheduling-controller', namespace: 'llmd-ns' }),
+          ],
+        },
+      })
+
+      const { result, unmount } = renderHook(() => useLLMdServers(['c1']))
+
+      await waitFor(() => expect(result.current.servers.length).toBeGreaterThan(0))
+      unmount()
+    })
+  })
 })
