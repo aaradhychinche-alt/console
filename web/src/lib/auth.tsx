@@ -1,4 +1,4 @@
-import { createContext, use, useState, useEffect, useCallback, ReactNode } from 'react'
+import { createContext, use, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { checkOAuthConfigured } from './api'
 import { dashboardSync } from './dashboards/dashboardSync'
 import { clearPermissionsCache } from '../hooks/usePermissions'
@@ -410,10 +410,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // When there's no token, refreshUser() auto-enables demo mode so the user
   // lands on the dashboard immediately (same UX as console.kubestellar.io)
   // instead of flashing through the login page.
+  const authInitRef = useRef(false)
   useEffect(() => {
+    if (authInitRef.current) return
+    authInitRef.current = true
     refreshUser().finally(() => setIsLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps — run once on mount
-  }, [])
+  }, [refreshUser])
 
   return (
     <AuthContext.Provider
