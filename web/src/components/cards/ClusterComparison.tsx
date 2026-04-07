@@ -72,7 +72,7 @@ export function ClusterComparison({ config }: ClusterComparisonProps) {
   const gpuByCluster = (() => {
     const map: Record<string, number> = {}
     gpuNodes.forEach(node => {
-      const clusterKey = node.cluster.split('/')[0]
+      const clusterKey = (node.cluster ?? '').split('/')[0]
       map[clusterKey] = (map[clusterKey] || 0) + node.gpuCount
     })
     return map
@@ -129,7 +129,8 @@ export function ClusterComparison({ config }: ClusterComparisonProps) {
   ]
 
   const maxValues = metrics.reduce((acc, m) => {
-    acc[m.key] = Math.max(...clustersToCompare.map(c => m.getValue(c)))
+    const values = clustersToCompare.map(c => m.getValue(c))
+    acc[m.key] = values.length > 0 ? Math.max(...values) : 0
     return acc
   }, {} as Record<string, number>)
 

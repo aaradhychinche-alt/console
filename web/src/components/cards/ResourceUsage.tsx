@@ -32,7 +32,7 @@ export function ResourceUsage() {
   // Filter GPU nodes to match the currently displayed clusters
   const gpuNodes = (() => {
     const clusterNames = new Set(clusters.map(c => c.name))
-    return allGPUNodes.filter(n => clusterNames.has(n.cluster.split('/')[0]))
+    return allGPUNodes.filter(n => clusterNames.has((n.cluster ?? '').split('/')[0]))
   })()
 
   // Calculate totals from real cluster data

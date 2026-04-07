@@ -64,7 +64,7 @@ export function EventSummary() {
     const clusterCounts: Record<string, number> = {}
     filteredEvents.forEach(e => {
       if (e.cluster) {
-        const name = e.cluster.split('/').pop() || e.cluster
+        const name = (e.cluster ?? '').split('/').pop() || e.cluster
         clusterCounts[name] = (clusterCounts[name] || 0) + 1
       }
     })
@@ -178,7 +178,7 @@ export function EventSummary() {
                   <div className="w-16 h-1.5 rounded-full bg-secondary overflow-hidden">
                     <div
                       className="h-full rounded-full bg-purple-500"
-                      style={{ width: `${Math.min(100, (count / total) * 100)}%` }}
+                      style={{ width: `${total > 0 ? Math.min(100, (count / total) * 100) : 0}%` }}
                     />
                   </div>
                   <span className="text-muted-foreground w-6 text-right">{count}</span>
@@ -201,7 +201,7 @@ export function EventSummary() {
                   <div className="w-16 h-1.5 rounded-full bg-secondary overflow-hidden">
                     <div
                       className="h-full rounded-full bg-blue-500"
-                      style={{ width: `${Math.min(100, (count / total) * 100)}%` }}
+                      style={{ width: `${total > 0 ? Math.min(100, (count / total) * 100) : 0}%` }}
                     />
                   </div>
                   <span className="text-muted-foreground w-6 text-right">{count}</span>
