@@ -397,11 +397,34 @@ export function WorkloadImportDialog({ isOpen, onClose, onImport }: WorkloadImpo
   // Tab content
   // -----------------------------------------------------------------------
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      setYamlText(text)
+      setYamlPreview([])
+      setYamlErrors([])
+      setImportSuccess(false)
+    }
+    reader.readAsText(file)
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
+  }
+
   const renderYamlTab = () => (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        {t('workloadImport.yamlDescription')}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {t('workloadImport.yamlDescription')}
+        </p>
+        <label className="flex items-center gap-1.5 px-2.5 py-1 text-2xs font-medium rounded-md bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+          <Download className="h-3 w-3" />
+          Upload file
+          <input type="file" accept=".yaml,.yml,.json" onChange={handleFileUpload} className="hidden" />
+        </label>
+      </div>
       <textarea
         className={cn(inputClasses, 'h-48 font-mono text-xs resize-y')}
         placeholder={t('workloadImport.yamlPlaceholder')}
