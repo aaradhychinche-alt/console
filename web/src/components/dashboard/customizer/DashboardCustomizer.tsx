@@ -21,7 +21,7 @@ import { DEFAULT_SECTION, type CustomizerSection } from './customizerNav'
 import { useNavigate } from 'react-router-dom'
 import { useDashboards } from '../../../hooks/useDashboards'
 import { useSidebarConfig } from '../../../hooks/useSidebarConfig'
-import { suggestIconSync } from '../../../lib/icons'
+import { suggestIconSync } from '../../../lib/iconSuggester'
 import type { CardSuggestion, HoveredCard } from '../shared/cardCatalog'
 import type { DashboardTemplate } from '../templates'
 
