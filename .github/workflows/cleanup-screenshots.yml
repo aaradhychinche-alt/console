@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   cleanup-screenshots:
+    if: github.repository == 'kubestellar/console'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
