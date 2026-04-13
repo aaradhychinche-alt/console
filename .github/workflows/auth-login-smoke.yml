@@ -50,18 +50,16 @@ jobs:
           go-version-file: go.mod
 
       # ── 1. Production reachability ────────────────────────────────
-      - name: Verify production /health
+      - name: Verify production is reachable
         run: |
-          echo "Checking $CONSOLE_URL/health ..."
-          HEALTH=$(curl -sS --max-time 10 "$CONSOLE_URL/health")
-          echo "$HEALTH" | jq .
-
-          # Verify OAuth is configured (not demo-only)
-          OAUTH=$(echo "$HEALTH" | jq -r '.auth.oauthConfigured // empty')
-          if [ -z "$OAUTH" ]; then
-            echo "::warning::Could not confirm oauthConfigured from /health — field may have moved"
+          echo "Checking $CONSOLE_URL ..."
+          HTTP_CODE=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$CONSOLE_URL/")
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Production returned HTTP $HTTP_CODE"
+            exit 1
           fi
-          echo "Production /health OK"
+          echo "Production reachable (HTTP 200)"
 
       # ── 2. OAuth redirect ─────────────────────────────────────────
       - name: Verify /auth/github redirects to GitHub
