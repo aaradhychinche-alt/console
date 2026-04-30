@@ -55,8 +55,13 @@ async function setupDemoMode(page: Page) {
     localStorage.removeItem('kc-ns-overview-cluster')
     localStorage.removeItem('kc-ns-overview-namespace')
     localStorage.setItem(
-      'kubestellar-dashboard-cards',
-      JSON.stringify([{ id: 'namespace_overview', size: 'medium', order: 0 }])
+      'kubestellar-main-dashboard-cards',
+      JSON.stringify([{
+        id: 'namespace_overview',
+        card_type: 'namespace_overview',
+        config: {},
+        position: { x: 0, y: 0, w: 6, h: 3 },
+      }])
     )
   })
 }
@@ -104,8 +109,13 @@ async function setupLiveMode(page: Page) {
     localStorage.removeItem('kc-ns-overview-cluster')
     localStorage.removeItem('kc-ns-overview-namespace')
     localStorage.setItem(
-      'kubestellar-dashboard-cards',
-      JSON.stringify([{ id: 'namespace_overview', size: 'medium', order: 0 }])
+      'kubestellar-main-dashboard-cards',
+      JSON.stringify([{
+        id: 'namespace_overview',
+        card_type: 'namespace_overview',
+        config: {},
+        position: { x: 0, y: 0, w: 6, h: 3 },
+      }])
     )
   })
 }
