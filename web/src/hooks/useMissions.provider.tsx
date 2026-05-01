@@ -1887,6 +1887,7 @@ The WebSocket connection to the agent at \`${LOCAL_AGENT_WS_URL}\` was lost and 
         : Promise.resolve({ ok: true } as PreflightResult)
 
     preflightPromise.then(preflight => {
+      if (unmountedRef.current) return
       if (!preflight.ok && 'error' in preflight && preflight.error) {
         // Preflight failed — block the mission with a structured error
         setMissions(prev => prev.map(m =>
@@ -1928,6 +1929,7 @@ The WebSocket connection to the agent at \`${LOCAL_AGENT_WS_URL}\` was lost and 
       // Preflight passed — proceed to send to agent
       executeMission(missionId, enhancedPrompt, params)
     }).catch((err) => {
+      if (unmountedRef.current) return
       // Preflight itself threw unexpectedly — block the mission instead of
       // fail-open to prevent executing without validation (#5846)
       setMissions(prev => prev.map(m =>
