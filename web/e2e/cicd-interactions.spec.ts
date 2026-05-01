@@ -38,33 +38,33 @@ test.describe('CI/CD repo removal and hiding (#11013)', () => {
     await waitForSubRoute(page)
   })
 
-  test('remove button is present on repo pills', async ({ page }) => {
-    // Repo pills have an "x" remove button with aria-label starting with "Remove repo"
+  test('remove button is hidden in demo mode', async ({ page }) => {
+    // PipelineFilterBar hides remove buttons in demo mode to prevent
+    // accidental repo removal when using demo/sample data.
     const removeButtons = page.getByRole('button', { name: /Remove repo/i })
 
-    // In demo mode, the filter bar should render repo pills with remove controls
     await expect(page.getByTestId('dashboard-header')).toBeVisible({
       timeout: ELEMENT_VISIBLE_TIMEOUT_MS,
     })
 
-    // If the filter bar is visible, verify remove buttons are present and visible
+    // Verify repo pills render (the "All" button is always present)
     const allPill = page.getByRole('button', { name: 'All' }).first()
     const allVisible = await allPill.isVisible().catch(() => false)
     if (allVisible) {
       const count = await removeButtons.count()
-      // In demo mode with repos rendered, we expect at least one remove button
-      expect(count).toBeGreaterThan(0)
-      await expect(removeButtons.first()).toBeVisible({ timeout: ELEMENT_VISIBLE_TIMEOUT_MS })
+      // In demo mode, remove buttons should NOT be rendered
+      expect(count).toBe(0)
     }
   })
 
   test('clicking remove on a repo pill hides it from the filter bar', async ({ page }) => {
-    // First, check if we have repo pills (non-demo-gated scenario)
+    // Remove buttons are hidden in demo mode — this test verifies removal
+    // behavior which only applies in live (non-demo) mode.
     const removeButtons = page.getByRole('button', { name: /Remove repo/i })
     const count = await removeButtons.count()
 
     if (count === 0) {
-      // No remove buttons visible — skip gracefully
+      // No remove buttons visible (expected in demo mode) — skip gracefully
       await expect(page.getByTestId('dashboard-header')).toBeVisible({
         timeout: ELEMENT_VISIBLE_TIMEOUT_MS,
       })

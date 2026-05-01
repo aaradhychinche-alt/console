@@ -258,7 +258,8 @@ test.describe('Dashboard Page', () => {
       // skeleton element to confirm loading UI is shown before data arrives.
       const SKELETON_TIMEOUT_MS = 1000
       const skeletonElement = page.locator('.animate-pulse').first()
-      const hasLoadingSkeleton = await skeletonElement.isVisible({ timeout: SKELETON_TIMEOUT_MS }).catch(() => false)
+      let hasLoadingSkeleton = false
+      try { await expect(skeletonElement).toBeVisible({ timeout: SKELETON_TIMEOUT_MS }); hasLoadingSkeleton = true } catch { hasLoadingSkeleton = false }
 
       // If skeleton is visible, loading state is correctly displayed.
       // On fast connections or cached data, the skeleton may not appear
@@ -351,7 +352,7 @@ test.describe('Dashboard Page', () => {
       // button triggers cache invalidation, which causes hooks to re-fetch.
       // We expect at least one API request after clicking refresh.
       const refreshRequestPromise = page.waitForRequest(
-        (req) => req.url().includes('/api/') && req.method() === 'GET',
+        (req) => req.url().includes('/api/mcp/') && req.method() === 'GET',
         { timeout: 10000 }
       ).catch(() => null)
 
@@ -372,7 +373,8 @@ test.describe('Dashboard Page', () => {
       // animation to confirm visual feedback is shown during refresh.
       const REFRESH_ICON_TIMEOUT_MS = 2000
       const refreshIcon = page.locator('[data-testid*="refresh"], .animate-spin').first()
-      const hasRefreshIndicator = await refreshIcon.isVisible({ timeout: REFRESH_ICON_TIMEOUT_MS }).catch(() => false)
+      let hasRefreshIndicator = false
+      try { await expect(refreshIcon).toBeVisible({ timeout: REFRESH_ICON_TIMEOUT_MS }); hasRefreshIndicator = true } catch { hasRefreshIndicator = false }
 
       // If refresh animation appears, verify it's visible. On fast connections
       // or cached data, the refresh may complete before the animation renders,
@@ -454,7 +456,7 @@ test.describe('Dashboard Page', () => {
         status: 'Running',
       }))
 
-      await page.route('**/api/mcp/pods', (route) =>
+      await page.route('**/api/mcp/pods**', (route) =>
         route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -474,11 +476,13 @@ test.describe('Dashboard Page', () => {
 
       // Look for the mock pod count rendered on the page. Use word boundary
       // regex to avoid matching inside larger numbers (e.g., "42" in "420").
-      const hasPodCount = await dashboardBody
-        .getByText(new RegExp(`\\b${MOCK_POD_COUNT}\\b`))
-        .first()
-        .isVisible({ timeout: CARD_DATA_TIMEOUT_MS })
-        .catch(() => false)
+      let hasPodCount = false
+      try {
+        await expect(dashboardBody
+          .getByText(new RegExp(`\\b${MOCK_POD_COUNT}\\b`))
+          .first()).toBeVisible({ timeout: CARD_DATA_TIMEOUT_MS })
+        hasPodCount = true
+      } catch { hasPodCount = false }
 
       // If a pod card is present and loaded the mock data, the count should
       // appear. If no pod card is on the default dashboard, skip gracefully.
@@ -510,10 +514,11 @@ test.describe('Dashboard Page', () => {
       const CLUSTER_NAME_TIMEOUT_MS = 15_000
       const dashboardPage = page.getByTestId('dashboard-page')
 
-      const hasHealthyCluster = await dashboardPage
-        .getByText('test-healthy-cluster')
-        .isVisible({ timeout: CLUSTER_NAME_TIMEOUT_MS })
-        .catch(() => false)
+      let hasHealthyCluster = false
+      try {
+        await expect(dashboardPage.getByText('test-healthy-cluster')).toBeVisible({ timeout: CLUSTER_NAME_TIMEOUT_MS })
+        hasHealthyCluster = true
+      } catch { hasHealthyCluster = false }
 
       // If cluster cards are on the dashboard, verify the mock data appears.
       if (hasHealthyCluster) {
@@ -545,11 +550,13 @@ test.describe('Dashboard Page', () => {
       const NAMESPACE_COUNT_TIMEOUT_MS = 15_000
       const dashboardBody = page.locator('body')
 
-      const hasNamespaceCount = await dashboardBody
-        .getByText(new RegExp(`\\b${MOCK_NAMESPACE_COUNT}\\b`))
-        .first()
-        .isVisible({ timeout: NAMESPACE_COUNT_TIMEOUT_MS })
-        .catch(() => false)
+      let hasNamespaceCount = false
+      try {
+        await expect(dashboardBody
+          .getByText(new RegExp(`\\b${MOCK_NAMESPACE_COUNT}\\b`))
+          .first()).toBeVisible({ timeout: NAMESPACE_COUNT_TIMEOUT_MS })
+        hasNamespaceCount = true
+      } catch { hasNamespaceCount = false }
 
       // If a namespace card is present, verify the mock count appears.
       if (hasNamespaceCount) {
@@ -756,9 +763,8 @@ test.describe('Dashboard Data Accuracy (#6459)', () => {
       let found = 0
       for (let i = 1; i <= EXPECTED_CLUSTER_COUNT; i++) {
         const rowLocator = page.locator(`[data-testid="cluster-row-accuracy-cluster-${i}"]`)
-        const hasRow = await rowLocator
-          .isVisible({ timeout: DATA_RENDER_TIMEOUT_MS })
-          .catch(() => false)
+        let hasRow = false
+        try { await expect(rowLocator).toBeVisible({ timeout: DATA_RENDER_TIMEOUT_MS }); hasRow = true } catch { hasRow = false }
         if (hasRow) found++
       }
       clustersPageCount = found
@@ -785,7 +791,8 @@ test.describe('Dashboard Data Accuracy (#6459)', () => {
     // than on desktop Chromium; use a generous timeout.
     const STAT_BLOCK_TIMEOUT_MS = 20_000
     const clusterStatBlock = page.getByTestId('stat-block-clusters').first()
-    const hasStatBlock = await clusterStatBlock.isVisible({ timeout: STAT_BLOCK_TIMEOUT_MS }).catch(() => false)
+    let hasStatBlock = false
+    try { await expect(clusterStatBlock).toBeVisible({ timeout: STAT_BLOCK_TIMEOUT_MS }); hasStatBlock = true } catch { hasStatBlock = false }
     if (hasStatBlock) {
       // Digit-boundary match: the StatBlock wraps the numeric value in a
       // div with header text ("Clusters") and optional sublabel, so we
@@ -809,7 +816,8 @@ test.describe('Dashboard Data Accuracy (#6459)', () => {
         .getByRole('status')
         .filter({ hasText: /cluster/i })
         .first()
-      const labelVisible = await countByLabel.isVisible({ timeout: STAT_BLOCK_TIMEOUT_MS }).catch(() => false)
+      let labelVisible = false
+      try { await expect(countByLabel).toBeVisible({ timeout: STAT_BLOCK_TIMEOUT_MS }); labelVisible = true } catch { labelVisible = false }
       if (labelVisible) {
         await expect(countByLabel).toHaveText(
           new RegExp(`(?<!\\d)${EXPECTED_CLUSTER_COUNT}(?!\\d)`)
