@@ -270,6 +270,7 @@ cleanup() {
     kill $AGENT_PID 2>/dev/null || true
     kill $WATCHDOG_PID 2>/dev/null || true
     kill $AGENT_BUILD_PID 2>/dev/null || true
+    kill $BACKEND_BUILD_PID 2>/dev/null || true
     rm -f "$SHUTDOWN_FLAG" "$STAGE_FILE" "${AGENT_PID_FILE:-}"
     exit 0
 }
@@ -469,8 +470,10 @@ if [ "$USE_DEV_SERVER" = true ]; then
     launch_kc_agent
 
     # Wait for backend build to finish, then start the pre-built binary.
+    # Use "|| true" before capturing $? so set -e doesn't fire before we can
+    # handle the error and print a friendly message.
     if [ -n "$BACKEND_BUILD_PID" ]; then
-        wait "$BACKEND_BUILD_PID"
+        wait "$BACKEND_BUILD_PID" || true
         BACKEND_BUILD_EXIT=$?
         if [ "$BACKEND_BUILD_EXIT" -ne 0 ] || [ ! -x "$BACKEND_BIN" ]; then
             echo -e "${RED}Backend build failed — cannot start.${NC}"
@@ -595,8 +598,10 @@ else
     launch_kc_agent
 
     # Wait for backend build to finish, then start the pre-built binary.
+    # Use "|| true" before capturing $? so set -e doesn't fire before we can
+    # handle the error and print a friendly message.
     if [ -n "$BACKEND_BUILD_PID" ]; then
-        wait "$BACKEND_BUILD_PID"
+        wait "$BACKEND_BUILD_PID" || true
         BACKEND_BUILD_EXIT=$?
         if [ "$BACKEND_BUILD_EXIT" -ne 0 ] || [ ! -x "$BACKEND_BIN" ]; then
             echo -e "${RED}Backend build failed — cannot start.${NC}"
